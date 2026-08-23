@@ -1,0 +1,57 @@
+# PACD-SIM-ENV-CODEX-PKG-001 v1.0
+# Source: protected supplied package; copied read-only input only
+# Destination: %USERPROFILE%\PACD-Workspaces\PACD-Simulation\package\bootstrap-package-v1.0
+# File count including manifest files: 18
+# Total bytes: 132233
+# PACKAGE_MANIFEST.json SHA-256
+a774484bb217f6a968191f914466013421d490ae2256e8c672928adad6d595e7  PACKAGE_MANIFEST.json
+# PACKAGE_MANIFEST_SHA256.txt SHA-256
+22ab90263122702feb829ae4ed45d603d057583c191146d993cf216d859b512a  PACKAGE_MANIFEST_SHA256.txt
+
+# Declared package payload hashes follow:
+bc2cc6e953e9c4ff97c33e806f5f145583efd5f6952b9e61a438af2c9bf09c39  AGENTS.md
+d9dea7ee0075f69bab7b1f96151768b38c3f2ca0cc502615f637461c31920170  CHANGELOG.md
+a18ef1f700a14bd6530f9edc626c986e35c878c1c6ea14b477165a7035421b03  PACD_MASTER_SPECIFICATION_v1.0.md
+4a984899dd5cdd4e0124e742a2fe23366f7039954dc4dd80cd8bd7982b808eb7  README.md
+4f1280890e4dbb16ea9ac914961857c842dff438c0b305fbb49c9bfca8861391  START_HERE_PROMPT.txt
+2bc201459be474704f06030cf485c922892302e1c50199f68a23b8e3a91e4463  VALIDATION_REPORT.md
+da112b4b39c55a25d50a69a139dfccc416f84eea99ec905a368ff21932d346d1  docs/PACD_Bootstrap_Acceptance_Tests_v1.0.md
+a62bf5bd1b1ea5313f1cbc3a2078f528f11bbb669ccbf82a088e03a17a5e4501  docs/PACD_Codex_Bootstrap_Work_Order_v1.0.md
+4c4138b0415d8ddc2ed619408838707c6310657f411f40e2a4c8cf3ace22169f  docs/PACD_Local_Simulation_Environment_Architecture_v1.0.md
+7f3757803943c240200c49099ebb457c94eb2e6cf0c701463a7b655feb7ee624  guardrails/PACD_Host_Guardrails_v1.0.yaml
+f42e52983d3812cb7913c56a9cde7f29d8f48b05c7e3b80f623647e8ecb549d0  status_templates/COMMAND_LOG.md
+a6ccccf477ed47d511c11667d620303da9196ddbcefe882fbe3823da3b4af68e  status_templates/DECISIONS.md
+4e81c5cc1b638bd080ad18dd8b5b0dde85ccb4542f4b0048612755fb855854ff  status_templates/ESCALATIONS.md
+60290945a6df5d620dd8526c2a21777c84d074cb8690a84c36b56d98d53f5e97  status_templates/FINAL_REPORT.md
+409e1e8cbbcffa4210aaab975e1112ee0fac9b278e3c7400dfb4f3d60bd6e8b4  status_templates/PREFLIGHT.md
+c2f3cc573aadaec40e782c848f5e2e41f78e4f99fb95eab24c02036e210f9eb4  status_templates/WORKLOG.md
+
+# Task tool downloads and extracted executables (2026-08-23T00:05:32.1675239-04:00)
+C28C7B3B584967A05B74D9EAF7481BFF24DDC34930BF2D6E442C148236561EB1  var/downloads/gh_2.98.0_windows_amd64.zip  # official checksum match; Authenticode-valid extracted executable
+275B90AE8A642FB8BDF4F21D7673E34643A445F7993F1821AC917FF8A2CC4DB9  var/downloads/gh_2.98.0_checksums.txt  # official GitHub release asset
+A1701E3C806A805981554ACE7DF04812772C6449BDCFD1A77675013D97786401  var/cache/tools/gh/2.98.0/bin/gh.exe  # signer GitHub, Inc.; status Valid
+4C4D49D8738847D9B71BA319E49A5688C93EAC0FE6204B1DF24E98528DDDF39A  var/downloads/uv-x86_64-pc-windows-msvc-0.12.5.zip  # official checksum and SLSA provenance attestation verified
+A933E3CB95AF27C951184DB1C406FA82B429023DBB99CFC1FF1EB23387EB7017  var/downloads/uv-x86_64-pc-windows-msvc-0.12.5.zip.sha256  # official Astral release asset
+8DA6CEDEF60C27AC997EBF400FBFC6D373C5B0A7AE6A299B9D52BE7FE63723FB  var/cache/tools/uv/0.12.5/uv.exe  # Authenticode status NotSigned; official SLSA provenance verified before execution
+01BA4719C80B6FE911B091A7C05124B64EEECE964E09C058EF8F9805DACA546B  var/downloads/attestations/uv-4c4d49d8738847d9b71ba319e49a5688c93eac0fe6204b1df24e98528dddf39a.jsonl  # retained empty failed-fetch evidence
+07C977BBE4ABAD07E3BBC314608633E6C74EAB482A7BAE81F4361CDA970B45E6  var/downloads/cpython-3.13.15+20260814-x86_64-pc-windows-msvc-install_only_stripped.tar.gz  # official digest and SLSA provenance verified
+664BD3D1B94379E1D4405F2500C1D1E2AA750F0DB718AF0C9FFBC5D6A9F40AAC  %USERPROFILE%/AppData/Roaming/uv/python/cpython-3.13.15-windows-x86_64-none/python.exe  # from verified archive; not independently Authenticode-signed
+
+# Official source records
+# https://github.com/cli/cli/releases/download/v2.98.0/gh_2.98.0_windows_amd64.zip
+# https://github.com/cli/cli/releases/download/v2.98.0/gh_2.98.0_checksums.txt
+# https://github.com/astral-sh/uv/releases/download/0.12.5/uv-x86_64-pc-windows-msvc.zip
+# https://github.com/astral-sh/uv/releases/download/0.12.5/uv-x86_64-pc-windows-msvc.zip.sha256
+# https://github.com/astral-sh/python-build-standalone/releases/tag/20260814
+
+# Reproducibility records
+12372A81D459EC112417B7A76B7FC65A32F5E0DA865B39A466C443563A28F290  repo/pacd-simulation/uv.lock
+AB0A44652F411026A3EF529CB63DC9B07C735046502555597E24C07963DB0008  same-seed-normalized-raw-events
+9616E1EDF0401F353625E3B35E714B14DC517B55BBE7D4C5DB76C2B3565ECD76  same-seed-normalized-summary
+E3DBE8E94999F2E911EBE999693B15EA62046AEA1D4216D40190239C4425BC4A  different-seed-normalized-raw-events
+3228BDA10BC24EB94BE30FEA5D6010A991996A672F7F4F082E9FEBFCF27DEFF6  different-seed-normalized-summary
+
+# Private provenance-evidence hashes (files remain ignored and uncommitted)
+6BFEB74741CB66E2DB2AF1D3F78F85C4D49B09232CD5BA323D5257EA0DE1C965  bootstrap-status/status/private/UV_ATTESTATION_VERIFICATION.json
+52C7B19B1E7C5864A42A4E6F04AE296A27D5170D99E5C1F5C73CFC33DB4956F9  bootstrap-status/status/private/PYTHON_3_13_15_ATTESTATION_VERIFICATION.json
+F90557BF1A7CA2C0A33EEC3263ABEB4EAAB113491CAF2FC782623BEAE41E46BF  bootstrap-status/status/private/HOST_INVENTORY.json

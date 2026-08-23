@@ -2,11 +2,12 @@
   "schema_version": 1,
   "evidence_label": "NON_REPORTABLE_DIAGNOSTIC",
   "generated_at": "2026-08-23T01:34:39-04:00",
+  "last_reconciled_at": "2026-08-23T06:14:48Z",
   "gates": [
     {
       "name": "ruff-format",
       "result": "PASS",
-      "detail": "92 files already formatted"
+      "detail": "100 current candidate files already formatted; rechecked after status-package additions"
     },
     {
       "name": "ruff-lint",
