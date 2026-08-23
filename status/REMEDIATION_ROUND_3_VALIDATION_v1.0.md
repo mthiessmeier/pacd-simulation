@@ -11,9 +11,9 @@ This is builder validation, not an independent reclassification.
 - Branch/base: `codex/environment-bootstrap-v1` / `main`
 - Controlling classification: **FAIL — bootstrap not acceptable for merge**
 - No-hardlink validation checkout:
-  `C:\Users\mthie\PACD-Workspaces\PACD-Simulation\repo\pacd-simulation-round3-validation-edd016cd`
+  `<workspace>\repo\pacd-simulation-round3-validation-edd016cd`
 - Validation root:
-  `C:\Users\mthie\PACD-Workspaces\PACD-Simulation\var\tmp\round3-validation-edd016cd`
+  `<workspace>\var\tmp\round3-validation-edd016cd`
 - Previously absent reconstructed environments: `env1` and `env2` below that validation root
 
 `git clone --no-hardlinks --branch codex/environment-bootstrap-v1 --single-branch` created the
