@@ -308,6 +308,37 @@ def test_failed_run_retention_never_appends_to_a_log_outside_owned_run(
 
 
 @pytest.mark.negative
+def test_failed_run_retention_does_not_append_through_a_hard_link(
+    isolated_workspace: IsolatedWorkspace,
+) -> None:
+    invocation_token = "e" * 32
+    _run_id, staging_dir, final_dir = run_module._new_run_directory(
+        isolated_workspace.output_root,
+        isolated_workspace.root,
+        424242,
+        invocation_token=invocation_token,
+    )
+    outside_log = isolated_workspace.root / "var" / "hard-link-target.log"
+    outside_log.write_text("sentinel\n", encoding="utf-8")
+    logs_dir = staging_dir / "logs"
+    logs_dir.mkdir()
+    linked_log = logs_dir / "run.log"
+    linked_log.hardlink_to(outside_log)
+
+    run_module._retain_failed_run(
+        staging_dir,
+        final_dir,
+        isolated_workspace.root,
+        424242,
+        RuntimeError("test failure"),
+        log_path=linked_log,
+    )
+
+    assert outside_log.read_text(encoding="utf-8") == "sentinel\n"
+    assert (final_dir / "logs" / "run.log").read_text(encoding="utf-8") == "sentinel\n"
+
+
+@pytest.mark.negative
 def test_failed_run_retention_rejects_indirect_metadata_before_write(
     isolated_workspace: IsolatedWorkspace,
     monkeypatch: pytest.MonkeyPatch,

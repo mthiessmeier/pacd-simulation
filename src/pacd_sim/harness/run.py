@@ -780,25 +780,10 @@ def _retain_failed_run(
     log_path: Path | None = None,
 ) -> None:
     """Mark and retain a task-created staging run without deleting raw evidence."""
+    del log_path
     lexical_run_dir = Path(os.path.abspath(run_dir))
     if path_has_symlink_or_reparse(lexical_run_dir):
         raise RuntimeError("Task-created run directory is indirect")
-    safe_log_path: Path | None = None
-    if log_path is not None:
-        lexical_log = Path(os.path.abspath(log_path))
-        try:
-            lexical_log.relative_to(lexical_run_dir)
-        except ValueError:
-            safe_log_path = None
-        else:
-            if not path_has_symlink_or_reparse(lexical_log):
-                safe_log_path = lexical_log
-    if safe_log_path is not None and safe_log_path.is_file():
-        try:
-            with safe_log_path.open("a", encoding="utf-8", newline="\n") as failure_log:
-                _log(failure_log, f"diagnostic failed; error_type={type(error).__name__}")
-        except OSError:
-            pass
     _replace_task_created_json(
         run_dir / "status.json",
         {
