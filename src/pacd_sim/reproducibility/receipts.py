@@ -1,12 +1,15 @@
-"""Local controlled anchors for diagnostic execution-instance identity.
+"""Cooperative local anchors for diagnostic execution-instance identity.
 
 Receipts live outside evidence packages so a copied or renamed package cannot
 manufacture a second execution identity by refreshing its internal checksums.
 They are deliberately local bootstrap anchors: they are neither author-signed
 nor externally timestamped and therefore never make evidence reportable.  The
-assurance assumes cooperative use of the harness and untampered local control
-stores; it is not execution attestation against an arbitrary same-user process
-that can forge both ownership and receipt files.
+assurance binds content, lexical path, run, and configuration at verification
+time under cooperative harness use. It does not establish historical control-
+file inode continuity, author signing, trustworthy external time, WORM storage,
+malicious-same-user resistance, cryptographic attestation, or reportability. A
+byte-identical, singly linked replacement at the same validated lexical path is
+therefore not, by itself, an assurance failure.
 """
 
 from __future__ import annotations
@@ -26,12 +29,15 @@ from pacd_sim.constants import EVIDENCE_LABEL, SCHEMA_VERSION
 from pacd_sim.reproducibility.canonical import canonical_json_bytes, canonical_sha256
 from pacd_sim.reproducibility.manifest import sha256_file
 from pacd_sim.reproducibility.paths import (
+    assert_exact_control_path,
     assert_write_path,
     is_symlink_or_reparse,
     path_has_symlink_or_reparse,
     resolve_workspace_root,
 )
 
+IDENTITY_ASSURANCE_SCOPE = "LOCAL_COOPERATIVE_CONTENT_PATH_AND_RUN_BINDING"
+HISTORICAL_CONTROL_FILE_INODE_CONTINUITY_ASSURED = False
 _RECEIPT_VERSION = "1.0"
 _RECEIPT_KIND = "LOCAL_CONTROLLED_BOOTSTRAP_ANCHOR"
 _ANCHOR_SCOPE = "local controlled bootstrap anchor; not author-signed or externally timestamped"
@@ -89,11 +95,15 @@ _RECEIPT_KEYS = frozenset(
 
 @dataclass(frozen=True)
 class ReceiptVerification:
-    """Cooperative local-identity result kept separate from semantic validity."""
+    """Current cooperative binding, without historical inode continuity."""
 
     identity_assured: bool
     errors: tuple[str, ...]
     receipt_path: Path | None
+    identity_assurance_scope: str = IDENTITY_ASSURANCE_SCOPE
+    historical_control_file_inode_continuity_assured: bool = (
+        HISTORICAL_CONTROL_FILE_INODE_CONTINUITY_ASSURED
+    )
     reportable: bool = False
 
 
@@ -120,13 +130,63 @@ def _validate_invocation_id(invocation_id: str) -> None:
         raise ValueError("Execution receipt invocation ID is invalid")
 
 
+def _receipt_control_path(
+    workspace: Path,
+    invocation_id: str | None = None,
+) -> Path:
+    """Return an exact lexical receipt root or receipt path."""
+
+    root = assert_exact_control_path(
+        workspace / "var" / "receipts",
+        workspace,
+        "receipts",
+    )
+    if invocation_id is None:
+        return root
+    name = f"{invocation_id}.json"
+    return assert_exact_control_path(root / name, workspace, "receipts", name)
+
+
+def _ownership_control_path(
+    workspace: Path,
+    invocation_id: str | None = None,
+    *,
+    marker: bool = False,
+) -> Path:
+    """Return an exact lexical invocation root, directory, or marker path."""
+
+    root = assert_exact_control_path(
+        workspace / "var" / "invocations",
+        workspace,
+        "invocations",
+    )
+    if invocation_id is None:
+        if marker:
+            raise ValueError("An ownership marker requires an invocation ID")
+        return root
+    invocation_dir = assert_exact_control_path(
+        root / invocation_id,
+        workspace,
+        "invocations",
+        invocation_id,
+    )
+    if not marker:
+        return invocation_dir
+    return assert_exact_control_path(
+        invocation_dir / "ownership.json",
+        workspace,
+        "invocations",
+        invocation_id,
+        "ownership.json",
+    )
+
+
 def receipt_path_for(workspace_root: Path | str, invocation_id: str) -> Path:
     """Return the one controlled receipt path for an invocation ID."""
 
     _validate_invocation_id(invocation_id)
     workspace = resolve_workspace_root(workspace_root)
-    root = assert_write_path(workspace / "var" / "receipts", workspace)
-    return assert_write_path(root / f"{invocation_id}.json", workspace)
+    return _receipt_control_path(workspace, invocation_id)
 
 
 def _stable_singly_linked_bytes(path: Path, *, max_bytes: int) -> bytes:
@@ -293,15 +353,14 @@ def _validate_receipt_creation_authority(
 
     if _SHA256.fullmatch(receipt_capability) is None:
         raise ValueError("Receipt creation capability is invalid")
-    marker_path = assert_write_path(
-        workspace / "var" / "invocations" / invocation_id / "ownership.json",
-        workspace,
-    )
+    marker_path = _ownership_control_path(workspace, invocation_id, marker=True)
     try:
         marker_bytes = _stable_singly_linked_bytes(
             marker_path,
             max_bytes=_MAX_OWNERSHIP_MARKER_BYTES,
         )
+        if _ownership_control_path(workspace, invocation_id, marker=True) != marker_path:
+            raise ValueError("Invocation ownership marker lexical path changed")
         marker = json.loads(marker_bytes, object_pairs_hook=_unique_object)
     except RecursionError as error:
         raise ValueError("Invocation ownership marker is excessively nested") from error
@@ -370,6 +429,9 @@ def create_execution_receipt(
 
     _validate_invocation_id(invocation_id)
     workspace = resolve_workspace_root(workspace_root)
+    receipt_root = _receipt_control_path(workspace)
+    receipt_path = receipt_path_for(workspace, invocation_id)
+    _ownership_control_path(workspace, invocation_id, marker=True)
     lexical_run = Path(os.path.abspath(Path(run_dir)))
     if path_has_symlink_or_reparse(lexical_run):
         raise ValueError("Final evidence path is indirect")
@@ -387,14 +449,11 @@ def create_execution_receipt(
         manifest=manifest,
     )
 
-    receipt_root = assert_write_path(workspace / "var" / "receipts", workspace)
-    if path_has_symlink_or_reparse(receipt_root):
-        raise ValueError("Controlled receipt root is indirect")
+    if _receipt_control_path(workspace) != receipt_root:
+        raise ValueError("Controlled receipt root changed before creation")
     receipt_root.mkdir(parents=True, exist_ok=True)
-    receipt_path = receipt_path_for(workspace, invocation_id)
-    if path_has_symlink_or_reparse(receipt_path):
-        raise ValueError("Controlled receipt path is indirect")
-
+    if _receipt_control_path(workspace) != receipt_root:
+        raise ValueError("Controlled receipt root changed during creation")
     receipt: dict[str, object] = {
         "anchor_scope": _ANCHOR_SCOPE,
         "canonical_config_hash": manifest.get("config_hash_start"),
@@ -422,6 +481,8 @@ def create_execution_receipt(
     }
     _validate_receipt_shape(receipt)
     receipt_bytes = canonical_json_bytes(receipt)
+    if receipt_path_for(workspace, invocation_id) != receipt_path:
+        raise ValueError("Controlled receipt lexical path changed before creation")
     with receipt_path.open("xb") as handle:
         opened = os.fstat(handle.fileno())
         if opened.st_nlink != 1:
@@ -430,6 +491,8 @@ def create_execution_receipt(
         handle.flush()
         os.fsync(handle.fileno())
         completed = os.fstat(handle.fileno())
+    if receipt_path_for(workspace, invocation_id) != receipt_path:
+        raise RuntimeError("Controlled receipt lexical path changed during creation")
     receipt_stat = receipt_path.stat(follow_symlinks=False)
     if (
         completed.st_dev,
@@ -443,6 +506,8 @@ def create_execution_receipt(
         receipt_stat.st_nlink,
     ) or receipt_stat.st_nlink != 1:
         raise RuntimeError("New controlled receipt path identity changed")
+    if receipt_path_for(workspace, invocation_id) != receipt_path:
+        raise RuntimeError("Controlled receipt lexical path changed after creation")
     return receipt_path
 
 
@@ -530,6 +595,13 @@ def verify_execution_receipt(
     receipt_path: Path | None = None
     try:
         workspace = resolve_workspace_root(workspace_root)
+        run_id = manifest.get("run_id")
+        if not isinstance(run_id, str):
+            raise ValueError("Run identity is absent from the manifest")
+        invocation_id = run_id.rsplit("-", 1)[-1]
+        _validate_invocation_id(invocation_id)
+        receipt_path = receipt_path_for(workspace, invocation_id)
+        marker_path = _ownership_control_path(workspace, invocation_id, marker=True)
         lexical_run = Path(os.path.abspath(Path(run_dir)))
         if path_has_symlink_or_reparse(lexical_run):
             raise ValueError("Final evidence path is indirect")
@@ -537,14 +609,8 @@ def verify_execution_receipt(
         expected_runs_root = (workspace / "var" / "runs").resolve(strict=True)
         if final_run.parent != expected_runs_root:
             raise ValueError("Run is not a direct child of workspace/var/runs")
-        run_id = manifest.get("run_id")
-        if not isinstance(run_id, str) or run_id != final_run.name:
+        if run_id != final_run.name:
             raise ValueError("Run path identity differs from the manifest")
-        invocation_id = run_id.rsplit("-", 1)[-1]
-        _validate_invocation_id(invocation_id)
-        receipt_path = receipt_path_for(workspace, invocation_id)
-        if path_has_symlink_or_reparse(receipt_path):
-            raise ValueError("Execution receipt path is indirect")
         if not receipt_path.is_file():
             raise ValueError("Execution-instance receipt is missing")
         before = receipt_path.stat(follow_symlinks=False)
@@ -552,6 +618,8 @@ def verify_execution_receipt(
             raise ValueError("Execution receipt must be a singly linked regular file")
         if before.st_size > _MAX_RECEIPT_BYTES:
             raise ValueError("Execution receipt exceeds the 64 KiB limit")
+        if receipt_path_for(workspace, invocation_id) != receipt_path:
+            raise ValueError("Execution receipt lexical path changed before verification")
         with receipt_path.open("rb") as handle:
             opened = os.fstat(handle.fileno())
             if (
@@ -571,6 +639,8 @@ def verify_execution_receipt(
         if len(encoded) > _MAX_RECEIPT_BYTES:
             raise ValueError("Execution receipt exceeds the 64 KiB limit")
         after = receipt_path.stat(follow_symlinks=False)
+        if receipt_path_for(workspace, invocation_id) != receipt_path:
+            raise ValueError("Execution receipt lexical path changed during verification")
         if (
             before.st_dev,
             before.st_ino,
@@ -604,14 +674,14 @@ def verify_execution_receipt(
         if canonical_json_bytes(receipt) != encoded:
             raise ValueError("Execution receipt is not canonical JSON")
 
-        marker_path = assert_write_path(
-            workspace / "var" / "invocations" / invocation_id / "ownership.json",
-            workspace,
-        )
+        if _ownership_control_path(workspace, invocation_id, marker=True) != marker_path:
+            raise ValueError("Invocation ownership marker lexical path changed before verification")
         marker_bytes = _stable_singly_linked_bytes(
             marker_path,
             max_bytes=_MAX_OWNERSHIP_MARKER_BYTES,
         )
+        if _ownership_control_path(workspace, invocation_id, marker=True) != marker_path:
+            raise ValueError("Invocation ownership marker lexical path changed")
         marker = json.loads(marker_bytes, object_pairs_hook=_unique_object)
         if not isinstance(marker, dict) or frozenset(marker) != _OWNERSHIP_KEYS:
             raise ValueError("Invocation ownership marker keys are not exact")
@@ -672,6 +742,10 @@ def verify_execution_receipt(
         for key, expected_value in expected.items():
             if receipt.get(key) != expected_value:
                 errors.append(f"Execution receipt {key} does not bind this run")
+        if receipt_path_for(workspace, invocation_id) != receipt_path:
+            errors.append("Execution receipt lexical path changed before assurance")
+        if _ownership_control_path(workspace, invocation_id, marker=True) != marker_path:
+            errors.append("Invocation ownership marker lexical path changed before assurance")
     except (
         OSError,
         RecursionError,
@@ -685,6 +759,10 @@ def verify_execution_receipt(
         identity_assured=not errors,
         errors=tuple(errors),
         receipt_path=receipt_path,
+        identity_assurance_scope=IDENTITY_ASSURANCE_SCOPE,
+        historical_control_file_inode_continuity_assured=(
+            HISTORICAL_CONTROL_FILE_INODE_CONTINUITY_ASSURED
+        ),
         reportable=False,
     )
 

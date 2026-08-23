@@ -8,6 +8,35 @@ Every bootstrap run is labeled `NON_REPORTABLE_DIAGNOSTIC`. Reportable mode fail
 an author-approved freeze record matches the exact commit and governed hashes. This bootstrap
 does not create that approval record.
 
+## Local execution identity assurance
+
+Bootstrap verification separates retained-content validity from cooperative local execution
+identity assurance and from reportability. Its structured result includes these fixed-scope
+fields:
+
+```json
+{
+  "identity_assurance_scope": "LOCAL_COOPERATIVE_CONTENT_PATH_AND_RUN_BINDING",
+  "historical_control_file_inode_continuity_assured": false,
+  "reportable": false
+}
+```
+
+`execution_identity_assured=true` means that, at verification time, the retained run and its
+configuration and hash bindings match local control records in the exact validated control-store
+paths. It is a cooperative local content, path, run, and configuration binding. It is not proof
+that a receipt or ownership-marker file has retained the same inode throughout its history. A
+byte-identical, singly linked control-file replacement at the same correctly validated lexical path
+does not by itself defeat this local binding. Changed bytes or bindings, a changed path, a hard
+link, a reparse point, a changed run-directory identity, or a receipt/run/configuration/seed/hash
+mismatch must fail assurance.
+
+This bootstrap does not claim author identity or signing, trustworthy external time,
+write-once-read-many (WORM) storage, malicious-same-user resistance, cryptographic execution
+attestation, or reportable status. See
+[Local execution identity assurance](docs/EXECUTION_IDENTITY_ASSURANCE.md) for the complete
+contract and interpretation rules.
+
 ## Reconstruct inside the bounded workspace
 
 Prerequisites are Git, authenticated private-repository access, and a verified `uv` executable.

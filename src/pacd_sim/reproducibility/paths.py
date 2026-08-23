@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import ctypes
+import ntpath
 import os
 from functools import lru_cache
 from pathlib import Path
 from uuid import UUID
 
 _FILE_ATTRIBUTE_REPARSE_POINT = 0x400
+_CONTROL_STORE_NAMES = frozenset({"invocations", "receipts"})
+_WINDOWS_DEVICE_NAMES = frozenset({"AUX", "CON", "NUL", "PRN"})
 
 
 class PathBoundaryError(ValueError):
@@ -121,6 +124,81 @@ def path_has_symlink_or_reparse(path: Path | str) -> bool:
         if is_symlink_or_reparse(current):
             return True
     return False
+
+
+def _has_windows_alternate_path_spelling(path: Path | str) -> bool:
+    """Identify device, ADS, and reserved-device spellings before normalization."""
+
+    if os.name != "nt":
+        return False
+    raw = os.fspath(path)
+    windows = raw.replace("/", "\\")
+    folded = windows.casefold()
+    if folded.startswith(("\\\\?\\", "\\\\.\\", "\\??\\", "\\\\??\\")):
+        return True
+    _drive, tail = ntpath.splitdrive(windows)
+    if ":" in tail:
+        return True
+    for component in windows.split("\\"):
+        if not component:
+            continue
+        device_base = component.rstrip(" .").split(".", 1)[0].upper()
+        if (
+            device_base in _WINDOWS_DEVICE_NAMES
+            or len(device_base) == 4
+            and device_base[:3] in {"COM", "LPT"}
+            and device_base[3] in "123456789"
+        ):
+            return True
+    return False
+
+
+def assert_exact_control_path(
+    path: Path | str,
+    workspace_root: Path | str,
+    store_name: str,
+    *descendants: str,
+) -> Path:
+    """Return one exact lexical control-store path without resolving it away.
+
+    ``var/receipts`` and ``var/invocations`` are local identity controls. Every
+    caller must retain their canonical lexical spelling so a junction cannot be
+    hidden by an earlier ``resolve()``. Call this immediately before and after
+    every consequential filesystem operation on the returned path.
+    """
+
+    if store_name not in _CONTROL_STORE_NAMES:
+        raise PathBoundaryError("Unknown PACD control-store name")
+    for descendant in descendants:
+        if (
+            not descendant
+            or descendant in {".", ".."}
+            or Path(descendant).name != descendant
+            or _has_windows_alternate_path_spelling(descendant)
+        ):
+            raise PathBoundaryError("PACD control-store descendant is not one lexical component")
+
+    workspace = resolve_workspace_root(workspace_root)
+    expected = workspace / "var" / store_name
+    for descendant in descendants:
+        expected /= descendant
+    lexical = Path(path)
+    if _has_windows_alternate_path_spelling(lexical):
+        raise PathBoundaryError("PACD control-store path uses an ADS or device spelling")
+    if lexical != expected:
+        raise PathBoundaryError(f"PACD control-store path is not exact: {expected}")
+    if not lexical.is_absolute():
+        raise PathBoundaryError("PACD control-store path must be absolute")
+    if path_has_symlink_or_reparse(lexical):
+        raise PathBoundaryError(f"PACD {store_name} control-store path is indirect")
+
+    lexical_normalized = Path(os.path.abspath(lexical))
+    if lexical_normalized != expected:
+        raise PathBoundaryError(f"PACD control-store path is not lexically normalized: {expected}")
+    resolved = lexical.resolve(strict=False)
+    if resolved != lexical_normalized:
+        raise PathBoundaryError(f"PACD {store_name} control-store path resolves indirectly")
+    return lexical
 
 
 def resolve_workspace_root(workspace_root: Path | str | None = None) -> Path:

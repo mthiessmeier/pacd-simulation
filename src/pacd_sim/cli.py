@@ -18,6 +18,10 @@ from pacd_sim.reproducibility.paths import (
     path_has_symlink_or_reparse,
     resolve_workspace_root,
 )
+from pacd_sim.reproducibility.receipts import (
+    HISTORICAL_CONTROL_FILE_INODE_CONTINUITY_ASSURED,
+    IDENTITY_ASSURANCE_SCOPE,
+)
 from pacd_sim.reproducibility.reportable import ReportableModeDenied
 from pacd_sim.reproducibility.verify import verify_run
 
@@ -28,6 +32,35 @@ def _default_repo_root() -> Path:
 
 def _emit_json(value: object, *, stream: TextIO = sys.stdout) -> None:
     print(json.dumps(value, allow_nan=False, indent=2, sort_keys=True), file=stream)
+
+
+def _failure_payload(
+    status: str,
+    reason: str,
+    *,
+    diagnostic: bool,
+) -> dict[str, object]:
+    """Return a structured failure, including local assurance state for diagnostics."""
+
+    payload: dict[str, object] = {
+        "evidence_label": EVIDENCE_LABEL,
+        "status": status,
+        "reason": reason,
+    }
+    if diagnostic:
+        payload.update(
+            {
+                "valid": False,
+                "semantic_content_valid": False,
+                "execution_identity_assured": False,
+                "identity_assurance_scope": IDENTITY_ASSURANCE_SCOPE,
+                "historical_control_file_inode_continuity_assured": (
+                    HISTORICAL_CONTROL_FILE_INODE_CONTINUITY_ASSURED
+                ),
+                "reportable": False,
+            }
+        )
+    return payload
 
 
 def _resolve_diagnostic_workspace(repository: Path, requested: Path | None) -> Path:
@@ -127,7 +160,9 @@ def _verify_command(arguments: argparse.Namespace) -> int:
         workspace_root=workspace,
         repo_root=repository,
     )
-    _emit_json(result.to_dict())
+    payload = result.to_dict()
+    payload["status"] = "VERIFIED" if result.valid else "INVALID"
+    _emit_json(payload)
     return 0 if result.valid else 1
 
 
@@ -144,31 +179,31 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _verify_command(arguments)
     except ReportableModeDenied as error:
         _emit_json(
-            {
-                "evidence_label": EVIDENCE_LABEL,
-                "status": "DENIED",
-                "reason": str(error),
-            },
+            _failure_payload(
+                "DENIED",
+                str(error),
+                diagnostic=arguments.command == "diagnostic",
+            ),
             stream=sys.stderr,
         )
         return 3
     except (ConfigurationError, PathBoundaryError, FileNotFoundError, ValueError) as error:
         _emit_json(
-            {
-                "evidence_label": EVIDENCE_LABEL,
-                "status": "INVALID",
-                "reason": str(error),
-            },
+            _failure_payload(
+                "INVALID",
+                str(error),
+                diagnostic=arguments.command == "diagnostic",
+            ),
             stream=sys.stderr,
         )
         return 2
     except (OSError, RuntimeError) as error:
         _emit_json(
-            {
-                "evidence_label": EVIDENCE_LABEL,
-                "status": "FAILED",
-                "reason": f"{type(error).__name__}: {error}",
-            },
+            _failure_payload(
+                "FAILED",
+                f"{type(error).__name__}: {error}",
+                diagnostic=arguments.command == "diagnostic",
+            ),
             stream=sys.stderr,
         )
         return 1

@@ -18,6 +18,7 @@ from conftest import DiagnosticRuns, IsolatedWorkspace, controlled_config_files
 import pacd_sim.harness.run as run_module
 from pacd_sim.reproducibility.manifest import sha256_file
 from pacd_sim.reproducibility.receipts import (
+    IDENTITY_ASSURANCE_SCOPE,
     verify_execution_receipt,
 )
 from pacd_sim.reproducibility.reportable import ReportableModeDenied
@@ -221,6 +222,9 @@ def test_replaced_run_directory_loses_execution_identity(
         assert not result.valid
         assert result.semantic_content_valid
         assert not result.execution_identity_assured
+        assert result.identity_assurance_scope == IDENTITY_ASSURANCE_SCOPE
+        assert result.historical_control_file_inode_continuity_assured is False
+        assert result.reportable is False
         assert any("directory identity" in error.lower() for error in result.errors)
     finally:
         if run.run_dir.exists():

@@ -30,7 +30,11 @@ from pacd_sim.reproducibility.paths import (
     path_has_symlink_or_reparse,
     resolve_workspace_root,
 )
-from pacd_sim.reproducibility.receipts import verify_execution_receipt
+from pacd_sim.reproducibility.receipts import (
+    HISTORICAL_CONTROL_FILE_INODE_CONTINUITY_ASSURED,
+    IDENTITY_ASSURANCE_SCOPE,
+    verify_execution_receipt,
+)
 
 _REQUIRED_ARTIFACTS = (
     "NON_REPORTABLE_DIAGNOSTIC",
@@ -79,7 +83,12 @@ def _aggregate_run_size(root: Path, errors: list[str]) -> tuple[int, set[str]]:
 
 @dataclass(frozen=True)
 class VerificationResult:
-    """Structured result of complete run-artifact verification."""
+    """Structured result of complete run-artifact verification.
+
+    Execution identity is a cooperative binding of current local content,
+    lexical paths, run identity, and configuration. It does not assert
+    historical control-file inode continuity or reportable provenance.
+    """
 
     run_dir: Path
     valid: bool
@@ -89,6 +98,10 @@ class VerificationResult:
     summary_semantic_hash: str | None
     semantic_content_valid: bool = False
     execution_identity_assured: bool = False
+    identity_assurance_scope: str = IDENTITY_ASSURANCE_SCOPE
+    historical_control_file_inode_continuity_assured: bool = (
+        HISTORICAL_CONTROL_FILE_INODE_CONTINUITY_ASSURED
+    )
     reportable: bool = False
     receipt_path: Path | None = None
     evidence_label: str = EVIDENCE_LABEL
@@ -289,13 +302,13 @@ def _is_ordered_subsequence(values: list[str], required: tuple[str, ...]) -> boo
     return position == len(required)
 
 
-def verify_run(
+def _verify_run_impl(
     run_dir: Path | str,
     workspace_root: Path | str | None = None,
     *,
     repo_root: Path | str | None = None,
 ) -> VerificationResult:
-    """Validate checksums, labels, semantics, derivation, and safety invariants."""
+    """Implement complete verification behind the public defensive boundary."""
     errors: list[str] = []
     checked: list[str] = []
     raw_hash: str | None = None
@@ -374,27 +387,45 @@ def verify_run(
         "raw/events.parquet",
         "derived/episode_summary.parquet",
     }
-    retained_validation = None
-    if strict_required.issubset(artifacts):
-        retained_validation = validate_retained_evidence(
-            root,
-            artifacts,
-            workspace,
-            repo_root=repo_root,
+    missing_strict = tuple(sorted(strict_required - artifacts.keys()))
+    if missing_strict:
+        errors.append(
+            "Strict retained-evidence artifact set is incomplete: " + ", ".join(missing_strict)
         )
-        errors.extend(retained_validation.errors)
-        if (
-            retained_validation.document_ingestion_failed
-            or retained_validation.parquet_ingestion_failed
-        ):
-            return VerificationResult(
-                run_dir=root,
-                valid=False,
-                errors=tuple(errors),
-                checked_files=tuple(sorted(checked)),
-                raw_semantic_hash=None,
-                summary_semantic_hash=None,
-            )
+        return VerificationResult(
+            run_dir=root,
+            valid=False,
+            errors=tuple(errors),
+            checked_files=tuple(sorted(checked)),
+            raw_semantic_hash=None,
+            summary_semantic_hash=None,
+        )
+    if errors:
+        return VerificationResult(
+            run_dir=root,
+            valid=False,
+            errors=tuple(errors),
+            checked_files=tuple(sorted(checked)),
+            raw_semantic_hash=None,
+            summary_semantic_hash=None,
+        )
+    retained_validation = None
+    retained_validation = validate_retained_evidence(
+        root,
+        artifacts,
+        workspace,
+        repo_root=repo_root,
+    )
+    errors.extend(retained_validation.errors)
+    if retained_validation.errors:
+        return VerificationResult(
+            run_dir=root,
+            valid=False,
+            errors=tuple(errors),
+            checked_files=tuple(sorted(checked)),
+            raw_semantic_hash=None,
+            summary_semantic_hash=None,
+        )
 
     artifact_snapshots: dict[str, _ArtifactSnapshot] = {}
     snapshot_errors: list[str] = []
@@ -788,6 +819,41 @@ def verify_run(
         summary_semantic_hash=summary_hash,
         semantic_content_valid=semantic_content_valid,
         execution_identity_assured=receipt.identity_assured,
+        identity_assurance_scope=receipt.identity_assurance_scope,
+        historical_control_file_inode_continuity_assured=(
+            receipt.historical_control_file_inode_continuity_assured
+        ),
         reportable=receipt.reportable,
         receipt_path=receipt.receipt_path,
     )
+
+
+def verify_run(
+    run_dir: Path | str,
+    workspace_root: Path | str | None = None,
+    *,
+    repo_root: Path | str | None = None,
+) -> VerificationResult:
+    """Validate one run and always structure a retained-data recursion failure."""
+
+    try:
+        return _verify_run_impl(
+            run_dir,
+            workspace_root=workspace_root,
+            repo_root=repo_root,
+        )
+    except RecursionError as error:
+        return VerificationResult(
+            run_dir=Path(run_dir),
+            valid=False,
+            errors=(
+                "Verification rejected excessively nested retained evidence: "
+                f"RecursionError: {error}",
+            ),
+            checked_files=(),
+            raw_semantic_hash=None,
+            summary_semantic_hash=None,
+            semantic_content_valid=False,
+            execution_identity_assured=False,
+            reportable=False,
+        )

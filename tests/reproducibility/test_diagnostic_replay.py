@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 import re
 import shutil
@@ -30,6 +31,18 @@ def _manifest(run_dir: Path) -> dict[str, object]:
     value = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
     assert isinstance(value, dict)
     return {str(key): item for key, item in value.items()}
+
+
+def _copy_run(diagnostic_runs: DiagnosticRuns, case_name: str) -> Path:
+    """Copy a run beneath a unique parent while preserving its bound run ID."""
+
+    source = diagnostic_runs.same_seed_a.run_dir
+    case_id = hashlib.sha256(case_name.encode("utf-8")).hexdigest()[:8]
+    parent = diagnostic_runs.workspace.root / "var" / "tmp" / case_id
+    parent.mkdir(parents=True, exist_ok=True)
+    destination = parent / source.name
+    shutil.copytree(source, destination)
+    return destination
 
 
 def _write_canonical_json(path: Path, value: object) -> None:
@@ -225,10 +238,7 @@ def test_sha256_manifest_lists_and_verifies_every_non_checksum_artifact(
 def test_verifier_detects_post_run_artifact_tampering(
     diagnostic_runs: DiagnosticRuns,
 ) -> None:
-    source = diagnostic_runs.same_seed_a.run_dir
-    destination = diagnostic_runs.workspace.root / "var" / "tmp" / "tampered-run"
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(source, destination)
+    destination = _copy_run(diagnostic_runs, "tampered-run")
     status_path = destination / "status.json"
     status = json.loads(status_path.read_text(encoding="utf-8"))
     assert isinstance(status, dict)
@@ -238,17 +248,21 @@ def test_verifier_detects_post_run_artifact_tampering(
     result = verify_run(destination, workspace_root=diagnostic_runs.workspace.root)
 
     assert not result.valid
-    assert any("Checksum mismatch: status.json" in error for error in result.errors)
+    assert not result.semantic_content_valid
+    assert any(
+        "status.json" in error and "not canonical" in error.lower() for error in result.errors
+    )
+    assert not any("checksum mismatch" in error.lower() for error in result.errors)
 
 
 @pytest.mark.reproducibility
 @pytest.mark.parametrize(
     ("tamper_kind", "expected_error_fragment"),
     [
-        ("component", "baseline"),
-        ("protocol", "protocol"),
+        ("component", "controlled repository"),
+        ("protocol", "controlled repository"),
         ("seed", "seed"),
-        ("label", "label"),
+        ("label", "exact completed diagnostic contract"),
     ],
 )
 def test_verifier_rejects_cross_artifact_semantic_tampering_even_with_fresh_checksums(
@@ -256,10 +270,7 @@ def test_verifier_rejects_cross_artifact_semantic_tampering_even_with_fresh_chec
     tamper_kind: str,
     expected_error_fragment: str,
 ) -> None:
-    source = diagnostic_runs.same_seed_a.run_dir
-    destination = diagnostic_runs.workspace.root / "var" / "tmp" / f"semantic-tamper-{tamper_kind}"
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(source, destination)
+    destination = _copy_run(diagnostic_runs, f"semantic-tamper-{tamper_kind}")
 
     if tamper_kind in {"component", "protocol"}:
         relative_name = "canonical_config.json"
@@ -324,10 +335,7 @@ def test_verifier_rejects_compressed_parquet_that_expands_past_the_read_cap(
     diagnostic_runs: DiagnosticRuns,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    source = diagnostic_runs.same_seed_a.run_dir
-    destination = diagnostic_runs.workspace.root / "var" / "tmp" / "parquet-expansion-cap"
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(source, destination)
+    destination = _copy_run(diagnostic_runs, "parquet-expansion-cap")
 
     parquet_path = destination / "raw" / "events.parquet"
     rows = pq.read_table(parquet_path).to_pylist()
@@ -363,11 +371,8 @@ def test_verifier_rejects_every_unexpected_regular_or_reparse_artifact(
     monkeypatch: pytest.MonkeyPatch,
     simulated_reparse: bool,
 ) -> None:
-    source = diagnostic_runs.same_seed_a.run_dir
     suffix = "reparse" if simulated_reparse else "regular"
-    destination = diagnostic_runs.workspace.root / "var" / "tmp" / f"extra-{suffix}"
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(source, destination)
+    destination = _copy_run(diagnostic_runs, f"extra-{suffix}")
     unexpected = destination / "unexpected-artifact.txt"
     unexpected.write_text("NON_REPORTABLE_DIAGNOSTIC\n", encoding="utf-8")
 
@@ -396,10 +401,7 @@ def test_verifier_requires_exact_nonempty_manifest_artifact_allowlist(
     diagnostic_runs: DiagnosticRuns,
     allowlist_case: str,
 ) -> None:
-    source = diagnostic_runs.same_seed_a.run_dir
-    destination = diagnostic_runs.workspace.root / "var" / "tmp" / f"allowlist-{allowlist_case}"
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(source, destination)
+    destination = _copy_run(diagnostic_runs, f"allowlist-{allowlist_case}")
     manifest = _manifest(destination)
     artifact_hashes = manifest.get("artifact_hashes")
     assert isinstance(artifact_hashes, dict)
@@ -423,10 +425,7 @@ def test_verifier_requires_exact_nonempty_manifest_artifact_allowlist(
 def test_refreshed_raw_execution_cannot_claim_nonapprove_disposition(
     diagnostic_runs: DiagnosticRuns,
 ) -> None:
-    source = diagnostic_runs.same_seed_a.run_dir
-    destination = diagnostic_runs.workspace.root / "var" / "tmp" / "nonapprove-execution"
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(source, destination)
+    destination = _copy_run(diagnostic_runs, "nonapprove-execution")
 
     parquet_path = destination / "raw" / "events.parquet"
     jsonl_path = destination / "raw" / "events.jsonl"
@@ -468,7 +467,7 @@ def test_refreshed_raw_execution_cannot_claim_nonapprove_disposition(
 
     assert not result.valid
     assert any(
-        "execution" in error.lower() and "approve" in error.lower() for error in result.errors
+        "does not match reconstructed disposition" in error.lower() for error in result.errors
     )
     assert not any("checksum mismatch" in error.lower() for error in result.errors)
     assert not any("raw-event semantics differ" in error.lower() for error in result.errors)
@@ -478,13 +477,13 @@ def test_refreshed_raw_execution_cannot_claim_nonapprove_disposition(
 @pytest.mark.parametrize(
     ("tamper_kind", "expected_error"),
     [
-        ("status_reportable", "status must declare reportable=false"),
-        ("manifest_reportable", "manifest must declare reportable=false"),
+        ("status_reportable", "exact completed diagnostic contract"),
+        ("manifest_reportable", "provenance or identity mismatch: reportable"),
         (
             "policy_adapter",
-            "safety policy must require execution_adapter=simulated_only",
+            "controlled repository",
         ),
-        ("policy_network", "safety policy must require network_enabled=false"),
+        ("policy_network", "controlled repository"),
     ],
 )
 def test_verifier_rejects_unsafe_mode_tampering_with_refreshed_integrity_closure(
@@ -492,10 +491,7 @@ def test_verifier_rejects_unsafe_mode_tampering_with_refreshed_integrity_closure
     tamper_kind: str,
     expected_error: str,
 ) -> None:
-    source = diagnostic_runs.same_seed_a.run_dir
-    destination = diagnostic_runs.workspace.root / "var" / "tmp" / f"unsafe-{tamper_kind}"
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(source, destination)
+    destination = _copy_run(diagnostic_runs, f"unsafe-{tamper_kind}")
     changed_artifacts: tuple[str, ...]
 
     if tamper_kind == "status_reportable":
@@ -537,10 +533,7 @@ def test_verifier_rejects_unsafe_mode_tampering_with_refreshed_integrity_closure
 def test_each_executed_approve_requires_a_same_action_verified_event(
     diagnostic_runs: DiagnosticRuns,
 ) -> None:
-    source = diagnostic_runs.same_seed_a.run_dir
-    destination = diagnostic_runs.workspace.root / "var" / "tmp" / "unrelated-verification"
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(source, destination)
+    destination = _copy_run(diagnostic_runs, "unrelated-verification")
     rows = pq.read_table(destination / "raw" / "events.parquet").to_pylist()
 
     execution_rows = [row for row in rows if row["event_type"] == "simulated_execution"]
@@ -566,10 +559,7 @@ def test_each_executed_approve_requires_a_same_action_verified_event(
     result = verify_run(destination, workspace_root=diagnostic_runs.workspace.root)
 
     assert not result.valid
-    assert any(
-        "lacks a same-action verified verification event" in error.lower()
-        for error in result.errors
-    )
+    assert any("does not match reconstructed action_id" in error.lower() for error in result.errors)
     assert not any("checksum mismatch" in error.lower() for error in result.errors)
     assert not any("raw-event semantics differ" in error.lower() for error in result.errors)
 
@@ -578,8 +568,8 @@ def test_each_executed_approve_requires_a_same_action_verified_event(
 @pytest.mark.parametrize(
     ("tamper_kind", "expected_error"),
     [
-        ("adapter", "execution payload must declare adapter=simulated_only"),
-        ("network", "execution payload must declare network_enabled=false"),
+        ("adapter", "payload does not match reconstructed event semantics"),
+        ("network", "payload does not match reconstructed event semantics"),
     ],
 )
 def test_verifier_rejects_unsafe_execution_payload_with_refreshed_integrity_closure(
@@ -587,10 +577,7 @@ def test_verifier_rejects_unsafe_execution_payload_with_refreshed_integrity_clos
     tamper_kind: str,
     expected_error: str,
 ) -> None:
-    source = diagnostic_runs.same_seed_a.run_dir
-    destination = diagnostic_runs.workspace.root / "var" / "tmp" / f"unsafe-raw-{tamper_kind}"
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(source, destination)
+    destination = _copy_run(diagnostic_runs, f"unsafe-raw-{tamper_kind}")
     rows = pq.read_table(destination / "raw" / "events.parquet").to_pylist()
     execution_rows = [row for row in rows if row["event_type"] == "simulated_execution"]
     assert execution_rows
@@ -622,10 +609,7 @@ def test_verifier_rejects_unsafe_execution_payload_with_refreshed_integrity_clos
 def test_verifier_rejects_duplicate_manifest_key_with_refreshed_checksum(
     diagnostic_runs: DiagnosticRuns,
 ) -> None:
-    source = diagnostic_runs.same_seed_a.run_dir
-    destination = diagnostic_runs.workspace.root / "var" / "tmp" / "duplicate-manifest-key"
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(source, destination)
+    destination = _copy_run(diagnostic_runs, "duplicate-manifest-key")
     manifest_path = destination / "manifest.json"
     original = manifest_path.read_text(encoding="utf-8")
     duplicate = f'{{"seed":{_manifest(destination)["seed"]},' + original[1:]
@@ -655,10 +639,7 @@ def test_verifier_rejects_manifest_schema_and_provenance_forgery(
     tamper_kind: str,
     expected_error: str,
 ) -> None:
-    source = diagnostic_runs.same_seed_a.run_dir
-    destination = diagnostic_runs.workspace.root / "var" / "tmp" / f"manifest-forgery-{tamper_kind}"
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(source, destination)
+    destination = _copy_run(diagnostic_runs, f"manifest-forgery-{tamper_kind}")
     manifest = _manifest(destination)
     if tamper_kind == "extra_key":
         manifest["untrusted_claim"] = "accepted"
@@ -684,10 +665,7 @@ def test_verifier_rejects_manifest_schema_and_provenance_forgery(
 def test_verifier_rejects_duplicate_payload_key_after_integrity_refresh(
     diagnostic_runs: DiagnosticRuns,
 ) -> None:
-    source = diagnostic_runs.same_seed_a.run_dir
-    destination = diagnostic_runs.workspace.root / "var" / "tmp" / "duplicate-payload-key"
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(source, destination)
+    destination = _copy_run(diagnostic_runs, "duplicate-payload-key")
     rows = pq.read_table(destination / "raw" / "events.parquet").to_pylist()
     candidate = next(row for row in rows if row["event_type"] == "candidate_action")
     payload_text = str(candidate["payload_json"])
@@ -705,10 +683,7 @@ def test_verifier_rejects_duplicate_payload_key_after_integrity_refresh(
 def test_verifier_rejects_relabelled_candidate_after_integrity_refresh(
     diagnostic_runs: DiagnosticRuns,
 ) -> None:
-    source = diagnostic_runs.same_seed_a.run_dir
-    destination = diagnostic_runs.workspace.root / "var" / "tmp" / "relabelled-candidate"
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(source, destination)
+    destination = _copy_run(diagnostic_runs, "relabelled-candidate")
     rows = pq.read_table(destination / "raw" / "events.parquet").to_pylist()
     candidate = next(
         row
@@ -739,10 +714,7 @@ def test_verifier_rejects_relabelled_candidate_after_integrity_refresh(
 def test_verifier_rejects_resequenced_identity_and_duplicate_execution(
     diagnostic_runs: DiagnosticRuns,
 ) -> None:
-    source = diagnostic_runs.same_seed_a.run_dir
-    destination = diagnostic_runs.workspace.root / "var" / "tmp" / "forged-event-chain"
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(source, destination)
+    destination = _copy_run(diagnostic_runs, "forged-event-chain")
     rows = pq.read_table(destination / "raw" / "events.parquet").to_pylist()
     execution_index = next(
         index for index, row in enumerate(rows) if row["event_type"] == "simulated_execution"
@@ -764,10 +736,7 @@ def test_verifier_rejects_resequenced_identity_and_duplicate_execution(
 def test_verifier_rejects_raw_run_identity_mutation_after_integrity_refresh(
     diagnostic_runs: DiagnosticRuns,
 ) -> None:
-    source = diagnostic_runs.same_seed_a.run_dir
-    destination = diagnostic_runs.workspace.root / "var" / "tmp" / "forged-run-identity"
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(source, destination)
+    destination = _copy_run(diagnostic_runs, "forged-run-identity")
     rows = pq.read_table(destination / "raw" / "events.parquet").to_pylist()
     rows[2]["run_id"] = "forged-run-id"
     _rewrite_raw_events_with_refreshed_closure(destination, rows)
@@ -801,10 +770,7 @@ def test_verifier_requires_a_clean_controlled_checkout(
 def test_verifier_rejects_fully_refreshed_controlled_configuration_substitution(
     diagnostic_runs: DiagnosticRuns,
 ) -> None:
-    source = diagnostic_runs.same_seed_a.run_dir
-    destination = diagnostic_runs.workspace.root / "var" / "tmp" / "refreshed-config-closure"
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(source, destination)
+    destination = _copy_run(diagnostic_runs, "refreshed-config-closure")
 
     canonical_path = destination / "canonical_config.json"
     canonical = json.loads(canonical_path.read_text(encoding="utf-8"))

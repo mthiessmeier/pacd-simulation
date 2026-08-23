@@ -54,6 +54,68 @@ _SUMMARY_INTEGER_FIELDS = frozenset(
     }
 )
 
+# Each independently decoded retained JSON document or embedded payload uses
+# depth 1 at its own root. An enclosing event-record field is not charged again
+# after its payload was independently decoded and checked against this limit.
+MAX_RETAINED_PAYLOAD_DEPTH = 64
+
+
+def validate_retained_json_text_depth(text: str, *, source: str) -> None:
+    """Reject JSON syntax whose container nesting exceeds the retained-data limit.
+
+    The scan is iterative and string-aware, so deeply nested hostile syntax is
+    rejected before it reaches CPython's recursive JSON decoder. Full syntax
+    validation remains the responsibility of the decoder that follows.
+    """
+
+    depth = 0
+    in_string = False
+    escaped = False
+    for character in text:
+        if in_string:
+            if escaped:
+                escaped = False
+            elif character == "\\":
+                escaped = True
+            elif character == '"':
+                in_string = False
+            continue
+        if character == '"':
+            in_string = True
+        elif character in "[{":
+            depth += 1
+            if depth > MAX_RETAINED_PAYLOAD_DEPTH:
+                raise ValueError(
+                    f"Excessively nested JSON/payload in {source}: documented maximum depth "
+                    f"{MAX_RETAINED_PAYLOAD_DEPTH} exceeded"
+                )
+        elif character in "]}" and depth:
+            depth -= 1
+
+
+def validate_retained_value_depth(value: object, *, source: str) -> None:
+    """Iteratively enforce the retained-data depth limit on decoded values."""
+
+    stack: list[tuple[object, int]] = [(value, 0)]
+    while stack:
+        item, parent_depth = stack.pop()
+        if isinstance(item, Mapping):
+            depth = parent_depth + 1
+            if depth > MAX_RETAINED_PAYLOAD_DEPTH:
+                raise ValueError(
+                    f"Excessively nested JSON/payload in {source}: documented maximum depth "
+                    f"{MAX_RETAINED_PAYLOAD_DEPTH} exceeded"
+                )
+            stack.extend((child, depth) for child in item.values())
+        elif isinstance(item, Sequence) and not isinstance(item, (str, bytes, bytearray)):
+            depth = parent_depth + 1
+            if depth > MAX_RETAINED_PAYLOAD_DEPTH:
+                raise ValueError(
+                    f"Excessively nested JSON/payload in {source}: documented maximum depth "
+                    f"{MAX_RETAINED_PAYLOAD_DEPTH} exceeded"
+                )
+            stack.extend((child, depth) for child in item)
+
 
 def sha256_file(path: Path | str) -> str:
     """Stream a file into SHA-256 without loading a potentially large artifact."""
@@ -97,11 +159,23 @@ def _normalize_semantic(value: object, *, key: str | None = None) -> object:
     return value
 
 
+def _load_bounded_json(text: str, *, source: str) -> object:
+    """Decode JSON only after iterative syntax-depth preflight."""
+
+    validate_retained_json_text_depth(text, source=source)
+    try:
+        value = json.loads(text)
+    except RecursionError as error:
+        raise ValueError(f"Excessively nested JSON/payload in {source}") from error
+    validate_retained_value_depth(value, source=source)
+    return value
+
+
 def _decode_payload(record: Mapping[str, object]) -> dict[str, object]:
     decoded = dict(record)
     payload = decoded.get("payload_json")
     if isinstance(payload, str):
-        parsed = json.loads(payload)
+        parsed = _load_bounded_json(payload, source="semantic payload_json")
         decoded["payload_json"] = parsed
     return decoded
 
@@ -117,7 +191,10 @@ def _records_from_path(path: Path) -> list[dict[str, object]]:
             for line_number, line in enumerate(handle, start=1):
                 if not line.strip():
                     continue
-                value = json.loads(line)
+                value = _load_bounded_json(
+                    line,
+                    source=f"{path.name} row {line_number}",
+                )
                 if not isinstance(value, dict):
                     raise ValueError(f"JSONL row {line_number} is not an object")
                 jsonl_rows.append({str(key): item for key, item in value.items()})
@@ -129,7 +206,10 @@ def _records_from_path(path: Path) -> list[dict[str, object]]:
                 for row in csv.DictReader(handle)
             ]
     if suffix == ".json":
-        value = json.loads(path.read_text(encoding="utf-8"))
+        value = _load_bounded_json(
+            path.read_text(encoding="utf-8"),
+            source=path.name,
+        )
         if isinstance(value, dict):
             return [{str(key): item for key, item in value.items()}]
         if isinstance(value, list) and all(isinstance(item, dict) for item in value):
@@ -154,15 +234,24 @@ def semantic_records_hash(
     sort_fields: tuple[str, ...] = ("sequence",),
 ) -> str:
     """Hash records after excluding wall-clock, run-id, and path metadata."""
-    if isinstance(records, (str, Path)):
-        loaded = _records_from_path(Path(records))
-    else:
-        loaded = [dict(record) for record in records]
-    decoded = [_decode_payload(record) for record in loaded]
-    if sort_fields and all(all(field in row for field in sort_fields) for row in decoded):
-        decoded.sort(key=lambda row: tuple(row[field] for field in sort_fields))
-    normalized = [_normalize_semantic(record) for record in decoded]
-    return canonical_sha256(normalized)
+    try:
+        if isinstance(records, (str, Path)):
+            loaded = _records_from_path(Path(records))
+        else:
+            loaded = [dict(record) for record in records]
+        decoded = [_decode_payload(record) for record in loaded]
+        for index, record in enumerate(decoded, start=1):
+            for field, value in record.items():
+                validate_retained_value_depth(
+                    value,
+                    source=f"semantic record {index} field {field}",
+                )
+        if sort_fields and all(all(field in row for field in sort_fields) for row in decoded):
+            decoded.sort(key=lambda row: tuple(row[field] for field in sort_fields))
+        normalized = [_normalize_semantic(record) for record in decoded]
+        return canonical_sha256(normalized)
+    except RecursionError as error:
+        raise ValueError("Excessively nested retained data reached semantic hashing") from error
 
 
 def semantic_events_hash(events: Path | str | Iterable[Mapping[str, object]]) -> str:

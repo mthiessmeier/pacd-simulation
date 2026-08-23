@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import shutil
 from pathlib import Path
 from typing import Any
@@ -15,8 +16,10 @@ from pacd_sim.reproducibility.verify import verify_run
 
 
 def _copy_run(diagnostic_runs: DiagnosticRuns, name: str) -> Path:
-    destination = diagnostic_runs.workspace.root / "var" / "tmp" / name
-    destination.parent.mkdir(parents=True, exist_ok=True)
+    case_id = hashlib.sha256(name.encode("utf-8")).hexdigest()[:8]
+    parent = diagnostic_runs.workspace.root / "var" / "tmp" / case_id
+    parent.mkdir(parents=True, exist_ok=True)
+    destination = parent / diagnostic_runs.same_seed_a.run_dir.name
     shutil.copytree(diagnostic_runs.same_seed_a.run_dir, destination)
     return destination
 

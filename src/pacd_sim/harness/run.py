@@ -55,6 +55,7 @@ from pacd_sim.reproducibility.manifest import (
 )
 from pacd_sim.reproducibility.paths import (
     PathBoundaryError,
+    assert_exact_control_path,
     assert_write_path,
     default_workspace_root,
     infer_workspace_root,
@@ -765,6 +766,40 @@ def _validate_invocation_id(invocation_id: str) -> None:
         raise ValueError("Diagnostic invocation ID is invalid")
 
 
+def _invocation_control_path(
+    workspace: Path,
+    invocation_id: str | None = None,
+    *,
+    marker: bool = False,
+) -> Path:
+    """Return an exact lexical invocation control-store path."""
+
+    root = assert_exact_control_path(
+        workspace / "var" / "invocations",
+        workspace,
+        "invocations",
+    )
+    if invocation_id is None:
+        if marker:
+            raise ValueError("An ownership marker requires an invocation ID")
+        return root
+    invocation_dir = assert_exact_control_path(
+        root / invocation_id,
+        workspace,
+        "invocations",
+        invocation_id,
+    )
+    if not marker:
+        return invocation_dir
+    return assert_exact_control_path(
+        invocation_dir / "ownership.json",
+        workspace,
+        "invocations",
+        invocation_id,
+        "ownership.json",
+    )
+
+
 def _ownership_marker_value(
     *,
     invocation_id: str,
@@ -813,31 +848,30 @@ def _create_invocation_ownership(
         raise PathBoundaryError("Diagnostic output path contains a symlink or reparse point")
     output_input = workspace / "var" / "runs"
     staging_root_input = workspace / "var" / "tmp"
-    ownership_root_input = workspace / "var" / "invocations"
-    if any(
-        path_has_symlink_or_reparse(path)
-        for path in (output_input, staging_root_input, ownership_root_input)
-    ):
+    if any(path_has_symlink_or_reparse(path) for path in (output_input, staging_root_input)):
         raise PathBoundaryError("Diagnostic ownership roots contain an indirect path")
+    _invocation_control_path(workspace)
     output = assert_write_path(output_root, workspace)
     authorized_output = assert_write_path(output_input, workspace)
     if output != authorized_output:
         raise PathBoundaryError("Diagnostic output_root must be exactly workspace/var/runs")
     staging_root = assert_write_path(staging_root_input, workspace)
-    ownership_root = assert_write_path(ownership_root_input, workspace)
-    for root in (output, staging_root, ownership_root):
+    ownership_root = _invocation_control_path(workspace)
+    for root in (output, staging_root):
         root.mkdir(parents=True, exist_ok=True)
+    if _invocation_control_path(workspace) != ownership_root:
+        raise PathBoundaryError("Invocation control-store root changed before creation")
+    ownership_root.mkdir(parents=True, exist_ok=True)
+    if _invocation_control_path(workspace) != ownership_root:
+        raise PathBoundaryError("Invocation control-store root changed during creation")
 
     started_at = datetime.now(UTC).isoformat()
     timestamp = datetime.fromisoformat(started_at).strftime("%Y%m%dT%H%M%S.%fZ")
     run_id = f"diagnostic-{timestamp}-seed-{seed}-{selected_invocation_id}"
     staging_dir = assert_write_path(staging_root / f"{run_id}.staging", workspace)
     final_run_dir = assert_write_path(output / run_id, workspace)
-    ownership_dir = assert_write_path(
-        ownership_root / selected_invocation_id,
-        workspace,
-    )
-    marker_path = assert_write_path(ownership_dir / "ownership.json", workspace)
+    ownership_dir = _invocation_control_path(workspace, selected_invocation_id)
+    marker_path = _invocation_control_path(workspace, selected_invocation_id, marker=True)
     for target, name in (
         (final_run_dir, "final run"),
         (staging_dir, "staging directory"),
@@ -851,7 +885,11 @@ def _create_invocation_ownership(
     # The ownership directory and staging directory are both claimed only by
     # successful exclusive creation.  Existing collisions are never inspected,
     # labelled, moved, or reused.
+    if _invocation_control_path(workspace, selected_invocation_id) != ownership_dir:
+        raise PathBoundaryError("Invocation ownership lexical path changed before creation")
     ownership_dir.mkdir(parents=False, exist_ok=False)
+    if _invocation_control_path(workspace, selected_invocation_id) != ownership_dir:
+        raise PathBoundaryError("Invocation ownership lexical path changed during creation")
     try:
         staging_dir.mkdir(parents=False, exist_ok=False)
     except FileExistsError as error:
@@ -873,13 +911,19 @@ def _create_invocation_ownership(
         staging_device=staging_stat.st_dev,
         staging_inode=staging_stat.st_ino,
     )
+    if _invocation_control_path(workspace, selected_invocation_id, marker=True) != marker_path:
+        raise PathBoundaryError("Invocation marker lexical path changed before creation")
     with marker_path.open("xb") as handle:
         handle.write(canonical_json_bytes(marker))
         handle.flush()
         os.fsync(handle.fileno())
+    if _invocation_control_path(workspace, selected_invocation_id, marker=True) != marker_path:
+        raise RuntimeError("Invocation marker lexical path changed during creation")
     marker_stat = marker_path.stat(follow_symlinks=False)
     if marker_stat.st_nlink != 1:
         raise RuntimeError("Invocation ownership marker has an unexpected link count")
+    if _invocation_control_path(workspace, selected_invocation_id, marker=True) != marker_path:
+        raise RuntimeError("Invocation marker lexical path changed after creation")
     return _InvocationOwnership(
         workspace_root=workspace,
         invocation_id=selected_invocation_id,
@@ -921,16 +965,17 @@ def _validate_invocation_ownership(
             or re.fullmatch(r"[0-9a-f]{64}", ownership.receipt_capability) is None
         ):
             raise RuntimeError("Parent receipt capability is absent or invalid")
+    expected_marker = _invocation_control_path(
+        workspace,
+        ownership.invocation_id,
+        marker=True,
+    )
     expected_staging = assert_write_path(
         workspace / "var" / "tmp" / f"{ownership.run_id}.staging",
         workspace,
     )
     expected_final = assert_write_path(
         workspace / "var" / "runs" / ownership.run_id,
-        workspace,
-    )
-    expected_marker = assert_write_path(
-        workspace / "var" / "invocations" / ownership.invocation_id / "ownership.json",
         workspace,
     )
     if (
@@ -951,6 +996,11 @@ def _validate_invocation_ownership(
     ):
         raise RuntimeError("Invocation ownership path is indirect")
 
+    if (
+        _invocation_control_path(workspace, ownership.invocation_id, marker=True)
+        != ownership.marker_path
+    ):
+        raise RuntimeError("Invocation ownership lexical path changed before verification")
     before = ownership.marker_path.stat(follow_symlinks=False)
     if (
         before.st_dev,
@@ -987,6 +1037,11 @@ def _validate_invocation_ownership(
         marker_bytes = handle.read(_MAX_PARENT_MANIFEST_BYTES + 1)
         opened_after = os.fstat(handle.fileno())
     after = ownership.marker_path.stat(follow_symlinks=False)
+    if (
+        _invocation_control_path(workspace, ownership.invocation_id, marker=True)
+        != ownership.marker_path
+    ):
+        raise RuntimeError("Invocation ownership lexical path changed during verification")
     if (
         (
             before.st_dev,
@@ -1069,6 +1124,11 @@ def _validate_invocation_ownership(
         ownership.staging_inode,
     ):
         raise RuntimeError("Invocation evidence directory identity changed")
+    if (
+        _invocation_control_path(workspace, ownership.invocation_id, marker=True)
+        != ownership.marker_path
+    ):
+        raise RuntimeError("Invocation ownership lexical path changed before authorization")
     return location
 
 
@@ -1127,6 +1187,14 @@ def _retain_failed_run(
     if run_dir == ownership.staging_dir:
         if ownership.final_run_dir.exists() or ownership.final_run_dir.is_symlink():
             raise RuntimeError("Exact final run path was occupied during failed retention")
+        retained = _validate_invocation_ownership(
+            ownership,
+            workspace_root,
+            allow_finalized=True,
+            require_receipt_authority=True,
+        )
+        if retained != ownership.staging_dir:
+            raise RuntimeError("Failed evidence moved before exact retention")
         run_dir.rename(ownership.final_run_dir)
     finalized = _validate_invocation_ownership(
         ownership,
@@ -1788,6 +1856,13 @@ def _finalize_owned_result(
         raise FileExistsError(
             f"Refusing to overwrite existing run directory: {ownership.final_run_dir}"
         )
+    location = _validate_invocation_ownership(
+        ownership,
+        workspace_root,
+        require_receipt_authority=True,
+    )
+    if location != ownership.staging_dir:
+        raise RuntimeError("Completed evidence moved before exact finalization")
     ownership.staging_dir.rename(ownership.final_run_dir)
     finalized = _validate_invocation_ownership(
         ownership,
@@ -1817,6 +1892,14 @@ def _finalize_owned_result(
         manifest=manifest,
         completed_at=datetime.now(UTC).isoformat(),
     )
+    receipt_finalized = _validate_invocation_ownership(
+        ownership,
+        workspace_root,
+        allow_finalized=True,
+        require_receipt_authority=True,
+    )
+    if receipt_finalized != ownership.final_run_dir:
+        raise RuntimeError("Receipt creation changed invocation ownership")
     return replace(
         result,
         run_dir=finalized,

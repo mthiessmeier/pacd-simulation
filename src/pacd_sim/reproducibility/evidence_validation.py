@@ -40,7 +40,11 @@ from pacd_sim.harness.run import (
 from pacd_sim.hypotheses.update import BeliefState, update_beliefs
 from pacd_sim.metrics.summarize import SUMMARY_SCHEMA
 from pacd_sim.reproducibility.canonical import canonical_json_bytes, canonical_sha256
-from pacd_sim.reproducibility.manifest import sha256_file
+from pacd_sim.reproducibility.manifest import (
+    sha256_file,
+    validate_retained_json_text_depth,
+    validate_retained_value_depth,
+)
 from pacd_sim.reproducibility.paths import path_has_symlink_or_reparse
 from pacd_sim.reproducibility.reportable import git_commit, git_is_dirty
 from pacd_sim.schema import PolicyDisposition
@@ -144,9 +148,15 @@ def _reject_nonfinite_json(value: str) -> None:
 
 
 def strict_json_loads(text: str, *, source: str) -> object:
-    """Decode strict JSON while rejecting duplicate keys and non-finite constants."""
+    """Decode strict, depth-bounded JSON.
+
+    ``MAX_RETAINED_PAYLOAD_DEPTH`` is the one documented container-depth limit
+    for retained documents, JSONL records, and embedded payloads.
+    """
+
+    validate_retained_json_text_depth(text, source=source)
     try:
-        return json.loads(
+        value = json.loads(
             text,
             object_pairs_hook=_reject_duplicate_pairs,
             parse_constant=_reject_nonfinite_json,
@@ -155,6 +165,8 @@ def strict_json_loads(text: str, *, source: str) -> object:
         raise ValueError(f"Invalid JSON in {source}: {error}") from error
     except RecursionError as error:
         raise ValueError(f"Excessively nested JSON in {source}") from error
+    validate_retained_value_depth(value, source=source)
+    return value
 
 
 class _StrictDocumentError(ValueError):
@@ -1239,9 +1251,26 @@ def _validate_raw_events(
             row = {str(key): item for key, item in value.items()}
             if line.rstrip("\r\n").encode("utf-8") != canonical_json_bytes(row):
                 errors.append(f"Raw JSONL row {line_number} is not canonical JSON")
+            payload_text = row.get("payload_json")
+            if not isinstance(payload_text, str):
+                errors.append(f"Raw JSONL row {line_number} payload_json is not a string")
+            elif len(payload_text.encode("utf-8")) > _MAX_RAW_PAYLOAD_BYTES:
+                errors.append(f"Raw JSONL row {line_number} payload_json exceeds its bounded cap")
+            else:
+                payload = strict_json_loads(
+                    payload_text,
+                    source=f"raw/events.jsonl payload_json row {line_number}",
+                )
+                if not isinstance(payload, dict):
+                    errors.append(f"Raw JSONL row {line_number} payload is not an object")
+                elif payload_text.encode("utf-8") != canonical_json_bytes(payload):
+                    errors.append(f"Raw JSONL row {line_number} payload_json is not canonical JSON")
             jsonl_rows.append(row)
+    if errors:
+        return
     if tuple(jsonl_rows) != parquet_rows:
         errors.append("JSONL and Parquet raw-event rows are not exactly identical")
+        return
 
     run_id = manifest.get("run_id")
     config_hash = canonical_sha256(canonical_config)
@@ -1332,7 +1361,6 @@ def validate_retained_evidence(
     documents: dict[str, dict[str, object]] = {}
     document_sha256: dict[str, str] = {}
     document_identities: dict[str, _StableParquetIdentity] = {}
-    failed_document_names: set[str] = set()
     document_ingestion_failed = False
     parquet_ingestion_failed = False
     try:
@@ -1354,29 +1382,26 @@ def validate_retained_evidence(
                 document_identities[name] = identity
             except _StrictDocumentError as error:
                 document_ingestion_failed = True
-                failed_document_names.add(name)
                 document_sha256[name] = error.digest
                 document_identities[name] = error.identity
                 errors.append(f"Strict retained-evidence verification failed for {name}: {error}")
+                return RetainedEvidenceValidation(
+                    errors=tuple(errors),
+                    documents=documents,
+                    document_sha256=document_sha256,
+                    document_identities=document_identities,
+                    document_ingestion_failed=True,
+                )
             except (OSError, RecursionError, TypeError, UnicodeError, ValueError) as error:
                 document_ingestion_failed = True
-                failed_document_names.add(name)
                 errors.append(f"Strict retained-evidence verification failed for {name}: {error}")
-        if document_ingestion_failed:
-            manifest = documents.get("manifest.json")
-            manifest_hashes = manifest.get("artifact_hashes") if manifest is not None else None
-            if isinstance(manifest_hashes, Mapping):
-                for name in sorted(failed_document_names):
-                    failed_digest = document_sha256.get(name)
-                    if failed_digest is not None and manifest_hashes.get(name) != failed_digest:
-                        errors.append(f"Checksum mismatch: {name}")
-            return RetainedEvidenceValidation(
-                errors=tuple(errors),
-                documents=documents,
-                document_sha256=document_sha256,
-                document_identities=document_identities,
-                document_ingestion_failed=True,
-            )
+                return RetainedEvidenceValidation(
+                    errors=tuple(errors),
+                    documents=documents,
+                    document_sha256=document_sha256,
+                    document_identities=document_identities,
+                    document_ingestion_failed=True,
+                )
         if len(documents) == len(document_names):
             _validate_document_shapes(
                 root,
@@ -1387,6 +1412,13 @@ def validate_retained_evidence(
                 registered_seeds,
                 repository,
                 errors,
+            )
+        if errors:
+            return RetainedEvidenceValidation(
+                errors=tuple(errors),
+                documents=documents,
+                document_sha256=document_sha256,
+                document_identities=document_identities,
             )
         manifest = documents.get("manifest.json")
         if manifest is None:
@@ -1437,6 +1469,17 @@ def validate_retained_evidence(
                 expected_rows,
                 errors,
             )
+        if errors:
+            return RetainedEvidenceValidation(
+                errors=tuple(errors),
+                documents=documents,
+                document_sha256=document_sha256,
+                document_identities=document_identities,
+                raw_encoded_sha256=raw_encoded_sha256,
+                summary_encoded_sha256=summary_encoded_sha256,
+                raw_file_identity=raw_file_identity,
+                summary_file_identity=summary_file_identity,
+            )
     except (
         ConfigurationError,
         OSError,
@@ -1447,6 +1490,10 @@ def validate_retained_evidence(
         ValueError,
     ) as error:
         errors.append(f"Strict retained-evidence verification failed: {error}")
+        raw_table = None
+        summary_table = None
+        raw_rows = ()
+        summary_rows = ()
         parquet_ingestion_failed = False
     return RetainedEvidenceValidation(
         errors=tuple(errors),
