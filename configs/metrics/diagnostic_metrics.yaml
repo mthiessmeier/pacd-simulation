@@ -1,0 +1,7 @@
+evidence_label: NON_REPORTABLE_DIAGNOSTIC
+schema_version: "1.0"
+metrics:
+  - event_count
+  - approved_action_count
+  - prohibited_action_count
+comparative_claims: false

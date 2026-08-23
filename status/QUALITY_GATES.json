@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "evidence_label": "NON_REPORTABLE_DIAGNOSTIC",
+  "generated_at": "2026-08-23T01:34:39-04:00",
+  "gates": [
+    {
+      "name": "ruff-format",
+      "result": "PASS",
+      "detail": "92 files already formatted"
+    },
+    {
+      "name": "ruff-lint",
+      "result": "PASS",
+      "detail": "All checks passed"
+    },
+    {
+      "name": "strict-mypy",
+      "result": "PASS",
+      "detail": "No issues in 78 source and test files"
+    },
+    {
+      "name": "pytest-with-coverage",
+      "result": "PASS",
+      "detail": "108 tests passed on CPython 3.13.15; 74% branch-aware aggregate coverage"
+    },
+    {
+      "name": "bandit",
+      "result": "PASS",
+      "detail": "4546 lines scanned; zero findings; four reviewed narrow Git-query suppressions"
+    },
+    {
+      "name": "detect-secrets",
+      "result": "PASS",
+      "detail": "Final no-network scan returned zero candidates after two fixed-string false positives were reviewed"
+    },
+    {
+      "name": "pip-audit",
+      "result": "PASS",
+      "detail": "No known vulnerabilities in 72 third-party packages; editable local source excluded and scanned separately"
+    },
+    {
+      "name": "clean-offline-reconstruction",
+      "result": "PASS",
+      "detail": "A new task-only environment installed all 73 locked packages offline on CPython 3.13.15 and passed all 108 tests"
+    }
+  ]
+}

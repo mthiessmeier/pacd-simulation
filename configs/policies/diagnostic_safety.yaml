@@ -1,0 +1,10 @@
+evidence_label: NON_REPORTABLE_DIAGNOSTIC
+schema_version: "1.0"
+allowed_action_types:
+  - isolate_session
+escalated_action_types:
+  - require_human_review
+prohibited_action_types:
+  - external_network_scan
+execution_adapter: simulated_only
+network_enabled: false

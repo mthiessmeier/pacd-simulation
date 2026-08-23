@@ -1,0 +1,672 @@
+{
+  "generated_at": "2026-08-23T00:29:00-04:00",
+  "interpreter": {
+    "implementation": "CPython",
+    "version": "3.13.15"
+  },
+  "legal_notice": "Informational package-metadata inventory only; no legal sufficiency or compatibility conclusion is asserted.",
+  "lock": {
+    "path": "uv.lock",
+    "registry_policy": "https://pypi.org/simple only; local project editable",
+    "sha256": "12372a81d459ec112417b7a76b7fc65a32f5e0da865b39a466c443563a28f290"
+  },
+  "package_count": 73,
+  "packages": [
+    {
+      "license_classifiers": [
+        "OSI Approved :: MIT License"
+      ],
+      "license_expression": "MIT",
+      "license_field_first_line": null,
+      "name": "annotated-types",
+      "source": "https://pypi.org/simple",
+      "version": "0.8.0"
+    },
+    {
+      "license_classifiers": [],
+      "license_expression": "MIT",
+      "license_field_first_line": null,
+      "name": "ast_serialize",
+      "source": "https://pypi.org/simple",
+      "version": "0.8.0"
+    },
+    {
+      "license_classifiers": [],
+      "license_expression": null,
+      "license_field_first_line": "Apache-2.0",
+      "name": "bandit",
+      "source": "https://pypi.org/simple",
+      "version": "1.9.4"
+    },
+    {
+      "license_classifiers": [],
+      "license_expression": null,
+      "license_field_first_line": "BSD-2-Clause",
+      "name": "boolean.py",
+      "source": "https://pypi.org/simple",
+      "version": "5.0"
+    },
+    {
+      "license_classifiers": [],
+      "license_expression": "Apache-2.0",
+      "license_field_first_line": null,
+      "name": "CacheControl",
+      "source": "https://pypi.org/simple",
+      "version": "0.14.4"
+    },
+    {
+      "license_classifiers": [
+        "OSI Approved :: Mozilla Public License 2.0 (MPL 2.0)"
+      ],
+      "license_expression": null,
+      "license_field_first_line": "MPL-2.0",
+      "name": "certifi",
+      "source": "https://pypi.org/simple",
+      "version": "2026.7.22"
+    },
+    {
+      "license_classifiers": [],
+      "license_expression": null,
+      "license_field_first_line": "MIT",
+      "name": "cfgv",
+      "source": "https://pypi.org/simple",
+      "version": "3.5.0"
+    },
+    {
+      "license_classifiers": [],
+      "license_expression": null,
+      "license_field_first_line": "MIT",
+      "name": "charset-normalizer",
+      "source": "https://pypi.org/simple",
+      "version": "3.5.1"
+    },
+    {
+      "license_classifiers": [
+        "OSI Approved :: BSD License"
+      ],
+      "license_expression": null,
+      "license_field_first_line": null,
+      "name": "colorama",
+      "source": "https://pypi.org/simple",
+      "version": "0.4.6"
+    },
+    {
+      "license_classifiers": [
+        "OSI Approved :: BSD License"
+      ],
+      "license_expression": null,
+      "license_field_first_line": "BSD 3-Clause License",
+      "name": "contourpy",
+      "source": "https://pypi.org/simple",
+      "version": "1.3.3"
+    },
+    {
+      "license_classifiers": [],
+      "license_expression": null,
+      "license_field_first_line": "Apache-2.0",
+      "name": "coverage",
+      "source": "https://pypi.org/simple",
+      "version": "7.15.4"
+    },
+    {
+      "license_classifiers": [
+        "OSI Approved :: BSD License"
+      ],
+      "license_expression": null,
+      "license_field_first_line": "Copyright (c) 2015, matplotlib project",
+      "name": "cycler",
+      "source": "https://pypi.org/simple",
+      "version": "0.12.1"
+    },
+    {
+      "license_classifiers": [
+        "OSI Approved :: Apache Software License"
+      ],
+      "license_expression": null,
+      "license_field_first_line": "Apache-2.0",
+      "name": "cyclonedx-python-lib",
+      "source": "https://pypi.org/simple",
+      "version": "11.12.0"
+    },
+    {
+      "license_classifiers": [
+        "OSI Approved :: Python Software Foundation License"
+      ],
+      "license_expression": null,
+      "license_field_first_line": "PSFL",
+      "name": "defusedxml",
+      "source": "https://pypi.org/simple",
+      "version": "0.7.1"
+    },
+    {
+      "license_classifiers": [
+        "OSI Approved :: Apache Software License"
+      ],
+      "license_expression": null,
+      "license_field_first_line": "UNKNOWN",
+      "name": "detect-secrets",
+      "source": "https://pypi.org/simple",
+      "version": "1.5.0"
+    },
+    {
+      "license_classifiers": [
+        "OSI Approved :: Python Software Foundation License"
+      ],
+      "license_expression": null,
+      "license_field_first_line": "PSF-2.0",
+      "name": "distlib",
+      "source": "https://pypi.org/simple",
+      "version": "0.4.3"
+    },
+    {
+      "license_classifiers": [
+        "OSI Approved :: MIT License"
+      ],
+      "license_expression": "MIT",
+      "license_field_first_line": null,
+      "name": "filelock",
+      "source": "https://pypi.org/simple",
+      "version": "3.32.3"
+    },
+    {
+      "license_classifiers": [],
+      "license_expression": null,
+      "license_field_first_line": "MIT",
+      "name": "fonttools",
+      "source": "https://pypi.org/simple",
+      "version": "4.63.0"
+    },
+    {
+      "license_classifiers": [],
+      "license_expression": "MPL-2.0",
+      "license_field_first_line": null,
+      "name": "hypothesis",
+      "source": "https://pypi.org/simple",
+      "version": "6.165.10"
+    },
+    {
+      "license_classifiers": [],
+      "license_expression": null,
+      "license_field_first_line": "MIT",
+      "name": "identify",
+      "source": "https://pypi.org/simple",
+      "version": "2.6.19"
+    },
+    {
+      "license_classifiers": [],
+      "license_expression": "BSD-3-Clause",
+      "license_field_first_line": null,
+      "name": "idna",
+      "source": "https://pypi.org/simple",
+      "version": "3.19"
+    },
+    {
+      "license_classifiers": [],
+      "license_expression": "MIT",
+      "license_field_first_line": null,
+      "name": "iniconfig",
+      "source": "https://pypi.org/simple",
+      "version": "2.3.0"
+    },
+    {
+      "license_classifiers": [
+        "OSI Approved :: BSD License"
+      ],
+      "license_expression": null,
+      "license_field_first_line": "=========================",
+      "name": "kiwisolver",
+      "source": "https://pypi.org/simple",
+      "version": "1.5.0"
+    },
+    {
+      "license_classifiers": [],
+      "license_expression": "MIT",
+      "license_field_first_line": null,
+      "name": "librt",
+      "source": "https://pypi.org/simple",
+      "version": "0.15.0"
+    },
+    {
+      "license_classifiers": [],
+      "license_expression": null,
+      "license_field_first_line": "Apache-2.0",
+      "name": "license-expression",
+      "source": "https://pypi.org/simple",
+      "version": "30.4.4"
+    },
+    {
+      "license_classifiers": [
+        "OSI Approved :: MIT License"
+      ],
+      "license_expression": null,
+      "license_field_first_line": null,
+      "name": "markdown-it-py",
+      "source": "https://pypi.org/simple",
+      "version": "4.2.0"
+    },
+    {
+      "license_classifiers": [
+        "OSI Approved :: Python Software Foundation License"
+      ],
+      "license_expression": null,
+      "license_field_first_line": "License agreement for matplotlib versions 1.3.0 and later",
+      "name": "matplotlib",
+      "source": "https://pypi.org/simple",
+      "version": "3.11.1"
+    },
+    {
+      "license_classifiers": [
+        "OSI Approved :: MIT License"
+      ],
+      "license_expression": null,
+      "license_field_first_line": null,
+      "name": "mdurl",
+      "source": "https://pypi.org/simple",
+      "version": "0.1.2"
+    },
+    {
+      "license_classifiers": [],
+      "license_expression": "Apache-2.0",
+      "license_field_first_line": null,
+      "name": "msgpack",
+      "source": "https://pypi.org/simple",
+      "version": "1.2.1"
+    },
+    {
+      "license_classifiers": [],
+      "license_expression": "MIT",
+      "license_field_first_line": null,
+      "name": "mypy",
+      "source": "https://pypi.org/simple",
+      "version": "2.3.1"
+    },
+    {
+      "license_classifiers": [],
+      "license_expression": "MIT",
+      "license_field_first_line": null,
+      "name": "mypy_extensions",
+      "source": "https://pypi.org/simple",
+      "version": "1.1.0"
+    },
+    {
+      "license_classifiers": [],
+      "license_expression": "BSD-3-Clause",
+      "license_field_first_line": null,
+      "name": "networkx",
+      "source": "https://pypi.org/simple",
+      "version": "3.6.1"
+    },
+    {
+      "license_classifiers": [
+        "OSI Approved :: BSD License"
+      ],
+      "license_expression": null,
+      "license_field_first_line": "BSD",
+      "name": "nodeenv",
+      "source": "https://pypi.org/simple",
+      "version": "1.10.0"
+    },
+    {
+      "license_classifiers": [],
+      "license_expression": "BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0",
+      "license_field_first_line": null,
+      "name": "numpy",
+      "source": "https://pypi.org/simple",
+      "version": "2.5.2"
+    },
+    {
+      "license_classifiers": [],
+      "license_expression": null,
+      "license_field_first_line": "License pending; private repository",
+      "name": "pacd-simulation",
+      "source": "local project",
+      "version": "0.1.0"
+    },
+    {
+      "license_classifiers": [
+        "OSI Approved :: MIT License"
+      ],
+      "license_expression": null,
+      "license_field_first_line": "MIT",
+      "name": "packageurl-python",
+      "source": "https://pypi.org/simple",
+      "version": "0.17.6"
+    },
+    {
+      "license_classifiers": [],
+      "license_expression": "Apache-2.0 OR BSD-2-Clause",
+      "license_field_first_line": null,
+      "name": "packaging",
+      "source": "https://pypi.org/simple",
+      "version": "26.3"
+    },
+    {
+      "license_classifiers": [
+        "OSI Approved :: BSD License"
+      ],
+      "license_expression": null,
+      "license_field_first_line": "BSD 3-Clause License",
+      "name": "pandas",
+      "source": "https://pypi.org/simple",
+      "version": "3.0.5"
+    },
+    {
+      "license_classifiers": [
+        "OSI Approved :: Mozilla Public License 2.0 (MPL 2.0)"
+      ],
+      "license_expression": null,
+      "license_field_first_line": null,
+      "name": "pathspec",
+      "source": "https://pypi.org/simple",
+      "version": "1.1.1"
+    },
+    {
+      "license_classifiers": [],
+      "license_expression": "MIT-CMU",
+      "license_field_first_line": null,
+      "name": "pillow",
+      "source": "https://pypi.org/simple",
+      "version": "12.3.0"
+    },
+    {
+      "license_classifiers": [],
+      "license_expression": "MIT",
+      "license_field_first_line": null,
+      "name": "pip",
+      "source": "https://pypi.org/simple",
+      "version": "26.2.1"
+    },
+    {
+      "license_classifiers": [
+        "OSI Approved :: Apache Software License"
+      ],
+      "license_expression": null,
+      "license_field_first_line": null,
+      "name": "pip-api",
+      "source": "https://pypi.org/simple",
+      "version": "0.0.34"
+    },
+    {
+      "license_classifiers": [],
+      "license_expression": null,
+      "license_field_first_line": "MIT",
+      "name": "pip-requirements-parser",
+      "source": "https://pypi.org/simple",
+      "version": "32.0.1"
+    },
+    {
+      "license_classifiers": [
+        "OSI Approved :: Apache Software License"
+      ],
+      "license_expression": null,
+      "license_field_first_line": null,
+      "name": "pip_audit",
+      "source": "https://pypi.org/simple",
+      "version": "2.10.1"
+    },
+    {
+      "license_classifiers": [
+        "OSI Approved :: MIT License"
+      ],
+      "license_expression": "MIT",
+      "license_field_first_line": null,
+      "name": "platformdirs",
+      "source": "https://pypi.org/simple",
+      "version": "4.11.3"
+    },
+    {
+      "license_classifiers": [
+        "OSI Approved :: MIT License"
+      ],
+      "license_expression": null,
+      "license_field_first_line": "MIT",
+      "name": "pluggy",
+      "source": "https://pypi.org/simple",
+      "version": "1.6.0"
+    },
+    {
+      "license_classifiers": [],
+      "license_expression": null,
+      "license_field_first_line": "MIT",
+      "name": "pre_commit",
+      "source": "https://pypi.org/simple",
+      "version": "4.6.2"
+    },
+    {
+      "license_classifiers": [
+        "OSI Approved :: Apache Software License"
+      ],
+      "license_expression": null,
+      "license_field_first_line": "Apache-2.0",
+      "name": "py-serializable",
+      "source": "https://pypi.org/simple",
+      "version": "2.1.0"
+    },
+    {
+      "license_classifiers": [],
+      "license_expression": "Apache-2.0",
+      "license_field_first_line": null,
+      "name": "pyarrow",
+      "source": "https://pypi.org/simple",
+      "version": "25.0.1"
+    },
+    {
+      "license_classifiers": [],
+      "license_expression": "MIT",
+      "license_field_first_line": null,
+      "name": "pydantic",
+      "source": "https://pypi.org/simple",
+      "version": "2.13.4"
+    },
+    {
+      "license_classifiers": [],
+      "license_expression": "MIT",
+      "license_field_first_line": null,
+      "name": "pydantic_core",
+      "source": "https://pypi.org/simple",
+      "version": "2.46.4"
+    },
+    {
+      "license_classifiers": [],
+      "license_expression": "BSD-2-Clause",
+      "license_field_first_line": null,
+      "name": "Pygments",
+      "source": "https://pypi.org/simple",
+      "version": "2.21.0"
+    },
+    {
+      "license_classifiers": [],
+      "license_expression": "MIT",
+      "license_field_first_line": null,
+      "name": "pyparsing",
+      "source": "https://pypi.org/simple",
+      "version": "3.3.2"
+    },
+    {
+      "license_classifiers": [],
+      "license_expression": "MIT",
+      "license_field_first_line": null,
+      "name": "pytest",
+      "source": "https://pypi.org/simple",
+      "version": "9.1.1"
+    },
+    {
+      "license_classifiers": [
+        "OSI Approved :: MIT License"
+      ],
+      "license_expression": "MIT",
+      "license_field_first_line": null,
+      "name": "pytest-cov",
+      "source": "https://pypi.org/simple",
+      "version": "7.1.0"
+    },
+    {
+      "license_classifiers": [
+        "OSI Approved :: BSD License",
+        "OSI Approved :: Apache Software License"
+      ],
+      "license_expression": null,
+      "license_field_first_line": "Dual License",
+      "name": "python-dateutil",
+      "source": "https://pypi.org/simple",
+      "version": "2.9.0.post0"
+    },
+    {
+      "license_classifiers": [
+        "OSI Approved :: MIT License"
+      ],
+      "license_expression": null,
+      "license_field_first_line": "Permission is hereby granted, free of charge, to any person obtaining a",
+      "name": "python-discovery",
+      "source": "https://pypi.org/simple",
+      "version": "1.5.2"
+    },
+    {
+      "license_classifiers": [
+        "OSI Approved :: MIT License"
+      ],
+      "license_expression": null,
+      "license_field_first_line": "MIT",
+      "name": "PyYAML",
+      "source": "https://pypi.org/simple",
+      "version": "6.0.3"
+    },
+    {
+      "license_classifiers": [
+        "OSI Approved :: Apache Software License"
+      ],
+      "license_expression": null,
+      "license_field_first_line": "Apache-2.0",
+      "name": "requests",
+      "source": "https://pypi.org/simple",
+      "version": "2.34.2"
+    },
+    {
+      "license_classifiers": [
+        "OSI Approved :: MIT License"
+      ],
+      "license_expression": null,
+      "license_field_first_line": "MIT",
+      "name": "rich",
+      "source": "https://pypi.org/simple",
+      "version": "15.0.0"
+    },
+    {
+      "license_classifiers": [],
+      "license_expression": "MIT",
+      "license_field_first_line": null,
+      "name": "ruff",
+      "source": "https://pypi.org/simple",
+      "version": "0.16.4"
+    },
+    {
+      "license_classifiers": [
+        "OSI Approved :: BSD License"
+      ],
+      "license_expression": null,
+      "license_field_first_line": "Copyright (c) 2001-2002 Enthought, Inc. 2003, SciPy Developers.",
+      "name": "scipy",
+      "source": "https://pypi.org/simple",
+      "version": "1.18.1"
+    },
+    {
+      "license_classifiers": [
+        "OSI Approved :: MIT License"
+      ],
+      "license_expression": null,
+      "license_field_first_line": "MIT",
+      "name": "simpy",
+      "source": "https://pypi.org/simple",
+      "version": "4.1.2"
+    },
+    {
+      "license_classifiers": [
+        "OSI Approved :: MIT License"
+      ],
+      "license_expression": null,
+      "license_field_first_line": "MIT",
+      "name": "six",
+      "source": "https://pypi.org/simple",
+      "version": "1.17.0"
+    },
+    {
+      "license_classifiers": [
+        "OSI Approved :: Apache Software License"
+      ],
+      "license_expression": null,
+      "license_field_first_line": "Apache 2.0",
+      "name": "sortedcontainers",
+      "source": "https://pypi.org/simple",
+      "version": "2.4.0"
+    },
+    {
+      "license_classifiers": [],
+      "license_expression": "Apache-2.0",
+      "license_field_first_line": null,
+      "name": "stevedore",
+      "source": "https://pypi.org/simple",
+      "version": "5.9.1"
+    },
+    {
+      "license_classifiers": [],
+      "license_expression": "MIT",
+      "license_field_first_line": null,
+      "name": "tomli",
+      "source": "https://pypi.org/simple",
+      "version": "2.4.1"
+    },
+    {
+      "license_classifiers": [
+        "OSI Approved :: MIT License"
+      ],
+      "license_expression": null,
+      "license_field_first_line": null,
+      "name": "tomli_w",
+      "source": "https://pypi.org/simple",
+      "version": "1.2.0"
+    },
+    {
+      "license_classifiers": [],
+      "license_expression": "MIT",
+      "license_field_first_line": null,
+      "name": "typing-inspection",
+      "source": "https://pypi.org/simple",
+      "version": "0.4.4"
+    },
+    {
+      "license_classifiers": [],
+      "license_expression": "PSF-2.0",
+      "license_field_first_line": null,
+      "name": "typing_extensions",
+      "source": "https://pypi.org/simple",
+      "version": "4.16.0"
+    },
+    {
+      "license_classifiers": [],
+      "license_expression": null,
+      "license_field_first_line": "Apache-2.0",
+      "name": "tzdata",
+      "source": "https://pypi.org/simple",
+      "version": "2026.3"
+    },
+    {
+      "license_classifiers": [],
+      "license_expression": "MIT",
+      "license_field_first_line": null,
+      "name": "urllib3",
+      "source": "https://pypi.org/simple",
+      "version": "2.7.0"
+    },
+    {
+      "license_classifiers": [
+        "OSI Approved :: MIT License"
+      ],
+      "license_expression": "MIT",
+      "license_field_first_line": null,
+      "name": "virtualenv",
+      "source": "https://pypi.org/simple",
+      "version": "21.7.4"
+    }
+  ],
+  "schema_version": 1
+}
