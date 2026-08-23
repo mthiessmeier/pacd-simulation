@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -161,3 +162,25 @@ def test_reportable_mode_denied_for_actual_symlinked_approval_parent_when_suppor
 
     with pytest.raises(ReportableModeDenied, match="symlink, junction, or reparse"):
         _validate(repo)
+
+
+@pytest.mark.negative
+def test_reportable_mode_denied_for_hard_linked_approval(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, approval = _temporary_repository(tmp_path)
+    outside_record = tmp_path / "non-controlled-author-record.json"
+    payload = json.dumps(_record())
+    outside_record.write_text(payload, encoding="utf-8")
+    try:
+        os.link(outside_record, approval)
+    except OSError as error:
+        pytest.skip(f"hard links are unavailable on this host: {error}")
+    _mock_clean_commit(monkeypatch)
+
+    with pytest.raises(ReportableModeDenied, match="exactly one filesystem link"):
+        _validate(repo)
+
+    assert outside_record.read_text(encoding="utf-8") == payload
+    assert approval.samefile(outside_record)

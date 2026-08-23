@@ -101,15 +101,31 @@ def _load_approval(path: Path) -> dict[str, object]:
     try:
         with path.open("rb") as handle:
             opened_stat = os.fstat(handle.fileno())
+            if opened_stat.st_nlink != 1:
+                raise ReportableModeDenied(
+                    "Author approval record must have exactly one filesystem link"
+                )
             payload = handle.read(64 * 1024 + 1)
             read_stat = os.fstat(handle.fileno())
+            if read_stat.st_nlink != 1:
+                raise ReportableModeDenied(
+                    "Author approval record must have exactly one filesystem link"
+                )
             handle.seek(0)
             confirmation = handle.read(64 * 1024 + 1)
             confirmed_stat = os.fstat(handle.fileno())
+            if confirmed_stat.st_nlink != 1:
+                raise ReportableModeDenied(
+                    "Author approval record must have exactly one filesystem link"
+                )
         if len(payload) > 64 * 1024:
             raise ReportableModeDenied("Author approval record exceeds the 64 KiB limit")
         path_stat = path.stat(follow_symlinks=False)
-        identity_fields = ("st_dev", "st_ino", "st_size", "st_mtime_ns")
+        if path_stat.st_nlink != 1:
+            raise ReportableModeDenied(
+                "Author approval record must have exactly one filesystem link"
+            )
+        identity_fields = ("st_dev", "st_ino", "st_nlink", "st_size", "st_mtime_ns")
         opened_identity = tuple(getattr(opened_stat, field) for field in identity_fields)
         read_identity = tuple(getattr(read_stat, field) for field in identity_fields)
         confirmed_identity = tuple(getattr(confirmed_stat, field) for field in identity_fields)
