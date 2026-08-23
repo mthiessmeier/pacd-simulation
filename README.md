@@ -46,11 +46,22 @@ uv run --frozen --no-sync pacd-sim doctor --workspace-root $WorkspaceRoot
 The clone command fails rather than replacing an existing destination. Inventory any existing
 path before choosing a different versioned child.
 
+## Check the lock without network access
+
+The project-level uv policy disallows prerelease packages. This read-only check is self-contained:
+it compares `pyproject.toml` with the existing `uv.lock` while network access is disabled and does
+not update either file.
+
+```powershell
+uv lock --check --offline --no-cache --prerelease disallow
+```
+
 ## Validate
 
 Keep process caches and test temporary files under the same bounded workspace:
 
 ```powershell
+uv lock --check --offline --no-cache --prerelease disallow
 uv sync --frozen
 uv run --frozen --no-sync ruff format --check . --no-cache
 uv run --frozen --no-sync ruff check . --no-cache

@@ -14,7 +14,7 @@ from pacd_sim.schema import (
     StableId,
     StrictFrozenModel,
 )
-from pacd_sim.state.snapshot import StateSnapshot
+from pacd_sim.state.snapshot import StateSnapshot, verify_snapshot
 
 
 class Constraint(ConsequentialRecord):
@@ -72,6 +72,9 @@ class PolicyDecision(ConsequentialRecord):
     action_type: StableId
     target_id: StableId
     action_digest: str
+    policy_digest: str
+    state_digest: str | None
+    governance_context_digest: str
     disposition: PolicyDisposition
     policy_version: str
     reason: str
@@ -100,9 +103,44 @@ class SafetyGovernor:
     ) -> PolicyDecision:
         """Return APPROVE, ESCALATE, or PROHIBIT; unknown cases fail closed."""
 
-        del belief_state, mission_state
-        decision_tick = action.tick if context is None else max(action.tick, context.tick)
-        if action.requested_authority == "prohibited":
+        decision_context = context or GovernanceContext(
+            tick=action.tick,
+            schema_version=action.schema_version,
+            configuration_version=action.configuration_version,
+        )
+        decision_tick = max(action.tick, decision_context.tick)
+        context_valid = (
+            decision_context.schema_version == action.schema_version
+            and decision_context.configuration_version == action.configuration_version
+            and decision_context.tick >= action.tick
+        )
+        belief_valid = belief_state is None or (
+            belief_state.schema_version == action.schema_version
+            and belief_state.configuration_version == action.configuration_version
+        )
+        state_digest: str | None = None
+        mission_valid = True
+        if mission_state is not None:
+            state_digest = mission_state.environment_digest
+            mission_valid = (
+                verify_snapshot(mission_state)
+                and mission_state.schema_version == action.schema_version
+                and mission_state.configuration_version == action.configuration_version
+                and mission_state.tick == mission_state.environment.tick
+                and mission_state.environment.schema_version == action.schema_version
+                and mission_state.environment.configuration_version == action.configuration_version
+            )
+
+        if not context_valid:
+            disposition = PolicyDisposition.PROHIBIT
+            reason = "governance context does not match the candidate action"
+        elif not belief_valid:
+            disposition = PolicyDisposition.PROHIBIT
+            reason = "belief state does not match the candidate action configuration"
+        elif not mission_valid:
+            disposition = PolicyDisposition.PROHIBIT
+            reason = "mission snapshot does not match the candidate action configuration"
+        elif action.requested_authority == "prohibited":
             disposition = PolicyDisposition.PROHIBIT
             reason = "action explicitly requests prohibited authority"
         elif action.action_type in self._policy.prohibited_action_types:
@@ -131,6 +169,9 @@ class SafetyGovernor:
             action_type=action.action_type,
             target_id=action.target_id,
             action_digest=canonical_sha256(action),
+            policy_digest=canonical_sha256(self._policy),
+            state_digest=state_digest,
+            governance_context_digest=canonical_sha256(decision_context),
             disposition=disposition,
             policy_version=self._policy.policy_version,
             reason=reason,

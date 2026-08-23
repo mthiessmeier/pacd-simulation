@@ -5,7 +5,12 @@ from __future__ import annotations
 import pytest
 from conftest import IsolatedWorkspace, controlled_config_files
 
-from pacd_sim.harness.run import ConfigurationError, run_diagnostic
+from pacd_sim.harness.run import (
+    ConfigurationError,
+)
+from pacd_sim.harness.run import (
+    _run_diagnostic_worker as run_diagnostic,
+)
 
 
 @pytest.mark.negative

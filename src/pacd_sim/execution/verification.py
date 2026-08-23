@@ -3,14 +3,17 @@
 from pacd_sim.actions.models import DefensiveAction
 from pacd_sim.environment.model import EnvironmentState
 from pacd_sim.execution.broker import ExecutionResult
+from pacd_sim.governance.governor import GovernanceContext, SafetyGovernor
 from pacd_sim.reproducibility.canonical import canonical_sha256
 from pacd_sim.schema import (
     ConsequentialRecord,
+    PolicyDisposition,
     RollbackDisposition,
     StableId,
     StrictFrozenModel,
     VerificationDisposition,
 )
+from pacd_sim.state.snapshot import create_snapshot
 
 
 class VerificationRecord(ConsequentialRecord):
@@ -41,8 +44,22 @@ class RollbackResult(StrictFrozenModel):
     record: RollbackRecord
 
 
-def _binding_error(action: DefensiveAction, result: ExecutionResult) -> str | None:
+def _binding_error(
+    action: DefensiveAction,
+    result: ExecutionResult,
+    governor: SafetyGovernor,
+) -> str | None:
     record = result.record
+    decision = record.policy_decision
+    expected_decision = governor.evaluate(
+        action,
+        mission_state=create_snapshot(record.state_before),
+        context=GovernanceContext(
+            tick=action.tick,
+            schema_version=action.schema_version,
+            configuration_version=action.configuration_version,
+        ),
+    )
     if record.action_id != action.id:
         return "execution record action ID does not match the candidate action"
     if record.action_type != action.action_type:
@@ -53,6 +70,36 @@ def _binding_error(action: DefensiveAction, result: ExecutionResult) -> str | No
         return "execution authorization digest does not match the candidate action"
     if record.action_configuration_version != action.configuration_version:
         return "execution record configuration does not match the candidate action"
+    if canonical_sha256(decision) != record.policy_decision_digest:
+        return "retained policy decision digest is invalid"
+    if decision != expected_decision:
+        return "retained policy decision is not a fresh trusted-governor authorization"
+    if decision.id != record.policy_decision_id:
+        return "execution record policy decision ID is invalid"
+    if decision.action_id != action.id or decision.action_type != action.action_type:
+        return "retained policy decision does not match the candidate action"
+    if decision.target_id != action.target_id:
+        return "retained policy decision target does not match the candidate action"
+    if decision.action_digest != record.authorized_action_digest:
+        return "retained policy decision action digest is inconsistent"
+    if decision.policy_digest != record.policy_digest:
+        return "execution record policy digest is inconsistent"
+    if decision.state_digest != record.authorized_state_digest:
+        return "execution record state authorization is inconsistent"
+    if record.authorized_state_digest != record.state_before_digest:
+        return "execution authorization does not bind the complete before-state"
+    if (
+        record.configuration_version != decision.policy_version
+        or decision.configuration_version != decision.policy_version
+    ):
+        return "execution record policy version is inconsistent"
+    if decision.schema_version != action.schema_version:
+        return "policy decision schema does not match the candidate action"
+    if record.executed and decision.disposition is not PolicyDisposition.APPROVE:
+        return "executed transition lacks an APPROVE policy decision"
+    expected_tick = max(record.state_before.tick, action.tick, decision.tick)
+    if record.tick != expected_tick:
+        return "execution tick is not bound to the action, decision, and before-state"
     states = (record.state_before, record.state_after, result.state)
     if any(state.configuration_version != action.configuration_version for state in states):
         return "execution state configuration does not match the candidate action"
@@ -73,12 +120,13 @@ def _hashes_valid(result: ExecutionResult) -> bool:
 def verify_execution(
     action: DefensiveAction,
     result: ExecutionResult,
+    governor: SafetyGovernor,
 ) -> VerificationRecord:
     """Verify hashes and expected effects without trusting the proposing defender."""
 
     record = result.record
     hashes_valid = _hashes_valid(result)
-    binding_error = _binding_error(action, result)
+    binding_error = _binding_error(action, result, governor)
     if binding_error is not None:
         disposition = VerificationDisposition.FAILED
         effect_observed = False
@@ -112,6 +160,17 @@ def verify_execution(
             and not after_session.active
             and after_session.isolated
         )
+        if effect_observed:
+            try:
+                expected_after = record.state_before.at_tick(record.tick).isolate_session(
+                    action.target_id
+                )
+            except (KeyError, ValueError):
+                effect_observed = False
+            else:
+                effect_observed = (
+                    record.state_after == expected_after and result.state == expected_after
+                )
         disposition = (
             VerificationDisposition.VERIFIED
             if hashes_valid and effect_observed
@@ -142,11 +201,12 @@ def verify_execution(
 def rollback_execution(
     action: DefensiveAction,
     result: ExecutionResult,
+    governor: SafetyGovernor,
 ) -> RollbackResult:
     """Restore the exact retained prior state only for an executed reversible action."""
 
     record = result.record
-    verification = verify_execution(action, result)
+    verification = verify_execution(action, result, governor)
     can_restore = (
         verification.disposition is VerificationDisposition.VERIFIED
         and record.executed

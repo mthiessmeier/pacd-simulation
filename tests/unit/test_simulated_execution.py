@@ -14,12 +14,14 @@ from pacd_sim.environment.model import (
 )
 from pacd_sim.execution.broker import SimulatedExecutionBroker
 from pacd_sim.execution.verification import rollback_execution, verify_execution
-from pacd_sim.governance.governor import SafetyGovernor, SafetyPolicy
+from pacd_sim.governance.governor import PolicyDecision, SafetyGovernor, SafetyPolicy
+from pacd_sim.reproducibility.canonical import canonical_sha256
 from pacd_sim.schema import (
     PolicyDisposition,
     RollbackDisposition,
     VerificationDisposition,
 )
+from pacd_sim.state.snapshot import create_snapshot
 
 
 @pytest.fixture
@@ -64,16 +66,24 @@ def _action(action_type: str, authority: str, target_id: str) -> DefensiveAction
     )
 
 
+def _authorize(
+    governor: SafetyGovernor,
+    action: DefensiveAction,
+    state: EnvironmentState,
+) -> PolicyDecision:
+    return governor.evaluate(action, mission_state=create_snapshot(state))
+
+
 def test_approved_action_is_only_an_immutable_simulated_transition(
     synthetic_state: EnvironmentState,
     governor: SafetyGovernor,
 ) -> None:
     action = _action("isolate_session", "automatic", "session-synthetic")
-    decision = governor.evaluate(action)
-    broker = SimulatedExecutionBroker()
+    decision = _authorize(governor, action, synthetic_state)
+    broker = SimulatedExecutionBroker(governor)
 
     result = broker.execute(action, decision, synthetic_state)
-    verification = verify_execution(action, result)
+    verification = verify_execution(action, result, governor)
 
     assert decision.disposition is PolicyDisposition.APPROVE
     assert result.executed
@@ -101,9 +111,9 @@ def test_nonapproved_actions_cannot_change_even_simulated_state(
     expected: PolicyDisposition,
 ) -> None:
     action = _action(action_type, authority, "synthetic-target")
-    decision = governor.evaluate(action)
+    decision = _authorize(governor, action, synthetic_state)
 
-    result = SimulatedExecutionBroker().execute(action, decision, synthetic_state)
+    result = SimulatedExecutionBroker(governor).execute(action, decision, synthetic_state)
 
     assert decision.disposition is expected
     assert not result.executed
@@ -186,11 +196,13 @@ def test_verification_and_rollback_require_exact_action_binding(
     value: str,
 ) -> None:
     action = _action("isolate_session", "automatic", "session-synthetic")
-    result = SimulatedExecutionBroker().execute(action, governor.evaluate(action), synthetic_state)
+    result = SimulatedExecutionBroker(governor).execute(
+        action, _authorize(governor, action, synthetic_state), synthetic_state
+    )
     mismatched_action = action.model_copy(update={field: value})
 
-    verification = verify_execution(mismatched_action, result)
-    rollback = rollback_execution(mismatched_action, result)
+    verification = verify_execution(mismatched_action, result, governor)
+    rollback = rollback_execution(mismatched_action, result, governor)
 
     assert verification.disposition is VerificationDisposition.FAILED
     assert rollback.record.disposition is RollbackDisposition.NOT_ROLLED_BACK
@@ -202,7 +214,9 @@ def test_verification_and_rollback_validate_every_retained_state_hash(
     governor: SafetyGovernor,
 ) -> None:
     action = _action("isolate_session", "automatic", "session-synthetic")
-    result = SimulatedExecutionBroker().execute(action, governor.evaluate(action), synthetic_state)
+    result = SimulatedExecutionBroker(governor).execute(
+        action, _authorize(governor, action, synthetic_state), synthetic_state
+    )
     original_session = result.record.state_before.get_session(action.target_id)
     assert original_session is not None
     corrupt_results = (
@@ -232,8 +246,8 @@ def test_verification_and_rollback_validate_every_retained_state_hash(
     )
 
     for corrupt_result in corrupt_results:
-        verification = verify_execution(action, corrupt_result)
-        rollback = rollback_execution(action, corrupt_result)
+        verification = verify_execution(action, corrupt_result, governor)
+        rollback = rollback_execution(action, corrupt_result, governor)
         assert verification.disposition is VerificationDisposition.FAILED
         assert rollback.record.disposition is RollbackDisposition.NOT_ROLLED_BACK
         assert rollback.state is corrupt_result.state
@@ -244,16 +258,209 @@ def test_corrupt_nonexecuted_record_fails_verification_instead_of_being_not_appl
     governor: SafetyGovernor,
 ) -> None:
     action = _action("external_network_scan", "prohibited", "synthetic-target")
-    result = SimulatedExecutionBroker().execute(action, governor.evaluate(action), synthetic_state)
+    result = SimulatedExecutionBroker(governor).execute(
+        action, _authorize(governor, action, synthetic_state), synthetic_state
+    )
 
-    clean_verification = verify_execution(action, result)
+    clean_verification = verify_execution(action, result, governor)
     corrupt_result = result.model_copy(
         update={"record": result.record.model_copy(update={"state_after_digest": "0" * 64})}
     )
-    corrupt_verification = verify_execution(action, corrupt_result)
-    corrupt_rollback = rollback_execution(action, corrupt_result)
+    corrupt_verification = verify_execution(action, corrupt_result, governor)
+    corrupt_rollback = rollback_execution(action, corrupt_result, governor)
 
     assert clean_verification.disposition is VerificationDisposition.NOT_APPLICABLE
     assert corrupt_verification.disposition is VerificationDisposition.FAILED
     assert corrupt_rollback.record.disposition is RollbackDisposition.NOT_ROLLED_BACK
     assert corrupt_rollback.state is corrupt_result.state
+
+
+def test_forged_approve_cannot_override_governor_prohibition(
+    synthetic_state: EnvironmentState,
+) -> None:
+    governor = SafetyGovernor(
+        SafetyPolicy(
+            allowed_action_types=(),
+            escalated_action_types=("require_human_review",),
+            prohibited_action_types=("external_network_scan", "isolate_session"),
+        )
+    )
+    action = _action("isolate_session", "automatic", "session-synthetic")
+    genuine = _authorize(governor, action, synthetic_state)
+    forged = genuine.model_copy(update={"disposition": PolicyDisposition.APPROVE})
+
+    result = SimulatedExecutionBroker(governor).execute(action, forged, synthetic_state)
+
+    assert genuine.disposition is PolicyDisposition.PROHIBIT
+    assert not result.executed
+    assert result.state is synthetic_state
+    assert result.record.reason == "policy decision is not an exact fresh governor authorization"
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("id", "forged-decision"),
+        ("tick", 99),
+        ("schema_version", "forged-schema"),
+        ("configuration_version", "forged-configuration"),
+        ("policy_version", "forged-policy"),
+        ("policy_digest", "0" * 64),
+        ("state_digest", "1" * 64),
+        ("governance_context_digest", "2" * 64),
+    ],
+)
+def test_every_decision_field_mismatch_fails_closed_before_mutation(
+    synthetic_state: EnvironmentState,
+    governor: SafetyGovernor,
+    field: str,
+    value: object,
+) -> None:
+    action = _action("isolate_session", "automatic", "session-synthetic")
+    decision = _authorize(governor, action, synthetic_state)
+    mutated = decision.model_copy(update={field: value})
+
+    result = SimulatedExecutionBroker(governor).execute(action, mutated, synthetic_state)
+
+    assert not result.executed
+    assert result.state is synthetic_state
+    assert result.record.reason == "policy decision is not an exact fresh governor authorization"
+
+
+def test_authorization_cannot_be_replayed_against_changed_prestate(
+    synthetic_state: EnvironmentState,
+    governor: SafetyGovernor,
+) -> None:
+    action = _action("isolate_session", "automatic", "session-synthetic")
+    decision = _authorize(governor, action, synthetic_state)
+    changed_state = synthetic_state.at_tick(1)
+
+    result = SimulatedExecutionBroker(governor).execute(action, decision, changed_state)
+
+    assert not result.executed
+    assert result.state is changed_state
+    assert result.record.reason == "policy decision is not an exact fresh governor authorization"
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "expected_reason"),
+    [
+        (
+            "configuration_version",
+            "different-configuration",
+            "candidate action configuration does not match the environment state",
+        ),
+        (
+            "schema_version",
+            "different-schema",
+            "candidate action schema does not match the environment state",
+        ),
+    ],
+)
+def test_action_state_version_mismatch_is_refused_before_transition(
+    synthetic_state: EnvironmentState,
+    governor: SafetyGovernor,
+    field: str,
+    value: str,
+    expected_reason: str,
+) -> None:
+    action = _action("isolate_session", "automatic", "session-synthetic").model_copy(
+        update={field: value}
+    )
+    classification_only = governor.evaluate(action)
+
+    result = SimulatedExecutionBroker(governor).execute(
+        action,
+        classification_only,
+        synthetic_state,
+    )
+
+    assert not result.executed
+    assert result.state is synthetic_state
+    assert result.record.reason == expected_reason
+
+
+def test_verification_rejects_self_consistent_collateral_state_change(
+    synthetic_state: EnvironmentState,
+    governor: SafetyGovernor,
+) -> None:
+    action = _action("isolate_session", "automatic", "session-synthetic")
+    result = SimulatedExecutionBroker(governor).execute(
+        action,
+        _authorize(governor, action, synthetic_state),
+        synthetic_state,
+    )
+    identity = result.state.identities[0].model_copy(update={"enabled": False})
+    collateral_state = result.state.model_copy(update={"identities": (identity,)})
+    collateral_result = result.model_copy(
+        update={
+            "state": collateral_state,
+            "record": result.record.model_copy(
+                update={
+                    "state_after": collateral_state,
+                    "state_after_digest": canonical_sha256(collateral_state),
+                }
+            ),
+        }
+    )
+
+    verification = verify_execution(action, collateral_result, governor)
+
+    assert verification.state_hashes_valid
+    assert not verification.expected_effect_observed
+    assert verification.disposition is VerificationDisposition.FAILED
+
+
+def test_verification_rejects_self_consistent_untrusted_policy_authorization(
+    synthetic_state: EnvironmentState,
+    governor: SafetyGovernor,
+) -> None:
+    action = _action("isolate_session", "automatic", "session-synthetic")
+    result = SimulatedExecutionBroker(governor).execute(
+        action,
+        _authorize(governor, action, synthetic_state),
+        synthetic_state,
+    )
+    trusted_governor = SafetyGovernor(
+        SafetyPolicy(
+            allowed_action_types=(),
+            escalated_action_types=("require_human_review",),
+            prohibited_action_types=("external_network_scan", "isolate_session"),
+        )
+    )
+
+    verification = verify_execution(action, result, trusted_governor)
+
+    assert verification.disposition is VerificationDisposition.FAILED
+    assert "trusted-governor" in verification.reason
+
+
+def test_verification_rejects_self_consistent_unbound_execution_tick(
+    synthetic_state: EnvironmentState,
+    governor: SafetyGovernor,
+) -> None:
+    action = _action("isolate_session", "automatic", "session-synthetic")
+    result = SimulatedExecutionBroker(governor).execute(
+        action,
+        _authorize(governor, action, synthetic_state),
+        synthetic_state,
+    )
+    forged_state = synthetic_state.at_tick(99).isolate_session(action.target_id)
+    forged_result = result.model_copy(
+        update={
+            "state": forged_state,
+            "record": result.record.model_copy(
+                update={
+                    "tick": 99,
+                    "state_after": forged_state,
+                    "state_after_digest": canonical_sha256(forged_state),
+                }
+            ),
+        }
+    )
+
+    verification = verify_execution(action, forged_result, governor)
+
+    assert verification.state_hashes_valid
+    assert verification.disposition is VerificationDisposition.FAILED
+    assert "execution tick" in verification.reason

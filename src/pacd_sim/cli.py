@@ -12,7 +12,12 @@ from typing import TextIO
 from pacd_sim.constants import EVIDENCE_LABEL
 from pacd_sim.harness.run import ConfigurationError, run_diagnostic
 from pacd_sim.reproducibility.doctor import run_doctor
-from pacd_sim.reproducibility.paths import PathBoundaryError, infer_workspace_root
+from pacd_sim.reproducibility.paths import (
+    PathBoundaryError,
+    infer_workspace_root,
+    path_has_symlink_or_reparse,
+    resolve_workspace_root,
+)
 from pacd_sim.reproducibility.reportable import ReportableModeDenied
 from pacd_sim.reproducibility.verify import verify_run
 
@@ -23,6 +28,27 @@ def _default_repo_root() -> Path:
 
 def _emit_json(value: object, *, stream: TextIO = sys.stdout) -> None:
     print(json.dumps(value, allow_nan=False, indent=2, sort_keys=True), file=stream)
+
+
+def _resolve_diagnostic_workspace(repository: Path, requested: Path | None) -> Path:
+    """Return the designated workspace without letting a CLI argument redefine authority.
+
+    The internal diagnostic worker may inject isolated roots for hermetic tests. The public
+    CLI is stricter: its optional spelling of the workspace must resolve to the root already
+    implied by the repository's location beneath the author-designated PACD workspace.
+    """
+
+    authorized = infer_workspace_root(repository)
+    if requested is None:
+        return authorized
+    if path_has_symlink_or_reparse(requested):
+        raise PathBoundaryError("Diagnostic workspace path contains a symlink or reparse point")
+    candidate = resolve_workspace_root(requested)
+    if candidate != authorized:
+        raise PathBoundaryError(
+            "Diagnostic --workspace-root cannot redefine the authorized PACD workspace"
+        )
+    return authorized
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -69,11 +95,7 @@ def _doctor_command(arguments: argparse.Namespace) -> int:
 
 def _diagnostic_command(arguments: argparse.Namespace) -> int:
     repository = arguments.repo_root.resolve(strict=True)
-    workspace = (
-        arguments.workspace_root.resolve(strict=False)
-        if arguments.workspace_root is not None
-        else infer_workspace_root(repository)
-    )
+    workspace = _resolve_diagnostic_workspace(repository, arguments.workspace_root)
     scenario = (
         arguments.scenario
         or repository / "configs" / "scenarios" / "diagnostic_identity_smoke.yaml"
@@ -98,7 +120,13 @@ def _diagnostic_command(arguments: argparse.Namespace) -> int:
 
 
 def _verify_command(arguments: argparse.Namespace) -> int:
-    result = verify_run(arguments.run_dir, workspace_root=arguments.workspace_root)
+    repository = _default_repo_root().resolve(strict=True)
+    workspace = _resolve_diagnostic_workspace(repository, arguments.workspace_root)
+    result = verify_run(
+        arguments.run_dir,
+        workspace_root=workspace,
+        repo_root=repository,
+    )
     _emit_json(result.to_dict())
     return 0 if result.valid else 1
 

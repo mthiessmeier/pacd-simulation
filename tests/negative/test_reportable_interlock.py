@@ -115,3 +115,49 @@ def test_reportable_mode_denied_when_repository_is_dirty(
 
     with pytest.raises(ReportableModeDenied, match="not clean"):
         _validate(repo)
+
+
+@pytest.mark.negative
+@pytest.mark.parametrize("component_kind", ["symlink", "junction", "reparse"])
+def test_reportable_mode_denied_when_approval_path_contains_indirection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    component_kind: str,
+) -> None:
+    repo, approval = _temporary_repository(tmp_path)
+    approval.write_text(json.dumps(_record()), encoding="utf-8")
+    _mock_clean_commit(monkeypatch)
+
+    def identify_indirection(path: Path) -> bool:
+        return Path(path) == approval and component_kind in {"symlink", "junction", "reparse"}
+
+    monkeypatch.setattr(
+        reportable,
+        "path_has_symlink_or_reparse",
+        identify_indirection,
+    )
+
+    with pytest.raises(ReportableModeDenied, match="symlink, junction, or reparse"):
+        _validate(repo)
+
+
+@pytest.mark.negative
+def test_reportable_mode_denied_for_actual_symlinked_approval_parent_when_supported(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repository"
+    frozen_parent = repo / "configs" / "protocol" / "frozen"
+    frozen_parent.parent.mkdir(parents=True)
+    outside = tmp_path / "outside-frozen"
+    outside.mkdir()
+    approval = outside / "APPROVAL.json"
+    approval.write_text(json.dumps(_record()), encoding="utf-8")
+    try:
+        frozen_parent.symlink_to(outside, target_is_directory=True)
+    except OSError as error:
+        pytest.skip(f"directory symlinks are unavailable on this host: {error}")
+    _mock_clean_commit(monkeypatch)
+
+    with pytest.raises(ReportableModeDenied, match="symlink, junction, or reparse"):
+        _validate(repo)

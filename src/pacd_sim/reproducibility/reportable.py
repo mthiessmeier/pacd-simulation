@@ -13,6 +13,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from pacd_sim.reproducibility.paths import path_has_symlink_or_reparse
+
 
 class ReportableModeDenied(PermissionError):
     """Raised before output creation when reportable authorization is invalid."""
@@ -94,15 +96,26 @@ def _object_without_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, An
 
 
 def _load_approval(path: Path) -> dict[str, object]:
-    if not path.is_file() or path.is_symlink():
+    if path_has_symlink_or_reparse(path) or not path.is_file() or path.is_symlink():
         raise ReportableModeDenied("Author approval record is absent or not a regular file")
-    if path.stat().st_size > 64 * 1024:
-        raise ReportableModeDenied("Author approval record exceeds the 64 KiB limit")
     try:
+        with path.open("rb") as handle:
+            opened_stat = os.fstat(handle.fileno())
+            payload = handle.read(64 * 1024 + 1)
+        if len(payload) > 64 * 1024:
+            raise ReportableModeDenied("Author approval record exceeds the 64 KiB limit")
+        path_stat = path.stat(follow_symlinks=False)
+        if path_has_symlink_or_reparse(path) or (opened_stat.st_dev, opened_stat.st_ino) != (
+            path_stat.st_dev,
+            path_stat.st_ino,
+        ):
+            raise ReportableModeDenied("Author approval record changed or became indirect")
         value = json.loads(
-            path.read_text(encoding="utf-8"),
+            payload.decode("utf-8"),
             object_pairs_hook=_object_without_duplicate_keys,
         )
+    except ReportableModeDenied:
+        raise
     except (OSError, UnicodeError, json.JSONDecodeError) as error:
         raise ReportableModeDenied(
             "Author approval record is unreadable or invalid JSON"
@@ -154,6 +167,8 @@ def validate_reportable_approval(
     )
     if approval != Path(os.path.abspath(expected_approval)):
         raise ReportableModeDenied("Approval path is not the controlled frozen-protocol record")
+    if path_has_symlink_or_reparse(approval):
+        raise ReportableModeDenied("Approval path contains a symlink, junction, or reparse point")
 
     for name, digest in {
         "config_hash": config_hash,

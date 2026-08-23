@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import hashlib
 import shutil
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
 
-from pacd_sim.harness.run import RunResult, run_diagnostic
+from pacd_sim.harness.run import RunResult
+from pacd_sim.harness.run import _run_diagnostic_worker as run_diagnostic
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CONFIG_ROOT = REPO_ROOT / "configs"
@@ -63,6 +65,36 @@ def _create_isolated_workspace(root: Path) -> IsolatedWorkspace:
     lockfile = REPO_ROOT / "uv.lock"
     if lockfile.is_file():
         shutil.copy2(lockfile, repo_root / "uv.lock")
+    subprocess.run(
+        ["git", "-C", str(repo_root), "init", "--quiet"],
+        check=True,
+        capture_output=True,
+        shell=False,
+    )
+    subprocess.run(
+        ["git", "-C", str(repo_root), "add", "configs", "pyproject.toml", "uv.lock"],
+        check=True,
+        capture_output=True,
+        shell=False,
+    )
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(repo_root),
+            "-c",
+            "user.name=PACD Test",
+            "-c",
+            "user.email=pacd-test@example.invalid",
+            "commit",
+            "--quiet",
+            "-m",
+            "test fixture",
+        ],
+        check=True,
+        capture_output=True,
+        shell=False,
+    )
     output_root = root / "var" / "runs"
     output_root.mkdir(parents=True)
     return IsolatedWorkspace(
@@ -79,6 +111,7 @@ def isolated_workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Isola
 
     root = tmp_path / "PACD-Workspaces" / "PACD-Simulation"
     monkeypatch.setenv("PACD_WORKSPACE_ROOT", str(root))
+    monkeypatch.setattr("pacd_sim.harness.run.default_workspace_root", lambda: root.resolve())
     return _create_isolated_workspace(root)
 
 
@@ -95,12 +128,12 @@ def diagnostic_runs(tmp_path_factory: pytest.TempPathFactory) -> DiagnosticRuns:
         path: file_sha256(path) for path in (scenario, policy, seeds, baseline, metrics)
     }
 
-    from pacd_sim.harness import run as run_module
-
     with pytest.MonkeyPatch.context() as patcher:
         patcher.setenv("PACD_WORKSPACE_ROOT", str(root))
-        patcher.setattr(run_module, "git_commit", lambda _repo: "0" * 40)
-        patcher.setattr(run_module, "git_is_dirty", lambda _repo: False)
+        patcher.setattr(
+            "pacd_sim.harness.run.default_workspace_root",
+            lambda: root.resolve(),
+        )
 
         def run(selected_seed: int) -> RunResult:
             return run_diagnostic(

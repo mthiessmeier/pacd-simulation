@@ -5,13 +5,17 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import multiprocessing
 import platform
+import re
 import time
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
+from multiprocessing.connection import Connection
 from pathlib import Path
 from typing import Any, TextIO, cast
+from uuid import uuid4
 
 import yaml
 from yaml.nodes import MappingNode
@@ -50,7 +54,9 @@ from pacd_sim.reproducibility.manifest import (
 from pacd_sim.reproducibility.paths import (
     PathBoundaryError,
     assert_write_path,
+    default_workspace_root,
     infer_workspace_root,
+    path_has_symlink_or_reparse,
     resolve_workspace_root,
 )
 from pacd_sim.reproducibility.reportable import (
@@ -73,6 +79,10 @@ _MAX_DIAGNOSTIC_SECONDS = 300.0
 
 class ConfigurationError(ValueError):
     """Raised when a diagnostic input is unsafe, ambiguous, or out of bounds."""
+
+
+class DiagnosticTimeoutError(RuntimeError):
+    """Raised after the bounded worker is terminated at the runtime limit."""
 
 
 class _StrictSafeLoader(yaml.SafeLoader):  # type: ignore[misc]
@@ -213,8 +223,10 @@ def _discover_repo_root(source: Path) -> Path:
 
 def _assert_controlled_config(path: Path | str, repo_root: Path) -> Path:
     candidate = Path(path)
-    if candidate.is_symlink():
-        raise ConfigurationError("Configuration symlinks are not permitted")
+    if path_has_symlink_or_reparse(candidate):
+        raise ConfigurationError(
+            "Configuration symlinks, junctions, and reparse points are not permitted"
+        )
     resolved = candidate.resolve(strict=True)
     controlled_root = (repo_root / "configs").resolve(strict=True)
     try:
@@ -490,6 +502,22 @@ def _build_actions(
     return tuple(actions)
 
 
+def _proposal_matches_candidate(
+    proposal: DefensiveAction,
+    candidate: DefensiveAction,
+) -> bool:
+    """Bind an executable configured candidate to a defender-proposed transition."""
+    return (
+        proposal.tick == candidate.tick
+        and proposal.schema_version == candidate.schema_version
+        and proposal.configuration_version == candidate.configuration_version
+        and proposal.action_type == candidate.action_type
+        and proposal.target_id == candidate.target_id
+        and proposal.reversible == candidate.reversible
+        and proposal.requested_authority == candidate.requested_authority
+    )
+
+
 def _build_policy(config: Mapping[str, object]) -> SafetyPolicy:
     def action_types(name: str) -> tuple[str, ...]:
         return tuple(_expect_string(value, name) for value in _expect_list(config.get(name), name))
@@ -686,17 +714,33 @@ def _log(handle: TextIO, message: str) -> None:
 
 
 def _new_run_directory(
-    output_root: Path, workspace_root: Path, seed: int
+    output_root: Path,
+    workspace_root: Path,
+    seed: int,
+    *,
+    invocation_token: str | None = None,
 ) -> tuple[str, Path, Path]:
-    authorized_output = assert_write_path(workspace_root / "var" / "runs", workspace_root)
+    if invocation_token is not None and re.fullmatch(r"[0-9a-f]{32}", invocation_token) is None:
+        raise ValueError("Diagnostic invocation token is invalid")
+    if path_has_symlink_or_reparse(output_root):
+        raise PathBoundaryError("Diagnostic output path contains a symlink or reparse point")
+    authorized_output_input = workspace_root / "var" / "runs"
+    staging_root_input = workspace_root / "var" / "tmp"
+    if path_has_symlink_or_reparse(authorized_output_input) or path_has_symlink_or_reparse(
+        staging_root_input
+    ):
+        raise PathBoundaryError("Diagnostic run roots contain a symlink or reparse point")
+    authorized_output = assert_write_path(authorized_output_input, workspace_root)
     output = assert_write_path(output_root, workspace_root)
     if output != authorized_output:
         raise PathBoundaryError("Diagnostic output_root must be exactly workspace/var/runs")
     output.mkdir(parents=True, exist_ok=True)
-    staging_root = assert_write_path(workspace_root / "var" / "tmp", workspace_root)
+    staging_root = assert_write_path(staging_root_input, workspace_root)
     staging_root.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S.%fZ")
     run_id = f"diagnostic-{timestamp}-seed-{seed}"
+    if invocation_token is not None:
+        run_id = f"{run_id}-{invocation_token}"
     final_dir = assert_write_path(output / run_id, workspace_root)
     staging_dir = assert_write_path(staging_root / f"{run_id}.staging", workspace_root)
     if final_dir.exists():
@@ -790,7 +834,7 @@ class RunResult:
         return value
 
 
-def run_diagnostic(
+def _run_diagnostic_worker(
     scenario_path: Path | str,
     policy_path: Path | str,
     seed_registry_path: Path | str,
@@ -802,6 +846,7 @@ def run_diagnostic(
     baseline_path: Path | str | None = None,
     metric_path: Path | str | None = None,
     reportable: bool = False,
+    _invocation_token: str | None = None,
 ) -> RunResult:
     """Run the tiny synthetic diagnostic and retain a fully verified artifact set."""
     start_counter = time.perf_counter()
@@ -816,10 +861,15 @@ def run_diagnostic(
         if workspace_root is not None
         else infer_workspace_root(repository)
     )
-    try:
-        repository.relative_to(workspace)
-    except ValueError as error:
-        raise ConfigurationError("Repository is outside the designated PACD workspace") from error
+    if workspace != default_workspace_root():
+        raise PathBoundaryError(
+            "Diagnostic worker authority must equal the author-designated PACD workspace"
+        )
+    repository_parent = (workspace / "repo").resolve(strict=False)
+    if repository.parent != repository_parent:
+        raise ConfigurationError(
+            "Repository must be a direct child of the designated PACD workspace repo directory"
+        )
 
     scenario_file = _assert_controlled_config(scenario_path, repository)
     policy_file = _assert_controlled_config(policy_path, repository)
@@ -910,7 +960,12 @@ def run_diagnostic(
     if len(observations) != len(delivered_events):
         raise RuntimeError("Full-coverage diagnostic telemetry unexpectedly omitted an event")
 
-    run_id, run_dir, final_run_dir = _new_run_directory(Path(output_root), workspace, selected_seed)
+    run_id, run_dir, final_run_dir = _new_run_directory(
+        Path(output_root),
+        workspace,
+        selected_seed,
+        invocation_token=_invocation_token,
+    )
     log_path = run_dir / "logs" / "run.log"
     try:
         started_at = datetime.now(UTC).isoformat()
@@ -969,7 +1024,7 @@ def run_diagnostic(
         )
 
         governor = SafetyGovernor(safety_policy)
-        broker = SimulatedExecutionBroker()
+        broker = SimulatedExecutionBroker(governor)
         defender = DiagnosticPACDDefender(compromise_threshold=0.5)
         evidence_items: list[EvidenceItem] = []
         belief_state = BeliefState(configuration_version=protocol_version)
@@ -1063,13 +1118,17 @@ def run_diagnostic(
             actions = _build_actions(scenario, protocol_version, observation.tick)
             observed_dispositions: set[PolicyDisposition] = set()
             for action in actions:
+                matching_proposal = next(
+                    (
+                        proposed
+                        for proposed in defender_decision.proposed_actions
+                        if _proposal_matches_candidate(proposed, action)
+                    ),
+                    None,
+                )
                 proposer = (
                     defender.defender_id
-                    if any(
-                        proposed.action_type == action.action_type
-                        and proposed.target_id == action.target_id
-                        for proposed in defender_decision.proposed_actions
-                    )
+                    if matching_proposal is not None
                     else "diagnostic-safety-probe"
                 )
                 audit.emit(
@@ -1079,7 +1138,9 @@ def run_diagnostic(
                     action_id=action.id,
                     outcome="candidate_only",
                     payload={
+                        "action_digest": canonical_sha256(action),
                         "action_type": action.action_type,
+                        "configuration_version": action.configuration_version,
                         "proposer": proposer,
                         "requested_authority": action.requested_authority,
                         "reversible": action.reversible,
@@ -1104,11 +1165,24 @@ def run_diagnostic(
                     disposition=decision.disposition.value,
                     outcome="decided",
                     payload={
+                        "action_digest": decision.action_digest,
+                        "action_type": decision.action_type,
+                        "configuration_version": decision.configuration_version,
+                        "governance_context_digest": decision.governance_context_digest,
+                        "policy_decision_id": decision.id,
+                        "policy_digest": decision.policy_digest,
                         "policy_version": decision.policy_version,
                         "reason": decision.reason,
+                        "state_digest": decision.state_digest,
+                        "target_id": decision.target_id,
                     },
                 )
                 if decision.permits_execution:
+                    if matching_proposal is None:
+                        raise RuntimeError(
+                            "Governor-approved diagnostic candidate was not proposed "
+                            "by the defender"
+                        )
                     execution = broker.execute(action, decision, state)
                     if not execution.executed:
                         raise RuntimeError(
@@ -1123,13 +1197,24 @@ def run_diagnostic(
                         disposition=decision.disposition.value,
                         outcome="executed",
                         payload={
+                            "action_configuration_version": (
+                                execution.record.action_configuration_version
+                            ),
+                            "action_type": execution.record.action_type,
                             "adapter": broker.adapter_name,
+                            "authorized_action_digest": (execution.record.authorized_action_digest),
+                            "authorized_state_digest": execution.record.authorized_state_digest,
+                            "execution_id": execution.record.id,
                             "network_enabled": broker.network_enabled,
+                            "policy_decision_id": execution.record.policy_decision_id,
+                            "policy_decision_digest": execution.record.policy_decision_digest,
+                            "policy_digest": execution.record.policy_digest,
                             "state_after_digest": execution.record.state_after_digest,
                             "state_before_digest": execution.record.state_before_digest,
+                            "target_id": execution.record.target_id,
                         },
                     )
-                    verification = verify_execution(action, execution)
+                    verification = verify_execution(action, execution, governor)
                     if verification.disposition is not VerificationDisposition.VERIFIED:
                         raise RuntimeError("Simulated execution failed independent verification")
                     audit.emit(
@@ -1140,6 +1225,7 @@ def run_diagnostic(
                         disposition=verification.disposition.value,
                         outcome="verified",
                         payload={
+                            "execution_id": verification.execution_id,
                             "expected_effect_observed": verification.expected_effect_observed,
                             "state_hashes_valid": verification.state_hashes_valid,
                             "verification_id": verification.id,
@@ -1299,3 +1385,280 @@ def run_diagnostic(
             log_path=log_path,
         )
         raise
+
+
+@dataclass(frozen=True)
+class _DiagnosticRequest:
+    scenario_path: str
+    policy_path: str
+    seed_registry_path: str
+    output_root: str
+    seed: int | None
+    workspace_root: str
+    repo_root: str
+    baseline_path: str | None
+    metric_path: str | None
+    reportable: bool
+    invocation_token: str
+
+
+def _diagnostic_process_entry(sender: Connection, request: _DiagnosticRequest) -> None:
+    """Execute one diagnostic in an isolated process and return a small typed envelope."""
+    try:
+        result = _run_diagnostic_worker(
+            request.scenario_path,
+            request.policy_path,
+            request.seed_registry_path,
+            request.output_root,
+            seed=request.seed,
+            workspace_root=request.workspace_root,
+            repo_root=request.repo_root,
+            baseline_path=request.baseline_path,
+            metric_path=request.metric_path,
+            reportable=request.reportable,
+            _invocation_token=request.invocation_token,
+        )
+        sender.send({"ok": True, "result": result.to_dict()})
+    except Exception as error:
+        sender.send(
+            {
+                "ok": False,
+                "error_type": type(error).__name__,
+                "message": str(error),
+            }
+        )
+    finally:
+        sender.close()
+
+
+def _raise_worker_error(error_type: str, message: str) -> None:
+    exception_types: dict[str, type[Exception]] = {
+        "ConfigurationError": ConfigurationError,
+        "DiagnosticTimeoutError": DiagnosticTimeoutError,
+        "FileExistsError": FileExistsError,
+        "FileNotFoundError": FileNotFoundError,
+        "OSError": OSError,
+        "PathBoundaryError": PathBoundaryError,
+        "PermissionError": PermissionError,
+        "ReportableModeDenied": ReportableModeDenied,
+        "RuntimeError": RuntimeError,
+        "ValueError": ValueError,
+    }
+    exception_type = exception_types.get(error_type, RuntimeError)
+    raise exception_type(message)
+
+
+def _retain_interrupted_evidence(
+    workspace: Path,
+    invocation_token: str,
+    error: Exception,
+) -> None:
+    """Fail only this invocation and retain staging or atomically finalized evidence."""
+    staging_root = assert_write_path(workspace / "var" / "tmp", workspace)
+    final_root = assert_write_path(workspace / "var" / "runs", workspace)
+    if path_has_symlink_or_reparse(staging_root) or path_has_symlink_or_reparse(final_root):
+        raise RuntimeError("Diagnostic evidence root contains a symlink or reparse point")
+    candidates: list[tuple[Path, bool]] = []
+    if staging_root.is_dir():
+        candidates.extend(
+            (path, True)
+            for path in staging_root.iterdir()
+            if path.is_dir() and path.name.endswith(f"-{invocation_token}.staging")
+        )
+    if final_root.is_dir():
+        candidates.extend(
+            (path, False)
+            for path in final_root.iterdir()
+            if path.is_dir() and path.name.endswith(f"-{invocation_token}")
+        )
+    if not candidates:
+        return
+    if len(candidates) != 1:
+        raise RuntimeError("Interrupted invocation has an ambiguous evidence directory")
+    candidate, is_staging = candidates[0]
+    if path_has_symlink_or_reparse(candidate):
+        raise RuntimeError("Interrupted invocation evidence path is indirect")
+    run_dir = assert_write_path(candidate, workspace)
+    run_id = run_dir.name.removesuffix(".staging") if is_staging else run_dir.name
+    match = re.fullmatch(
+        rf"diagnostic-.+-seed-(\d+)-{re.escape(invocation_token)}",
+        run_id,
+    )
+    if match is None:
+        raise RuntimeError("Interrupted invocation evidence name is invalid")
+    seed = int(match.group(1))
+    final_dir = assert_write_path(final_root / run_id, workspace)
+    _retain_failed_run(
+        run_dir,
+        final_dir,
+        workspace,
+        seed,
+        error,
+        log_path=run_dir / "logs" / "run.log",
+    )
+
+
+def _retain_timeout_evidence(workspace: Path, invocation_token: str) -> None:
+    """Retain raw evidence after terminating one timed-out diagnostic worker."""
+    _retain_interrupted_evidence(
+        workspace,
+        invocation_token,
+        DiagnosticTimeoutError("Diagnostic worker exceeded the five-minute runtime boundary"),
+    )
+
+
+def _retain_parent_failure(
+    workspace: Path,
+    invocation_token: str,
+    error: RuntimeError,
+) -> None:
+    try:
+        _retain_interrupted_evidence(workspace, invocation_token, error)
+    except (OSError, RuntimeError, ValueError) as retention_error:
+        raise RuntimeError(
+            "Diagnostic worker failed and evidence retention also failed: "
+            f"{type(retention_error).__name__}"
+        ) from retention_error
+
+
+def _validate_public_workspace(
+    scenario_path: Path | str,
+    workspace_root: Path | str | None,
+    repo_root: Path | str | None,
+) -> tuple[Path, Path]:
+    initial_scenario = Path(scenario_path)
+    if repo_root is not None and path_has_symlink_or_reparse(repo_root):
+        raise PathBoundaryError("Repository path contains a symlink or reparse point")
+    if workspace_root is not None and path_has_symlink_or_reparse(workspace_root):
+        raise PathBoundaryError("Workspace path contains a symlink or reparse point")
+    if path_has_symlink_or_reparse(initial_scenario):
+        raise PathBoundaryError("Scenario path contains a symlink or reparse point")
+    repository = (
+        Path(repo_root).resolve(strict=True)
+        if repo_root is not None
+        else _discover_repo_root(initial_scenario.resolve(strict=True))
+    )
+    workspace = (
+        resolve_workspace_root(workspace_root)
+        if workspace_root is not None
+        else infer_workspace_root(repository)
+    )
+    mandated = default_workspace_root()
+    if workspace != mandated:
+        raise PathBoundaryError(
+            "Diagnostic workspace authority must equal the author-designated PACD workspace"
+        )
+    repository_parent = (workspace / "repo").resolve(strict=False)
+    if repository.parent != repository_parent:
+        raise ConfigurationError(
+            "Repository must be a direct child of the designated PACD workspace repo directory"
+        )
+    return repository, workspace
+
+
+def run_diagnostic(
+    scenario_path: Path | str,
+    policy_path: Path | str,
+    seed_registry_path: Path | str,
+    output_root: Path | str,
+    *,
+    seed: int | None = None,
+    workspace_root: Path | str | None = None,
+    repo_root: Path | str | None = None,
+    baseline_path: Path | str | None = None,
+    metric_path: Path | str | None = None,
+    reportable: bool = False,
+) -> RunResult:
+    """Run one diagnostic in a killable process bounded to five wall-clock minutes."""
+    repository, workspace = _validate_public_workspace(
+        scenario_path,
+        workspace_root,
+        repo_root,
+    )
+    invocation_token = uuid4().hex
+    request = _DiagnosticRequest(
+        scenario_path=str(Path(scenario_path)),
+        policy_path=str(Path(policy_path)),
+        seed_registry_path=str(Path(seed_registry_path)),
+        output_root=str(Path(output_root)),
+        seed=seed,
+        workspace_root=str(workspace),
+        repo_root=str(repository),
+        baseline_path=str(Path(baseline_path)) if baseline_path is not None else None,
+        metric_path=str(Path(metric_path)) if metric_path is not None else None,
+        reportable=reportable,
+        invocation_token=invocation_token,
+    )
+    context = multiprocessing.get_context("spawn")
+    receiver, sender = context.Pipe(duplex=False)
+    process = context.Process(
+        target=_diagnostic_process_entry,
+        args=(sender, request),
+        name=f"pacd-diagnostic-{invocation_token}",
+    )
+    process.start()
+    sender.close()
+    process.join(_MAX_DIAGNOSTIC_SECONDS)
+    if process.is_alive():
+        process.terminate()
+        process.join(5.0)
+        if process.is_alive():
+            process.kill()
+            process.join(5.0)
+        receiver.close()
+        if process.is_alive():
+            raise DiagnosticTimeoutError(
+                "Diagnostic worker exceeded five minutes and could not be terminated"
+            )
+        process.close()
+        try:
+            _retain_timeout_evidence(workspace, invocation_token)
+        except (OSError, RuntimeError, ValueError) as retention_error:
+            raise DiagnosticTimeoutError(
+                "Diagnostic worker was terminated at five minutes, but timeout evidence "
+                f"retention failed: {type(retention_error).__name__}"
+            ) from retention_error
+        raise DiagnosticTimeoutError(
+            "Diagnostic worker was terminated at the five-minute runtime boundary"
+        )
+    if not receiver.poll():
+        exit_code = process.exitcode
+        receiver.close()
+        process.close()
+        error = RuntimeError(f"Diagnostic worker exited without a result (exit_code={exit_code})")
+        _retain_parent_failure(workspace, invocation_token, error)
+        raise error
+    try:
+        envelope = receiver.recv()
+    except (EOFError, OSError) as receive_error:
+        receiver.close()
+        process.close()
+        error = RuntimeError(
+            f"Diagnostic worker result channel failed: {type(receive_error).__name__}"
+        )
+        _retain_parent_failure(workspace, invocation_token, error)
+        raise error from receive_error
+    receiver.close()
+    process.close()
+    if not isinstance(envelope, dict) or not isinstance(envelope.get("ok"), bool):
+        error = RuntimeError("Diagnostic worker returned an invalid result envelope")
+        _retain_parent_failure(workspace, invocation_token, error)
+        raise error
+    if envelope["ok"] is not True:
+        _raise_worker_error(str(envelope.get("error_type")), str(envelope.get("message")))
+    value = envelope.get("result")
+    if not isinstance(value, dict):
+        error = RuntimeError("Diagnostic worker result is missing")
+        _retain_parent_failure(workspace, invocation_token, error)
+        raise error
+    return RunResult(
+        run_dir=Path(str(value["run_dir"])),
+        run_id=str(value["run_id"]),
+        seed=int(value["seed"]),
+        config_hash=str(value["config_hash"]),
+        raw_semantic_hash=str(value["raw_semantic_hash"]),
+        summary_semantic_hash=str(value["summary_semantic_hash"]),
+        manifest_path=Path(str(value["manifest_path"])),
+        elapsed_seconds=float(value["elapsed_seconds"]),
+        evidence_label=str(value["evidence_label"]),
+    )

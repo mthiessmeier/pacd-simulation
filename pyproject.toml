@@ -40,6 +40,7 @@ dev = [
 
 [tool.uv]
 default-groups = ["dev"]
+prerelease = "disallow"
 
 [tool.uv.build-backend]
 module-name = "pacd_sim"

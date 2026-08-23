@@ -17,6 +17,7 @@ from pacd_sim.environment.model import (
 from pacd_sim.execution.broker import SimulatedExecutionBroker
 from pacd_sim.governance.governor import PolicyDecision, SafetyGovernor, SafetyPolicy
 from pacd_sim.reproducibility.canonical import canonical_sha256
+from pacd_sim.state.snapshot import create_snapshot
 
 _DIGEST_BOUND_FIELDS = (
     "tick",
@@ -56,7 +57,9 @@ def _state_with_two_authorizable_targets() -> EnvironmentState:
     )
 
 
-def _authorized_action() -> tuple[DefensiveAction, PolicyDecision]:
+def _authorized_action(
+    state: EnvironmentState,
+) -> tuple[DefensiveAction, PolicyDecision, SafetyGovernor]:
     action = DefensiveAction(
         id="action-authorized",
         tick=2,
@@ -72,7 +75,8 @@ def _authorized_action() -> tuple[DefensiveAction, PolicyDecision]:
             prohibited_action_types=("external_network_scan",),
         )
     )
-    return action, governor.evaluate(action)
+    decision = governor.evaluate(action, mission_state=create_snapshot(state))
+    return action, decision, governor
 
 
 def _assert_sessions_remain_active(state: EnvironmentState) -> None:
@@ -86,10 +90,10 @@ def _assert_sessions_remain_active(state: EnvironmentState) -> None:
 @pytest.mark.property
 def test_approved_decision_cannot_be_retargeted_to_another_valid_session() -> None:
     state = _state_with_two_authorizable_targets()
-    action, decision = _authorized_action()
+    action, decision, governor = _authorized_action(state)
     substituted = action.model_copy(update={"target_id": "session-substituted"})
 
-    result = SimulatedExecutionBroker().execute(substituted, decision, state)
+    result = SimulatedExecutionBroker(governor).execute(substituted, decision, state)
 
     assert decision.target_id == action.target_id
     assert decision.action_digest == canonical_sha256(action)
@@ -105,7 +109,7 @@ def test_approved_decision_cannot_be_retargeted_to_another_valid_session() -> No
 @settings(max_examples=30, deadline=None)
 def test_every_nonidentity_action_field_is_bound_by_governor_digest(field: str) -> None:
     state = _state_with_two_authorizable_targets()
-    action, decision = _authorized_action()
+    action, decision, governor = _authorized_action(state)
     substituted_values: dict[str, object] = {
         "tick": 3,
         "schema_version": "tampered-schema",
@@ -121,7 +125,7 @@ def test_every_nonidentity_action_field_is_bound_by_governor_digest(field: str) 
     }
     substituted = action.model_copy(update={field: substituted_values[field]})
 
-    result = SimulatedExecutionBroker().execute(substituted, decision, state)
+    result = SimulatedExecutionBroker(governor).execute(substituted, decision, state)
 
     assert substituted.id == action.id
     assert substituted.action_type == action.action_type

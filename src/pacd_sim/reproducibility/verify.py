@@ -15,6 +15,10 @@ import pyarrow.parquet as pq
 from pacd_sim.constants import EVIDENCE_LABEL
 from pacd_sim.metrics.summarize import summary_from_raw
 from pacd_sim.reproducibility.canonical import canonical_sha256
+from pacd_sim.reproducibility.evidence_validation import (
+    strict_json_loads,
+    validate_retained_evidence,
+)
 from pacd_sim.reproducibility.manifest import (
     semantic_events_hash,
     semantic_summary_hash,
@@ -93,7 +97,7 @@ class VerificationResult:
 
 
 def _read_json_object(path: Path) -> dict[str, object]:
-    value = json.loads(path.read_text(encoding="utf-8"))
+    value = strict_json_loads(path.read_text(encoding="utf-8"), source=path.name)
     if not isinstance(value, dict):
         raise ValueError(f"Expected a JSON object: {path.name}")
     return {str(key): item for key, item in value.items()}
@@ -133,7 +137,7 @@ def _verify_labelled_rows(path: Path, errors: list[str]) -> None:
                 for line in handle:
                     if not line.strip():
                         continue
-                    value = json.loads(line)
+                    value = strict_json_loads(line, source=path.name)
                     labels.append(value.get("evidence_label") if isinstance(value, dict) else None)
         if not labels or any(label != EVIDENCE_LABEL for label in labels):
             errors.append(f"Evidence label missing or invalid in {path.name}")
@@ -152,6 +156,8 @@ def _is_ordered_subsequence(values: list[str], required: tuple[str, ...]) -> boo
 def verify_run(
     run_dir: Path | str,
     workspace_root: Path | str | None = None,
+    *,
+    repo_root: Path | str | None = None,
 ) -> VerificationResult:
     """Validate checksums, labels, semantics, derivation, and safety invariants."""
     errors: list[str] = []
@@ -186,6 +192,14 @@ def verify_run(
         errors.append(
             f"Aggregate run output exceeds the 2 GiB diagnostic budget: {aggregate_size} bytes"
         )
+        return VerificationResult(
+            run_dir=root,
+            valid=False,
+            errors=tuple(errors),
+            checked_files=(),
+            raw_semantic_hash=None,
+            summary_semantic_hash=None,
+        )
     expected_inventory = set(_REQUIRED_ARTIFACTS)
     for unexpected in sorted(inventory_files - expected_inventory):
         errors.append(f"Unexpected run artifact is prohibited: {unexpected}")
@@ -214,6 +228,24 @@ def verify_run(
             continue
         artifacts[relative_name] = resolved
         checked.append(relative_name)
+
+    strict_required = {
+        "canonical_config.json",
+        "seed_registry.json",
+        "status.json",
+        "manifest.json",
+        "raw/events.jsonl",
+        "raw/events.parquet",
+    }
+    if strict_required.issubset(artifacts):
+        errors.extend(
+            validate_retained_evidence(
+                root,
+                artifacts,
+                workspace,
+                repo_root=repo_root,
+            )
+        )
 
     marker = artifacts.get("NON_REPORTABLE_DIAGNOSTIC")
     if marker is not None:
@@ -475,7 +507,7 @@ def verify_run(
                 payload_text = row.get("payload_json")
                 if not isinstance(payload_text, str):
                     continue
-                payload = json.loads(payload_text)
+                payload = strict_json_loads(payload_text, source="raw payload_json")
                 is_execution = row.get("event_type") == "simulated_execution"
                 declares_executed = isinstance(payload, dict) and payload.get("executed") is True
                 if is_execution or declares_executed:
