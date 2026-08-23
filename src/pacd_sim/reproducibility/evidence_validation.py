@@ -691,6 +691,18 @@ def _validate_raw_events(
             "Raw event count does not match the independently reconstructed diagnostic chain"
         )
         return
+    decoded_column_bytes = 0
+    for row_group_index in range(parquet_file.metadata.num_row_groups):
+        row_group = parquet_file.metadata.row_group(row_group_index)
+        for column_index in range(row_group.num_columns):
+            column_bytes = row_group.column(column_index).total_uncompressed_size
+            if column_bytes < 0:
+                errors.append("Raw Parquet metadata contains an invalid decoded size")
+                return
+            decoded_column_bytes += column_bytes
+            if decoded_column_bytes > _MAX_RAW_ARTIFACT_BYTES:
+                errors.append("Raw Parquet decoded column data exceeds the 64 MiB cap")
+                return
     table = parquet_file.read()
     parquet_rows = [{str(key): item for key, item in row.items()} for row in table.to_pylist()]
     jsonl_rows: list[dict[str, object]] = []

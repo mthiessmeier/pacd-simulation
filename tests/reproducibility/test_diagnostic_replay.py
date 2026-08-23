@@ -14,6 +14,7 @@ import pytest
 from conftest import DiagnosticRuns
 
 from pacd_sim.audit.writer import EVENT_SCHEMA
+from pacd_sim.reproducibility import evidence_validation
 from pacd_sim.reproducibility import verify as verify_module
 from pacd_sim.reproducibility.canonical import canonical_sha256
 from pacd_sim.reproducibility.manifest import (
@@ -316,6 +317,43 @@ def test_verifier_enforces_aggregate_output_budget_without_creating_large_files(
 
     assert not result.valid
     assert any("aggregate run output" in error.lower() for error in result.errors)
+
+
+@pytest.mark.reproducibility
+def test_verifier_rejects_compressed_parquet_that_expands_past_the_read_cap(
+    diagnostic_runs: DiagnosticRuns,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = diagnostic_runs.same_seed_a.run_dir
+    destination = diagnostic_runs.workspace.root / "var" / "tmp" / "parquet-expansion-cap"
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(source, destination)
+
+    parquet_path = destination / "raw" / "events.parquet"
+    rows = pq.read_table(parquet_path).to_pylist()
+    rows[0]["payload_json"] = json.dumps(
+        {"padding": "x" * (512 * 1024)},
+        separators=(",", ":"),
+    )
+    pq.write_table(
+        pa.Table.from_pylist(rows, schema=EVENT_SCHEMA),
+        parquet_path,
+        compression="ZSTD",
+        data_page_version="1.0",
+        use_dictionary=False,
+        write_statistics=False,
+    )
+    assert parquet_path.stat().st_size < 64 * 1024
+    manifest = _manifest(destination)
+    manifest["raw_semantic_hash"] = semantic_events_hash(parquet_path)
+    _write_canonical_json(destination / "manifest.json", manifest)
+    _refresh_integrity_closure(destination, ("raw/events.parquet",))
+    monkeypatch.setattr(evidence_validation, "_MAX_RAW_ARTIFACT_BYTES", 64 * 1024)
+
+    result = verify_run(destination, workspace_root=diagnostic_runs.workspace.root)
+
+    assert not result.valid
+    assert any("decoded column data" in error.lower() for error in result.errors)
 
 
 @pytest.mark.reproducibility
