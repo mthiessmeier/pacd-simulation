@@ -6,6 +6,7 @@ import hashlib
 import json
 import math
 import multiprocessing
+import os
 import platform
 import re
 import time
@@ -698,9 +699,12 @@ def _replace_task_created_json(
     workspace_root: Path,
 ) -> Path:
     """Atomically replace task-created run metadata during fail-closed finalization."""
-    target = assert_write_path(path, workspace_root)
+    lexical_target = Path(os.path.abspath(path))
+    if path_has_symlink_or_reparse(lexical_target):
+        raise RuntimeError("Task-created metadata path is indirect")
+    target = assert_write_path(lexical_target, workspace_root)
     temporary = assert_write_path(target.with_name(target.name + ".replacement"), workspace_root)
-    if temporary.exists():
+    if path_has_symlink_or_reparse(temporary) or temporary.exists() or temporary.is_symlink():
         raise RuntimeError("Task-created metadata replacement file already exists")
     with temporary.open("xb") as handle:
         handle.write(canonical_json_bytes(dict(value)))
@@ -776,9 +780,22 @@ def _retain_failed_run(
     log_path: Path | None = None,
 ) -> None:
     """Mark and retain a task-created staging run without deleting raw evidence."""
-    if log_path is not None and log_path.is_file():
+    lexical_run_dir = Path(os.path.abspath(run_dir))
+    if path_has_symlink_or_reparse(lexical_run_dir):
+        raise RuntimeError("Task-created run directory is indirect")
+    safe_log_path: Path | None = None
+    if log_path is not None:
+        lexical_log = Path(os.path.abspath(log_path))
         try:
-            with log_path.open("a", encoding="utf-8", newline="\n") as failure_log:
+            lexical_log.relative_to(lexical_run_dir)
+        except ValueError:
+            safe_log_path = None
+        else:
+            if not path_has_symlink_or_reparse(lexical_log):
+                safe_log_path = lexical_log
+    if safe_log_path is not None and safe_log_path.is_file():
+        try:
+            with safe_log_path.open("a", encoding="utf-8", newline="\n") as failure_log:
                 _log(failure_log, f"diagnostic failed; error_type={type(error).__name__}")
         except OSError:
             pass
@@ -795,6 +812,8 @@ def _retain_failed_run(
         workspace_root,
     )
     failed_manifest_path = run_dir / "manifest.json"
+    if path_has_symlink_or_reparse(failed_manifest_path):
+        raise RuntimeError("Task-created manifest path is indirect")
     if failed_manifest_path.is_file():
         try:
             failed_manifest_value = json.loads(failed_manifest_path.read_text(encoding="utf-8"))
@@ -809,6 +828,8 @@ def _retain_failed_run(
                 )
         except (OSError, UnicodeError, json.JSONDecodeError, RuntimeError):
             pass
+    if path_has_symlink_or_reparse(final_run_dir):
+        raise RuntimeError("Task-created final run path is indirect")
     if run_dir.exists() and not final_run_dir.exists():
         run_dir.replace(final_run_dir)
 
@@ -1454,10 +1475,14 @@ def _retain_interrupted_evidence(
     error: Exception,
 ) -> None:
     """Fail only this invocation and retain staging or atomically finalized evidence."""
-    staging_root = assert_write_path(workspace / "var" / "tmp", workspace)
-    final_root = assert_write_path(workspace / "var" / "runs", workspace)
-    if path_has_symlink_or_reparse(staging_root) or path_has_symlink_or_reparse(final_root):
+    lexical_staging_root = workspace / "var" / "tmp"
+    lexical_final_root = workspace / "var" / "runs"
+    if path_has_symlink_or_reparse(lexical_staging_root) or path_has_symlink_or_reparse(
+        lexical_final_root
+    ):
         raise RuntimeError("Diagnostic evidence root contains a symlink or reparse point")
+    staging_root = assert_write_path(lexical_staging_root, workspace)
+    final_root = assert_write_path(lexical_final_root, workspace)
     candidates: list[tuple[Path, bool]] = []
     if staging_root.is_dir():
         candidates.extend(
@@ -1510,7 +1535,7 @@ def _retain_timeout_evidence(workspace: Path, invocation_token: str) -> None:
 def _retain_parent_failure(
     workspace: Path,
     invocation_token: str,
-    error: RuntimeError,
+    error: Exception,
 ) -> None:
     try:
         _retain_interrupted_evidence(workspace, invocation_token, error)
@@ -1645,20 +1670,31 @@ def run_diagnostic(
         _retain_parent_failure(workspace, invocation_token, error)
         raise error
     if envelope["ok"] is not True:
-        _raise_worker_error(str(envelope.get("error_type")), str(envelope.get("message")))
+        try:
+            _raise_worker_error(str(envelope.get("error_type")), str(envelope.get("message")))
+        except Exception as worker_error:
+            _retain_parent_failure(workspace, invocation_token, worker_error)
+            raise
     value = envelope.get("result")
     if not isinstance(value, dict):
         error = RuntimeError("Diagnostic worker result is missing")
         _retain_parent_failure(workspace, invocation_token, error)
         raise error
-    return RunResult(
-        run_dir=Path(str(value["run_dir"])),
-        run_id=str(value["run_id"]),
-        seed=int(value["seed"]),
-        config_hash=str(value["config_hash"]),
-        raw_semantic_hash=str(value["raw_semantic_hash"]),
-        summary_semantic_hash=str(value["summary_semantic_hash"]),
-        manifest_path=Path(str(value["manifest_path"])),
-        elapsed_seconds=float(value["elapsed_seconds"]),
-        evidence_label=str(value["evidence_label"]),
-    )
+    try:
+        return RunResult(
+            run_dir=Path(str(value["run_dir"])),
+            run_id=str(value["run_id"]),
+            seed=int(value["seed"]),
+            config_hash=str(value["config_hash"]),
+            raw_semantic_hash=str(value["raw_semantic_hash"]),
+            summary_semantic_hash=str(value["summary_semantic_hash"]),
+            manifest_path=Path(str(value["manifest_path"])),
+            elapsed_seconds=float(value["elapsed_seconds"]),
+            evidence_label=str(value["evidence_label"]),
+        )
+    except (KeyError, TypeError, ValueError, OverflowError) as conversion_error:
+        error = RuntimeError(
+            f"Diagnostic worker result fields are invalid: {type(conversion_error).__name__}"
+        )
+        _retain_parent_failure(workspace, invocation_token, error)
+        raise error from conversion_error

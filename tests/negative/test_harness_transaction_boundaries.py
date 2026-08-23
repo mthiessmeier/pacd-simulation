@@ -18,7 +18,7 @@ from pacd_sim.harness.run import (
 from pacd_sim.harness.run import (
     _run_diagnostic_worker as run_diagnostic,
 )
-from pacd_sim.reproducibility.paths import PathBoundaryError
+from pacd_sim.reproducibility.paths import PathBoundaryError, path_has_symlink_or_reparse
 
 
 def _run(workspace: IsolatedWorkspace) -> None:
@@ -277,6 +277,72 @@ def test_parent_failure_marks_atomically_finalized_evidence_failed_without_raw_l
     status = json.loads((final_dir / "status.json").read_text(encoding="utf-8"))
     assert status["completion_status"] == "FAILED"
     assert status["error_type"] == "RuntimeError"
+
+
+@pytest.mark.negative
+def test_failed_run_retention_never_appends_to_a_log_outside_owned_run(
+    isolated_workspace: IsolatedWorkspace,
+) -> None:
+    invocation_token = "c" * 32
+    _run_id, staging_dir, final_dir = run_module._new_run_directory(
+        isolated_workspace.output_root,
+        isolated_workspace.root,
+        424242,
+        invocation_token=invocation_token,
+    )
+    outside_log = isolated_workspace.root / "var" / "outside.log"
+    outside_log.write_text("sentinel\n", encoding="utf-8")
+
+    run_module._retain_failed_run(
+        staging_dir,
+        final_dir,
+        isolated_workspace.root,
+        424242,
+        RuntimeError("test failure"),
+        log_path=outside_log,
+    )
+
+    assert outside_log.read_text(encoding="utf-8") == "sentinel\n"
+    status = json.loads((final_dir / "status.json").read_text(encoding="utf-8"))
+    assert status["completion_status"] == "FAILED"
+
+
+@pytest.mark.negative
+def test_failed_run_retention_rejects_indirect_metadata_before_write(
+    isolated_workspace: IsolatedWorkspace,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    invocation_token = "d" * 32
+    _run_id, staging_dir, final_dir = run_module._new_run_directory(
+        isolated_workspace.output_root,
+        isolated_workspace.root,
+        424242,
+        invocation_token=invocation_token,
+    )
+    status_path = staging_dir / "status.json"
+
+    def identify_indirect_status(path: Path | str) -> bool:
+        candidate = Path(path)
+        return candidate == status_path or path_has_symlink_or_reparse(candidate)
+
+    monkeypatch.setattr(
+        run_module,
+        "path_has_symlink_or_reparse",
+        identify_indirect_status,
+    )
+
+    with pytest.raises(RuntimeError, match="metadata path is indirect"):
+        run_module._retain_failed_run(
+            staging_dir,
+            final_dir,
+            isolated_workspace.root,
+            424242,
+            RuntimeError("test failure"),
+        )
+
+    assert not status_path.exists()
+    assert staging_dir.is_dir()
+    assert not final_dir.exists()
 
 
 @pytest.mark.negative

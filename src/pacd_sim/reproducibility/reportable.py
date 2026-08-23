@@ -102,12 +102,24 @@ def _load_approval(path: Path) -> dict[str, object]:
         with path.open("rb") as handle:
             opened_stat = os.fstat(handle.fileno())
             payload = handle.read(64 * 1024 + 1)
+            read_stat = os.fstat(handle.fileno())
+            handle.seek(0)
+            confirmation = handle.read(64 * 1024 + 1)
+            confirmed_stat = os.fstat(handle.fileno())
         if len(payload) > 64 * 1024:
             raise ReportableModeDenied("Author approval record exceeds the 64 KiB limit")
         path_stat = path.stat(follow_symlinks=False)
-        if path_has_symlink_or_reparse(path) or (opened_stat.st_dev, opened_stat.st_ino) != (
-            path_stat.st_dev,
-            path_stat.st_ino,
+        identity_fields = ("st_dev", "st_ino", "st_size", "st_mtime_ns")
+        opened_identity = tuple(getattr(opened_stat, field) for field in identity_fields)
+        read_identity = tuple(getattr(read_stat, field) for field in identity_fields)
+        confirmed_identity = tuple(getattr(confirmed_stat, field) for field in identity_fields)
+        path_identity = tuple(getattr(path_stat, field) for field in identity_fields)
+        if (
+            payload != confirmation
+            or path_has_symlink_or_reparse(path)
+            or opened_identity != read_identity
+            or opened_identity != confirmed_identity
+            or opened_identity != path_identity
         ):
             raise ReportableModeDenied("Author approval record changed or became indirect")
         value = json.loads(
