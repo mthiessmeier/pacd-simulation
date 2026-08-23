@@ -1,0 +1,145 @@
+{
+  "generated_at": "2026-08-23T02:37:12-04:00",
+  "pre_existing_preserved": [
+    {
+      "name": "PowerShell Core",
+      "status": "present-compatible",
+      "version": "7.6.4",
+      "disposition": "preserve"
+    },
+    {
+      "name": "Windows PowerShell",
+      "status": "present-do-not-modify",
+      "version": "5.1.26100.8875",
+      "disposition": "preserve"
+    },
+    {
+      "name": "Git",
+      "status": "present-compatible",
+      "version": "2.53.0.windows.3",
+      "disposition": "preserve bundled runtime"
+    },
+    {
+      "name": "Python",
+      "status": "present-do-not-modify",
+      "version": "3.12.13",
+      "disposition": "preserve; separate task-managed 3.13.15 installed without modifying this runtime"
+    },
+    {
+      "name": "Codex desktop editor surface",
+      "status": "present-compatible",
+      "version": "not collected",
+      "disposition": "preserve"
+    },
+    {
+      "name": "WSL",
+      "status": "present-do-not-modify",
+      "version": "2.7.10.0",
+      "disposition": "do not use or modify"
+    },
+    {
+      "name": "Chrome connection",
+      "status": "present-compatible",
+      "version": "not collected",
+      "disposition": "bounded use only"
+    }
+  ],
+  "task_installed": [
+    {
+      "name": "GitHub CLI",
+      "version": "2.98.0",
+      "status": "installed-verified",
+      "source": "https://github.com/cli/cli/releases/tag/v2.98.0",
+      "publisher": "GitHub, Inc.",
+      "license": "MIT",
+      "scope": "workspace-local portable",
+      "path": "%WORKSPACE_ROOT%\\var\\cache\\tools\\gh\\2.98.0\\bin\\gh.exe",
+      "archive_sha256": "c28c7b3b584967a05b74d9eaf7481bff24ddc34930bf2d6e442c148236561eb1",
+      "signature": "Valid Authenticode, GitHub, Inc.",
+      "executed": true,
+      "disposition": "Retain as a task-installed portable tool; no persistent PATH change"
+    },
+    {
+      "name": "uv",
+      "version": "0.12.5",
+      "status": "installed-verified-executed",
+      "source": "https://github.com/astral-sh/uv/releases/tag/0.12.5",
+      "publisher": "Astral Software, Inc.",
+      "license": "Apache-2.0 OR MIT",
+      "scope": "workspace-local portable",
+      "path": "%WORKSPACE_ROOT%\\var\\cache\\tools\\uv\\0.12.5\\uv.exe",
+      "archive_sha256": "4c4d49d8738847d9b71ba319e49a5688c93eac0fe6204b1df24e98528dddf39a",
+      "signature": "Not Authenticode-signed; official SHA-256 and GitHub/Sigstore SLSA provenance attestation verified",
+      "executed": true,
+      "disposition": "Use exact workspace-local path; no persistent PATH change"
+    },
+    {
+      "name": "CPython",
+      "version": "3.13.15",
+      "status": "installed-verified-executed",
+      "source": "astral-sh/python-build-standalone release 20260814 through uv managed catalog",
+      "publisher": "Python Software Foundation / Astral managed distribution",
+      "license": "Python-2.0 plus bundled component licenses; legal sufficiency not asserted",
+      "scope": "uv-managed per-user",
+      "path": "%USERPROFILE%\\AppData\\Roaming\\uv\\python\\cpython-3.13.15-windows-x86_64-none\\python.exe",
+      "archive_sha256": "07c977bbe4abad07e3bbc314608633e6c74eab482a7bae81f4361cda970b45e6",
+      "executable_sha256": "664bd3d1b94379e1d4405f2500c1d1e2aa750f0db718af0c9ffbc5d6a9f40aac",
+      "signature": "Executable NotSigned; exact archive official SHA-256 and SLSA provenance attestation verified before install",
+      "install_bytes": 62661875.0,
+      "registry_registration": false,
+      "bin_shim": false,
+      "existing_python_modified": false,
+      "executed": true,
+      "disposition": "Retain as the exact isolated runtime; no PATH or registry integration"
+    },
+    {
+      "name": "PACD project environment",
+      "version": "uv.lock SHA-256 12372a81d459ec112417b7a76b7fc65a32f5e0da865b39a466c443563a28f290",
+      "status": "installed-verified",
+      "source": "Official PyPI artifacts and local editable project resolved by uv.lock",
+      "publisher": "Multiple; exact metadata retained in status/DEPENDENCY_INVENTORY.json",
+      "license": "Declared package metadata retained; legal sufficiency not asserted",
+      "scope": "repository-local .venv",
+      "path": "%WORKSPACE_ROOT%\\repo\\pacd-simulation\\.venv",
+      "executed": true,
+      "package_count": 73,
+      "disposition": "Primary isolated development and validation environment"
+    },
+    {
+      "name": "PACD clean reconstruction environment",
+      "version": "same frozen uv.lock",
+      "status": "installed-verified",
+      "source": "Offline workspace cache populated from official PyPI artifacts",
+      "publisher": "Multiple; identical locked inventory",
+      "license": "Same declared metadata as the primary environment",
+      "scope": "task-local retained acceptance environment",
+      "path": "%WORKSPACE_ROOT%\\var\\tmp\\reconstruction-venv-final",
+      "executed": true,
+      "package_count": 73,
+      "test_result": "108 passed",
+      "disposition": "Retained as ignored clean-reconstruction evidence"
+    }
+  ],
+  "prohibited_or_unneeded": [
+    "Docker",
+    "Podman",
+    "GPU/CUDA frameworks",
+    "cloud compute",
+    "commercial tools"
+  ],
+  "resource_accounting": {
+    "download_bytes": 57303699.0,
+    "extracted_tool_bytes": 93929849.0,
+    "free_disk_bytes": 219280363520,
+    "download_budget_gb": 5,
+    "status": "within budget",
+    "tool_uv_cache_bytes": 44,
+    "project_uv_cache_bytes": 455171081,
+    "managed_python_bytes": 64725344,
+    "primary_venv_bytes": 465465746,
+    "reconstruction_venv_bytes": 457927052,
+    "diagnostic_output_bytes": 103540,
+    "listed_component_bytes": 1594626355,
+    "accounting_note": "Listed components exclude retained mypy/pip-audit caches and repository/package metadata; the free-disk gate is measured separately"
+  }
+}

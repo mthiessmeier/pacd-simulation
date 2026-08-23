@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "evidence_label": "NON_REPORTABLE_DIAGNOSTIC",
+  "generated_at": "2026-08-23T02:27:43-04:00",
+  "result": "PASS",
+  "repository": {
+    "name": "pacd-simulation",
+    "visibility": "PRIVATE",
+    "is_private": true,
+    "is_archived": false,
+    "default_branch": "main",
+    "workflow_count": 0
+  },
+  "delivery": {
+    "branch": "codex/environment-bootstrap-v1",
+    "pre_delivery_head": "f5776b018f187e14e4996a2a1a26e84b00706423",
+    "pr_number": 1,
+    "pr_title": "Bootstrap bounded local PACD simulation environment",
+    "pr_created_at": "2026-08-23T06:27:00Z",
+    "pr_state": "OPEN",
+    "is_draft": false,
+    "is_merged": false,
+    "base_branch": "main",
+    "head_branch": "codex/environment-bootstrap-v1",
+    "head_matched_local_at_verification": true,
+    "pr_body_requirements_verified": true,
+    "pr_body_sections": [
+      "scope",
+      "installed components",
+      "architecture",
+      "validation and evidence",
+      "security boundaries",
+      "remaining author decisions"
+    ],
+    "force_push_used": false,
+    "persistent_git_credential_helper_added": false
+  }
+}

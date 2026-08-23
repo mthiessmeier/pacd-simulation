@@ -1,0 +1,206 @@
+policy:
+  id: PACD-SIM-HOST-GUARDRAILS-001
+  version: "1.0"
+  date: "2026-08-22"
+  owner: "Michael Thiessmeier"
+  status: "mandatory instruction-level control"
+  enforcement_note: >-
+    This file guides Codex and reviewers. It is not proof of operating-system-level
+    sandbox enforcement. Compliance must be supported by retained logs and tests.
+
+workspace:
+  default_root: "%USERPROFILE%\\PACD-Workspaces\\PACD-Simulation"
+  require_current_directory_under_root: true
+  existing_content_policy: "read-only inventory; create versioned child or escalate"
+  writable_subtrees:
+    - "repo"
+    - "package"
+    - "var/downloads"
+    - "var/cache"
+    - "var/tmp"
+    - "var/runs"
+    - "bootstrap-status"
+  deletion_scope:
+    allowed_only_if_task_created:
+      - "var/tmp"
+      - "repo/.venv"
+    prohibited_even_if_in_workspace:
+      - "repo/.git"
+      - "repo/configs/protocol/frozen"
+      - "repo/var/runs"
+      - "repo/artifacts"
+      - "local-backups"
+      - "user-provided inputs"
+
+protected_paths:
+  mode: "read-only"
+  paths:
+    - "%USERPROFILE%\\Desktop"
+    - "%USERPROFILE%\\Documents"
+    - "%USERPROFILE%\\Downloads"
+    - "%USERPROFILE%\\OneDrive\\Desktop"
+    - "%USERPROFILE%\\OneDrive\\Documents"
+    - "%USERPROFILE%\\OneDrive\\Downloads"
+  discover_redirected_equivalents: true
+  permitted_operations:
+    - "read explicitly identified PACD input"
+    - "copy explicitly identified PACD input into workspace"
+  prohibited_operations:
+    - "delete"
+    - "move"
+    - "rename"
+    - "overwrite"
+    - "edit"
+    - "extract"
+    - "bulk scan or index"
+    - "cleanup"
+
+existing_software:
+  preserve: true
+  prohibited_operations:
+    - "uninstall"
+    - "remove"
+    - "repair"
+    - "upgrade"
+    - "downgrade"
+    - "replace"
+    - "reconfigure"
+  permitted_alternative: "separate user-scoped side-by-side install"
+  project_venv_reconciliation_allowed: true
+  explicit_denied_examples:
+    - "winget uninstall"
+    - "choco uninstall"
+    - "scoop uninstall"
+    - "uv python uninstall"
+    - "global pip uninstall"
+    - "npm uninstall -g"
+    - "msiexec /x"
+    - "Remove-AppxPackage"
+
+host_security:
+  prohibited_changes:
+    - "disable or exclude antivirus/EDR"
+    - "disable or modify firewall"
+    - "disable UAC"
+    - "modify BitLocker or device encryption"
+    - "modify backups or restore"
+    - "modify VPN, proxy, DNS, hosts, certificates, or trust stores"
+    - "change PowerShell execution policy"
+    - "manual registry edits"
+    - "create services, scheduled tasks, or startup items"
+    - "change global PATH"
+    - "change browser security, passwords, sync, or extensions"
+  on_block: "escalate; do not bypass"
+
+installations:
+  authorized: true
+  source_policy: "official vendor or official package registry only"
+  preferred_scope: "user"
+  verify_signature_or_checksum_when_available: true
+  pipe_to_shell_prohibited: true
+  prerelease_prohibited: true
+  budget_gb: 5
+  require_log_fields:
+    - "product"
+    - "version"
+    - "source"
+    - "publisher"
+    - "license"
+    - "scope"
+    - "expected disk use"
+    - "reason"
+  prohibited_without_escalation:
+    - "administrator elevation"
+    - "reboot"
+    - "system-wide install"
+    - "Docker Desktop"
+    - "Podman"
+    - "WSL"
+    - "GPU/CUDA framework"
+    - "commercial software"
+    - "paid subscription"
+
+browser:
+  chrome_extension_allowed: true
+  allowed_purposes:
+    - "official documentation"
+    - "authenticated GitHub action"
+    - "official signed installer workflow"
+  unrelated_tabs_and_accounts_prohibited: true
+  extension_install_or_removal_prohibited: true
+  default_settings_change_prohibited: true
+  payment_or_subscription_prohibited: true
+  download_destination: "%WORKSPACE_ROOT%\\var\\downloads"
+  if_download_lands_in_downloads: "copy to workspace; leave original untouched"
+  repair_or_reinstall_extension: "escalate"
+
+github:
+  authorized: true
+  default_repo_name: "pacd-simulation"
+  visibility: "private"
+  create_if_missing: true
+  ambiguous_repo_or_org: "escalate"
+  branch: "codex/environment-bootstrap-v1"
+  direct_default_branch_commit: false
+  merge_authorized: false
+  force_push: false
+  delete_repo_branch_tag_release: false
+  change_visibility_ownership_billing_security: false
+  public_release_package_pages_gist: false
+  license_selection: "pending author decision"
+  new_pat_ssh_key_oauth_secret: "escalate"
+  ci:
+    allowed_scope: "lint, unit tests, small diagnostic smoke only"
+    full_monte_carlo: false
+    paid_usage_uncertain: "do not auto-trigger; provide proposal"
+
+simulation:
+  mode: "local-first CPU-only simulation"
+  real_network_actions: false
+  production_integrations: false
+  real_credentials_or_telemetry: false
+  gpu_use: false
+  reinforcement_learning_bootstrap: false
+  live_llm_inference_bootstrap: false
+  temporary_server_bind: "127.0.0.1"
+  firewall_rule_changes: false
+  reportable_runs: false
+  reportable_interlock_required: true
+  diagnostic_label: "NON_REPORTABLE_DIAGNOSTIC"
+  max_diagnostic_minutes: 5
+  max_diagnostic_output_gb: 2
+  max_workers_formula: "min(8, max(1, logical_cores - 2))"
+
+research_integrity:
+  stale_empirical_results: "provenance only; do not use"
+  confidential_or_proprietary_sources: "do not ingest without explicit approval"
+  canonical_publication_files: "read-only; no modification"
+  frozen_protocol_authority: "author only"
+  failed_negative_inconclusive_outputs: "retain"
+  claims_without_evidence: false
+
+escalation:
+  mandatory_triggers:
+    - "protected path modification or deletion"
+    - "pre-existing software modification or removal"
+    - "administrator elevation or reboot"
+    - "security-control change or bypass"
+    - "insufficient disk requiring cleanup"
+    - "unsigned or unverifiable download"
+    - "ambiguous GitHub repository, organization, license, or ownership"
+    - "possible GitHub or cloud cost"
+    - "new credential, PAT, SSH key, OAuth grant, or secret"
+    - "container, WSL, GPU, cloud, or inbound networking need"
+    - "confidential/proprietary source or governance conflict"
+    - "destructive command or history rewrite"
+    - "acceptance-test blocker outside isolated workspace"
+  required_fields:
+    - "blocker"
+    - "exact proposed action"
+    - "affected path/system/account"
+    - "necessity"
+    - "risk"
+    - "rollback plan"
+    - "nondestructive alternatives"
+    - "expected cost"
+    - "minimum author decision"

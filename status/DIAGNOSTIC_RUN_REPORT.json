@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "evidence_label": "NON_REPORTABLE_DIAGNOSTIC",
+  "generated_at": "2026-08-23T01:46:00-04:00",
+  "result": "PASS",
+  "empirical_claim_authorized": false,
+  "runs": [
+    {
+      "run_id": "diagnostic-20260823T054239.772912Z-seed-424242",
+      "seed": 424242,
+      "wall_seconds": 2.164,
+      "bytes": 34512,
+      "event_count": 23,
+      "verification_exit_code": 0
+    },
+    {
+      "run_id": "diagnostic-20260823T054242.060457Z-seed-424242",
+      "seed": 424242,
+      "wall_seconds": 2.257,
+      "bytes": 34512,
+      "event_count": 23,
+      "verification_exit_code": 0
+    },
+    {
+      "run_id": "diagnostic-20260823T054244.321302Z-seed-424243",
+      "seed": 424243,
+      "wall_seconds": 2.295,
+      "bytes": 34516,
+      "event_count": 23,
+      "verification_exit_code": 0
+    }
+  ],
+  "same_seed": {
+    "raw_semantic_sha256": "ab0a44652f411026a3ef529cb63dc9b07c735046502555597e24c07963db0008",
+    "summary_semantic_sha256": "9616e1edf0401f353625e3b35e714b14dc517b55bbe7d4c5db76c2b3565ecd76",
+    "raw_match": true,
+    "summary_match": true
+  },
+  "different_seed": {
+    "raw_semantic_sha256": "e3dbe8e94999f2e911ebe999693b15ea62046aea1d4216d40190239c4425bc4a",
+    "summary_semantic_sha256": "3228bda10bc24eb94be30fea5d6010a991996a672f7f4f082e9febfcf27deff6",
+    "raw_distinct": true,
+    "summary_distinct": true
+  },
+  "per_run_counts": {
+    "observations": 2,
+    "evidence": 2,
+    "state_updates": 2,
+    "hypotheses": 2,
+    "candidate_actions": 3,
+    "approved_actions": 1,
+    "escalated_actions": 1,
+    "prohibited_actions": 1,
+    "simulated_executions": 1,
+    "verified_executions": 1,
+    "benign_negative_control_records": 2,
+    "prohibited_executions": 0
+  },
+  "execution_boundary": {
+    "adapter": "simulated_only",
+    "network_enabled": false,
+    "prohibited_candidate_executed": false
+  },
+  "reportable_denial": {
+    "exit_code": 3,
+    "status": "DENIED",
+    "reason": "author approval record absent or not a regular file",
+    "run_directory_set_unchanged": true
+  }
+}

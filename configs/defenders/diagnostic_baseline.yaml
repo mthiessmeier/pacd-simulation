@@ -1,0 +1,5 @@
+evidence_label: NON_REPORTABLE_DIAGNOSTIC
+schema_version: "1.0"
+name: null_diagnostic_baseline
+observations: synthetic_only
+actions: none

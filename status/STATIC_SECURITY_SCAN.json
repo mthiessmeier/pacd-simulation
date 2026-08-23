@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "evidence_label": "NON_REPORTABLE_DIAGNOSTIC",
+  "generated_at": "2026-08-23T05:34:27Z",
+  "tool": "bandit 1.9.4",
+  "scope": "src/pacd_sim",
+  "lines_scanned": 4546,
+  "errors": [],
+  "findings": [],
+  "result": "PASS",
+  "reviewed_suppressions": [
+    {
+      "rule": "B404",
+      "locations": [
+        "src/pacd_sim/reproducibility/doctor.py",
+        "src/pacd_sim/reproducibility/reportable.py"
+      ],
+      "disposition": "Accepted narrow tooling boundary: subprocess is used only for local read-only Git state queries."
+    },
+    {
+      "rule": "B603",
+      "locations": [
+        "src/pacd_sim/reproducibility/doctor.py",
+        "src/pacd_sim/reproducibility/reportable.py"
+      ],
+      "disposition": "Accepted narrow tooling boundary: executable is resolved locally, argument vectors are fixed/private, shell is false, output is captured, and timeout is bounded."
+    }
+  ]
+}
