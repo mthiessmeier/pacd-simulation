@@ -9,9 +9,10 @@ import multiprocessing
 import os
 import platform
 import re
+import secrets
 import time
 from collections.abc import Mapping
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import UTC, datetime
 from multiprocessing.connection import Connection
 from pathlib import Path
@@ -60,6 +61,7 @@ from pacd_sim.reproducibility.paths import (
     path_has_symlink_or_reparse,
     resolve_workspace_root,
 )
+from pacd_sim.reproducibility.receipts import create_execution_receipt
 from pacd_sim.reproducibility.reportable import (
     ReportableModeDenied,
     git_commit,
@@ -76,6 +78,25 @@ _MAX_CONFIG_NODES = 10_000
 _MAX_DIAGNOSTIC_EVENTS = 100
 _MAX_DIAGNOSTIC_ACTIONS = 100
 _MAX_DIAGNOSTIC_SECONDS = 300.0
+_MAX_PARENT_MANIFEST_BYTES = 1024 * 1024
+_OWNERSHIP_VERSION = "1.0"
+_OWNERSHIP_KEYS = frozenset(
+    {
+        "capability_sha256",
+        "created_at",
+        "evidence_label",
+        "final_run_path",
+        "invocation_id",
+        "ownership_version",
+        "receipt_capability_sha256",
+        "run_id",
+        "schema_version",
+        "seed",
+        "staging_device",
+        "staging_inode",
+        "staging_path",
+    }
+)
 
 
 class ConfigurationError(ValueError):
@@ -717,70 +738,352 @@ def _log(handle: TextIO, message: str) -> None:
     handle.flush()
 
 
-def _new_run_directory(
+@dataclass(frozen=True)
+class _InvocationOwnership:
+    """Parent-created authority for exactly one diagnostic staging directory."""
+
+    workspace_root: Path
+    invocation_id: str
+    capability: str
+    receipt_capability: str | None
+    run_id: str
+    seed: int
+    staging_dir: Path
+    final_run_dir: Path
+    marker_path: Path
+    started_at: str
+    staging_device: int
+    staging_inode: int
+    marker_device: int
+    marker_inode: int
+    marker_size: int
+    marker_mtime_ns: int
+
+
+def _validate_invocation_id(invocation_id: str) -> None:
+    if re.fullmatch(r"[0-9a-f]{32}", invocation_id) is None:
+        raise ValueError("Diagnostic invocation ID is invalid")
+
+
+def _ownership_marker_value(
+    *,
+    invocation_id: str,
+    capability: str,
+    receipt_capability: str,
+    run_id: str,
+    seed: int,
+    staging_dir: Path,
+    final_run_dir: Path,
+    started_at: str,
+    staging_device: int,
+    staging_inode: int,
+) -> dict[str, object]:
+    return {
+        "capability_sha256": hashlib.sha256(bytes.fromhex(capability)).hexdigest(),
+        "created_at": started_at,
+        "evidence_label": EVIDENCE_LABEL,
+        "final_run_path": str(final_run_dir),
+        "invocation_id": invocation_id,
+        "ownership_version": _OWNERSHIP_VERSION,
+        "receipt_capability_sha256": hashlib.sha256(bytes.fromhex(receipt_capability)).hexdigest(),
+        "run_id": run_id,
+        "schema_version": SCHEMA_VERSION,
+        "seed": seed,
+        "staging_device": staging_device,
+        "staging_inode": staging_inode,
+        "staging_path": str(staging_dir),
+    }
+
+
+def _create_invocation_ownership(
     output_root: Path,
     workspace_root: Path,
     seed: int,
     *,
-    invocation_token: str | None = None,
-) -> tuple[str, Path, Path]:
-    if invocation_token is not None and re.fullmatch(r"[0-9a-f]{32}", invocation_token) is None:
-        raise ValueError("Diagnostic invocation token is invalid")
+    invocation_id: str | None = None,
+) -> _InvocationOwnership:
+    """Exclusively establish exact staging ownership before a worker starts."""
+
+    selected_invocation_id = invocation_id or uuid4().hex
+    _validate_invocation_id(selected_invocation_id)
+    if isinstance(seed, bool) or not isinstance(seed, int) or seed < 0:
+        raise ValueError("Diagnostic invocation seed is invalid")
+    workspace = resolve_workspace_root(workspace_root)
     if path_has_symlink_or_reparse(output_root):
         raise PathBoundaryError("Diagnostic output path contains a symlink or reparse point")
-    authorized_output_input = workspace_root / "var" / "runs"
-    staging_root_input = workspace_root / "var" / "tmp"
-    if path_has_symlink_or_reparse(authorized_output_input) or path_has_symlink_or_reparse(
-        staging_root_input
+    output_input = workspace / "var" / "runs"
+    staging_root_input = workspace / "var" / "tmp"
+    ownership_root_input = workspace / "var" / "invocations"
+    if any(
+        path_has_symlink_or_reparse(path)
+        for path in (output_input, staging_root_input, ownership_root_input)
     ):
-        raise PathBoundaryError("Diagnostic run roots contain a symlink or reparse point")
-    authorized_output = assert_write_path(authorized_output_input, workspace_root)
-    output = assert_write_path(output_root, workspace_root)
+        raise PathBoundaryError("Diagnostic ownership roots contain an indirect path")
+    output = assert_write_path(output_root, workspace)
+    authorized_output = assert_write_path(output_input, workspace)
     if output != authorized_output:
         raise PathBoundaryError("Diagnostic output_root must be exactly workspace/var/runs")
-    output.mkdir(parents=True, exist_ok=True)
-    staging_root = assert_write_path(staging_root_input, workspace_root)
-    staging_root.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S.%fZ")
-    run_id = f"diagnostic-{timestamp}-seed-{seed}"
-    if invocation_token is not None:
-        run_id = f"{run_id}-{invocation_token}"
-    final_dir = assert_write_path(output / run_id, workspace_root)
-    staging_dir = assert_write_path(staging_root / f"{run_id}.staging", workspace_root)
-    if final_dir.exists():
-        raise FileExistsError(f"Refusing to overwrite existing run directory: {final_dir}")
-    staging_created_by_task = False
+    staging_root = assert_write_path(staging_root_input, workspace)
+    ownership_root = assert_write_path(ownership_root_input, workspace)
+    for root in (output, staging_root, ownership_root):
+        root.mkdir(parents=True, exist_ok=True)
+
+    started_at = datetime.now(UTC).isoformat()
+    timestamp = datetime.fromisoformat(started_at).strftime("%Y%m%dT%H%M%S.%fZ")
+    run_id = f"diagnostic-{timestamp}-seed-{seed}-{selected_invocation_id}"
+    staging_dir = assert_write_path(staging_root / f"{run_id}.staging", workspace)
+    final_run_dir = assert_write_path(output / run_id, workspace)
+    ownership_dir = assert_write_path(
+        ownership_root / selected_invocation_id,
+        workspace,
+    )
+    marker_path = assert_write_path(ownership_dir / "ownership.json", workspace)
+    for target, name in (
+        (final_run_dir, "final run"),
+        (staging_dir, "staging directory"),
+        (ownership_dir, "invocation ownership"),
+    ):
+        if path_has_symlink_or_reparse(target):
+            raise PathBoundaryError(f"Diagnostic {name} path is indirect")
+        if target.exists() or target.is_symlink():
+            raise FileExistsError(f"Refusing to modify existing {name} path: {target}")
+
+    # The ownership directory and staging directory are both claimed only by
+    # successful exclusive creation.  Existing collisions are never inspected,
+    # labelled, moved, or reused.
+    ownership_dir.mkdir(parents=False, exist_ok=False)
     try:
         staging_dir.mkdir(parents=False, exist_ok=False)
-        staging_created_by_task = True
     except FileExistsError as error:
-        # An existing path may belong to another process or predate this task.  Its
-        # presence is not evidence that this invocation created it, so leave it
-        # byte-for-byte untouched and fail closed.
         raise FileExistsError(
             f"Refusing to modify existing staging directory: {staging_dir}"
         ) from error
-    except OSError:
-        # Path.mkdir only establishes ownership by returning successfully.  If it
-        # raises for any other reason, do not inspect, label, move, or replace the
-        # target based merely on its existence.
-        raise
-    if not staging_created_by_task:
-        raise RuntimeError("Staging directory ownership was not established")
-    return run_id, staging_dir, final_dir
+    staging_stat = staging_dir.stat(follow_symlinks=False)
+    capability = secrets.token_hex(32)
+    receipt_capability = secrets.token_hex(32)
+    marker = _ownership_marker_value(
+        invocation_id=selected_invocation_id,
+        capability=capability,
+        receipt_capability=receipt_capability,
+        run_id=run_id,
+        seed=seed,
+        staging_dir=staging_dir,
+        final_run_dir=final_run_dir,
+        started_at=started_at,
+        staging_device=staging_stat.st_dev,
+        staging_inode=staging_stat.st_ino,
+    )
+    with marker_path.open("xb") as handle:
+        handle.write(canonical_json_bytes(marker))
+        handle.flush()
+        os.fsync(handle.fileno())
+    marker_stat = marker_path.stat(follow_symlinks=False)
+    if marker_stat.st_nlink != 1:
+        raise RuntimeError("Invocation ownership marker has an unexpected link count")
+    return _InvocationOwnership(
+        workspace_root=workspace,
+        invocation_id=selected_invocation_id,
+        capability=capability,
+        receipt_capability=receipt_capability,
+        run_id=run_id,
+        seed=seed,
+        staging_dir=staging_dir,
+        final_run_dir=final_run_dir,
+        marker_path=marker_path,
+        started_at=started_at,
+        staging_device=staging_stat.st_dev,
+        staging_inode=staging_stat.st_ino,
+        marker_device=marker_stat.st_dev,
+        marker_inode=marker_stat.st_ino,
+        marker_size=marker_stat.st_size,
+        marker_mtime_ns=marker_stat.st_mtime_ns,
+    )
+
+
+def _validate_invocation_ownership(
+    ownership: _InvocationOwnership,
+    workspace_root: Path,
+    *,
+    allow_finalized: bool = False,
+    require_receipt_authority: bool = False,
+) -> Path:
+    """Revalidate marker, capability, exact paths, and directory identity."""
+
+    workspace = resolve_workspace_root(workspace_root)
+    if ownership.workspace_root != workspace:
+        raise RuntimeError("Invocation ownership workspace does not match")
+    _validate_invocation_id(ownership.invocation_id)
+    if re.fullmatch(r"[0-9a-f]{64}", ownership.capability) is None:
+        raise RuntimeError("Invocation ownership capability is invalid")
+    if require_receipt_authority:
+        if (
+            ownership.receipt_capability is None
+            or re.fullmatch(r"[0-9a-f]{64}", ownership.receipt_capability) is None
+        ):
+            raise RuntimeError("Parent receipt capability is absent or invalid")
+    expected_staging = assert_write_path(
+        workspace / "var" / "tmp" / f"{ownership.run_id}.staging",
+        workspace,
+    )
+    expected_final = assert_write_path(
+        workspace / "var" / "runs" / ownership.run_id,
+        workspace,
+    )
+    expected_marker = assert_write_path(
+        workspace / "var" / "invocations" / ownership.invocation_id / "ownership.json",
+        workspace,
+    )
+    if (
+        ownership.staging_dir != expected_staging
+        or ownership.final_run_dir != expected_final
+        or ownership.marker_path != expected_marker
+    ):
+        raise RuntimeError("Invocation ownership paths do not match their exact authority")
+    match = re.fullmatch(
+        rf"diagnostic-\d{{8}}T\d{{6}}\.\d{{6}}Z-seed-(\d+)-{ownership.invocation_id}",
+        ownership.run_id,
+    )
+    if match is None or int(match.group(1)) != ownership.seed:
+        raise RuntimeError("Invocation ownership run identity is invalid")
+    if any(
+        path_has_symlink_or_reparse(path)
+        for path in (ownership.marker_path, ownership.staging_dir, ownership.final_run_dir)
+    ):
+        raise RuntimeError("Invocation ownership path is indirect")
+
+    before = ownership.marker_path.stat(follow_symlinks=False)
+    if (
+        before.st_dev,
+        before.st_ino,
+        before.st_size,
+        before.st_mtime_ns,
+        before.st_nlink,
+    ) != (
+        ownership.marker_device,
+        ownership.marker_inode,
+        ownership.marker_size,
+        ownership.marker_mtime_ns,
+        1,
+    ):
+        raise RuntimeError("Invocation ownership marker identity changed")
+    with ownership.marker_path.open("rb") as handle:
+        opened = os.fstat(handle.fileno())
+        if (
+            opened.st_dev,
+            opened.st_ino,
+            opened.st_size,
+            opened.st_mtime_ns,
+            opened.st_nlink,
+        ) != (
+            before.st_dev,
+            before.st_ino,
+            before.st_size,
+            before.st_mtime_ns,
+            before.st_nlink,
+        ):
+            raise RuntimeError("Opened ownership marker identity differs from its path")
+        if before.st_size > _MAX_PARENT_MANIFEST_BYTES:
+            raise RuntimeError("Invocation ownership marker exceeds its bounded limit")
+        marker_bytes = handle.read(_MAX_PARENT_MANIFEST_BYTES + 1)
+        opened_after = os.fstat(handle.fileno())
+    after = ownership.marker_path.stat(follow_symlinks=False)
+    if (
+        (
+            before.st_dev,
+            before.st_ino,
+            before.st_size,
+            before.st_mtime_ns,
+            before.st_nlink,
+        )
+        != (
+            after.st_dev,
+            after.st_ino,
+            after.st_size,
+            after.st_mtime_ns,
+            after.st_nlink,
+        )
+        or (
+            opened.st_dev,
+            opened.st_ino,
+            opened.st_size,
+            opened.st_mtime_ns,
+            opened.st_nlink,
+        )
+        != (
+            opened_after.st_dev,
+            opened_after.st_ino,
+            opened_after.st_size,
+            opened_after.st_mtime_ns,
+            opened_after.st_nlink,
+        )
+        or len(marker_bytes) > _MAX_PARENT_MANIFEST_BYTES
+    ):
+        raise RuntimeError("Invocation ownership marker changed during stable read")
+    marker = json.loads(marker_bytes, object_pairs_hook=_unique_json_object)
+    if not isinstance(marker, dict) or frozenset(marker) != _OWNERSHIP_KEYS:
+        raise RuntimeError("Invocation ownership marker shape is invalid")
+    expected_marker_values: dict[str, object] = {
+        "created_at": ownership.started_at,
+        "evidence_label": EVIDENCE_LABEL,
+        "final_run_path": str(ownership.final_run_dir),
+        "invocation_id": ownership.invocation_id,
+        "ownership_version": _OWNERSHIP_VERSION,
+        "run_id": ownership.run_id,
+        "schema_version": SCHEMA_VERSION,
+        "seed": ownership.seed,
+        "staging_device": ownership.staging_device,
+        "staging_inode": ownership.staging_inode,
+        "staging_path": str(ownership.staging_dir),
+    }
+    if canonical_json_bytes(marker) != marker_bytes or any(
+        marker.get(key) != expected for key, expected in expected_marker_values.items()
+    ):
+        raise RuntimeError("Invocation ownership marker binding is invalid")
+    capability_sha256 = marker.get("capability_sha256")
+    if not isinstance(capability_sha256, str) or not secrets.compare_digest(
+        capability_sha256,
+        hashlib.sha256(bytes.fromhex(ownership.capability)).hexdigest(),
+    ):
+        raise RuntimeError("Invocation ownership capability does not match")
+    if require_receipt_authority:
+        assert ownership.receipt_capability is not None
+        receipt_capability_sha256 = marker.get("receipt_capability_sha256")
+        if not isinstance(receipt_capability_sha256, str) or not secrets.compare_digest(
+            receipt_capability_sha256,
+            hashlib.sha256(bytes.fromhex(ownership.receipt_capability)).hexdigest(),
+        ):
+            raise RuntimeError("Parent receipt capability does not match")
+
+    existing_locations = [
+        path for path in (ownership.staging_dir, ownership.final_run_dir) if path.exists()
+    ]
+    if len(existing_locations) != 1:
+        raise RuntimeError("Invocation evidence has an ambiguous or missing exact path")
+    location = existing_locations[0]
+    if location == ownership.final_run_dir and not allow_finalized:
+        raise RuntimeError("Invocation evidence was finalized before parent authorization")
+    location_stat = location.stat(follow_symlinks=False)
+    if (location_stat.st_dev, location_stat.st_ino) != (
+        ownership.staging_device,
+        ownership.staging_inode,
+    ):
+        raise RuntimeError("Invocation evidence directory identity changed")
+    return location
 
 
 def _retain_failed_run(
-    run_dir: Path,
-    final_run_dir: Path,
     workspace_root: Path,
-    seed: int,
+    ownership: _InvocationOwnership,
     error: Exception,
-    *,
-    log_path: Path | None = None,
 ) -> None:
-    """Mark and retain a task-created staging run without deleting raw evidence."""
-    del log_path
+    """Mark and retain only the exact parent-owned invocation directory."""
+
+    run_dir = _validate_invocation_ownership(
+        ownership,
+        workspace_root,
+        allow_finalized=True,
+        require_receipt_authority=True,
+    )
     lexical_run_dir = Path(os.path.abspath(run_dir))
     if path_has_symlink_or_reparse(lexical_run_dir):
         raise RuntimeError("Task-created run directory is indirect")
@@ -791,7 +1094,7 @@ def _retain_failed_run(
             "schema_version": SCHEMA_VERSION,
             "completion_status": "FAILED",
             "reportable": False,
-            "seed": seed,
+            "seed": ownership.seed,
             "error_type": type(error).__name__,
         },
         workspace_root,
@@ -801,22 +1104,36 @@ def _retain_failed_run(
         raise RuntimeError("Task-created manifest path is indirect")
     if failed_manifest_path.is_file():
         try:
-            failed_manifest_value = json.loads(failed_manifest_path.read_text(encoding="utf-8"))
-            if isinstance(failed_manifest_value, dict):
-                failed_manifest = {str(key): value for key, value in failed_manifest_value.items()}
-                failed_manifest["completion_status"] = "FAILED"
-                failed_manifest["failure_type"] = type(error).__name__
-                _replace_task_created_json(
-                    failed_manifest_path,
-                    failed_manifest,
-                    workspace_root,
-                )
-        except (OSError, UnicodeError, json.JSONDecodeError, RuntimeError):
+            failed_manifest = _read_parent_manifest(run_dir)
+            failed_manifest["completion_status"] = "FAILED"
+            failed_manifest["failure_type"] = type(error).__name__
+            _replace_task_created_json(
+                failed_manifest_path,
+                failed_manifest,
+                workspace_root,
+            )
+        except (
+            OSError,
+            RecursionError,
+            UnicodeError,
+            json.JSONDecodeError,
+            RuntimeError,
+            ValueError,
+        ):
             pass
-    if path_has_symlink_or_reparse(final_run_dir):
+    if path_has_symlink_or_reparse(ownership.final_run_dir):
         raise RuntimeError("Task-created final run path is indirect")
-    if run_dir.exists() and not final_run_dir.exists():
-        run_dir.replace(final_run_dir)
+    if run_dir == ownership.staging_dir:
+        if ownership.final_run_dir.exists() or ownership.final_run_dir.is_symlink():
+            raise RuntimeError("Exact final run path was occupied during failed retention")
+        run_dir.rename(ownership.final_run_dir)
+    finalized = _validate_invocation_ownership(
+        ownership,
+        workspace_root,
+        allow_finalized=True,
+    )
+    if finalized != ownership.final_run_dir:
+        raise RuntimeError("Failed evidence was not retained at its exact final path")
 
 
 @dataclass(frozen=True)
@@ -831,12 +1148,15 @@ class RunResult:
     summary_semantic_hash: str
     manifest_path: Path
     elapsed_seconds: float
+    invocation_id: str
+    receipt_path: Path | None = None
     evidence_label: str = EVIDENCE_LABEL
 
     def to_dict(self) -> dict[str, object]:
         value = asdict(self)
         value["run_dir"] = str(self.run_dir)
         value["manifest_path"] = str(self.manifest_path)
+        value["receipt_path"] = str(self.receipt_path) if self.receipt_path is not None else None
         return value
 
 
@@ -852,7 +1172,7 @@ def _run_diagnostic_worker(
     baseline_path: Path | str | None = None,
     metric_path: Path | str | None = None,
     reportable: bool = False,
-    _invocation_token: str | None = None,
+    _ownership: _InvocationOwnership,
 ) -> RunResult:
     """Run the tiny synthetic diagnostic and retain a fully verified artifact set."""
     start_counter = time.perf_counter()
@@ -876,6 +1196,7 @@ def _run_diagnostic_worker(
         raise ConfigurationError(
             "Repository must be a direct child of the designated PACD workspace repo directory"
         )
+    _validate_invocation_ownership(_ownership, workspace)
 
     scenario_file = _assert_controlled_config(scenario_path, repository)
     policy_file = _assert_controlled_config(policy_path, repository)
@@ -908,6 +1229,8 @@ def _run_diagnostic_worker(
         raise ConfigurationError("Selected seed must be an integer")
     if selected_seed not in registered_seeds:
         raise ConfigurationError("Selected seed is not present in the controlled seed registry")
+    if selected_seed != _ownership.seed:
+        raise ConfigurationError("Selected seed differs from parent invocation authority")
 
     canonical_config: dict[str, object] = {
         "evidence_label": EVIDENCE_LABEL,
@@ -966,15 +1289,15 @@ def _run_diagnostic_worker(
     if len(observations) != len(delivered_events):
         raise RuntimeError("Full-coverage diagnostic telemetry unexpectedly omitted an event")
 
-    run_id, run_dir, final_run_dir = _new_run_directory(
-        Path(output_root),
-        workspace,
-        selected_seed,
-        invocation_token=_invocation_token,
-    )
+    authorized_output = assert_write_path(Path(output_root), workspace)
+    if authorized_output != _ownership.final_run_dir.parent:
+        raise PathBoundaryError("Worker output root differs from parent invocation authority")
+    _validate_invocation_ownership(_ownership, workspace)
+    run_id = _ownership.run_id
+    run_dir = _ownership.staging_dir
     log_path = run_dir / "logs" / "run.log"
     try:
-        started_at = datetime.now(UTC).isoformat()
+        started_at = _ownership.started_at
         marker_path = _write_labelled_text(
             run_dir / EVIDENCE_LABEL,
             EVIDENCE_LABEL + "\n",
@@ -997,15 +1320,7 @@ def _run_diagnostic_worker(
         logs_dir.mkdir(parents=False, exist_ok=False)
         log_path = assert_write_path(logs_dir / "run.log", workspace)
         log_handle = log_path.open("x", encoding="utf-8", newline="\n")
-    except Exception as error:
-        _retain_failed_run(
-            run_dir,
-            final_run_dir,
-            workspace,
-            selected_seed,
-            error,
-            log_path=log_path,
-        )
+    except Exception:
         raise
     audit: AuditWriter | None = None
     try:
@@ -1362,10 +1677,9 @@ def _run_diagnostic_worker(
         write_sha256s(run_dir, checksums, workspace_root=workspace)
         write_manifest(run_dir, manifest, workspace_root=workspace)
         write_canonical_json(run_dir / "status.json", status, workspace_root=workspace)
-        run_dir.replace(final_run_dir)
-        manifest_path = final_run_dir / "manifest.json"
+        manifest_path = run_dir / "manifest.json"
         return RunResult(
-            run_dir=final_run_dir,
+            run_dir=run_dir,
             run_id=run_id,
             seed=selected_seed,
             config_hash=config_hash,
@@ -1373,8 +1687,9 @@ def _run_diagnostic_worker(
             summary_semantic_hash=summary_semantic_hash,
             manifest_path=manifest_path,
             elapsed_seconds=elapsed,
+            invocation_id=_ownership.invocation_id,
         )
-    except Exception as error:
+    except Exception:
         if audit is not None:
             try:
                 audit.close()
@@ -1382,14 +1697,303 @@ def _run_diagnostic_worker(
                 pass
         if not log_handle.closed:
             log_handle.close()
-        _retain_failed_run(
-            run_dir,
-            final_run_dir,
-            workspace,
-            selected_seed,
-            error,
-            log_path=log_path,
+        raise
+
+
+def _read_parent_manifest(run_dir: Path) -> dict[str, object]:
+    """Reread the finalized manifest rather than trusting worker envelope fields."""
+
+    manifest_path = run_dir / "manifest.json"
+    if path_has_symlink_or_reparse(manifest_path):
+        raise RuntimeError("Final manifest path is indirect")
+    before = manifest_path.stat(follow_symlinks=False)
+    if before.st_nlink != 1 or before.st_size > _MAX_PARENT_MANIFEST_BYTES:
+        raise RuntimeError("Final manifest is not a bounded singly linked file")
+    with manifest_path.open("rb") as handle:
+        opened = os.fstat(handle.fileno())
+        if (opened.st_dev, opened.st_ino, opened.st_size, opened.st_nlink) != (
+            before.st_dev,
+            before.st_ino,
+            before.st_size,
+            before.st_nlink,
+        ):
+            raise RuntimeError("Opened final manifest identity differs from its path")
+        manifest_bytes = handle.read(_MAX_PARENT_MANIFEST_BYTES + 1)
+        opened_after = os.fstat(handle.fileno())
+    after = manifest_path.stat(follow_symlinks=False)
+    if (
+        len(manifest_bytes) > _MAX_PARENT_MANIFEST_BYTES
+        or (
+            before.st_dev,
+            before.st_ino,
+            before.st_size,
+            before.st_mtime_ns,
+            before.st_nlink,
         )
+        != (
+            after.st_dev,
+            after.st_ino,
+            after.st_size,
+            after.st_mtime_ns,
+            after.st_nlink,
+        )
+        or (
+            opened.st_dev,
+            opened.st_ino,
+            opened.st_size,
+            opened.st_mtime_ns,
+            opened.st_nlink,
+        )
+        != (
+            opened_after.st_dev,
+            opened_after.st_ino,
+            opened_after.st_size,
+            opened_after.st_mtime_ns,
+            opened_after.st_nlink,
+        )
+    ):
+        raise RuntimeError("Final manifest changed during bounded stable read")
+    manifest = json.loads(manifest_bytes, object_pairs_hook=_unique_json_object)
+    if not isinstance(manifest, dict):
+        raise RuntimeError("Final manifest is not a JSON object")
+    if canonical_json_bytes(manifest) != manifest_bytes:
+        raise RuntimeError("Final manifest is not canonical JSON")
+    return {str(key): value for key, value in manifest.items()}
+
+
+def _finalize_owned_result(
+    ownership: _InvocationOwnership,
+    result: RunResult,
+    workspace_root: Path,
+) -> RunResult:
+    """Parent-finalize one exact owned directory and create its receipt."""
+
+    location = _validate_invocation_ownership(
+        ownership,
+        workspace_root,
+        require_receipt_authority=True,
+    )
+    if location != ownership.staging_dir:
+        raise RuntimeError("Completed worker evidence is not in its authorized staging path")
+    if (
+        result.invocation_id != ownership.invocation_id
+        or result.run_id != ownership.run_id
+        or result.seed != ownership.seed
+        or result.run_dir != ownership.staging_dir
+        or result.manifest_path != ownership.staging_dir / "manifest.json"
+    ):
+        raise RuntimeError("Diagnostic worker result does not match invocation ownership")
+    if ownership.final_run_dir.exists() or ownership.final_run_dir.is_symlink():
+        raise FileExistsError(
+            f"Refusing to overwrite existing run directory: {ownership.final_run_dir}"
+        )
+    ownership.staging_dir.rename(ownership.final_run_dir)
+    finalized = _validate_invocation_ownership(
+        ownership,
+        workspace_root,
+        allow_finalized=True,
+        require_receipt_authority=True,
+    )
+    if finalized != ownership.final_run_dir:
+        raise RuntimeError("Parent finalization did not preserve exact directory identity")
+    manifest = _read_parent_manifest(finalized)
+    parent_bindings = {
+        "run_id": ownership.run_id,
+        "seed": ownership.seed,
+        "started_at": ownership.started_at,
+        "config_hash_start": result.config_hash,
+        "raw_semantic_hash": result.raw_semantic_hash,
+        "summary_semantic_hash": result.summary_semantic_hash,
+    }
+    for key, expected in parent_bindings.items():
+        if manifest.get(key) != expected:
+            raise RuntimeError(f"Final manifest {key} differs from parent invocation result")
+    receipt_path = create_execution_receipt(
+        workspace_root=workspace_root,
+        invocation_id=ownership.invocation_id,
+        receipt_capability=_required_receipt_capability(ownership),
+        run_dir=finalized,
+        manifest=manifest,
+        completed_at=datetime.now(UTC).isoformat(),
+    )
+    return replace(
+        result,
+        run_dir=finalized,
+        manifest_path=finalized / "manifest.json",
+        receipt_path=receipt_path,
+    )
+
+
+def _required_receipt_capability(ownership: _InvocationOwnership) -> str:
+    """Return the parent-only receipt authority after explicit validation."""
+
+    capability = ownership.receipt_capability
+    if capability is None or re.fullmatch(r"[0-9a-f]{64}", capability) is None:
+        raise RuntimeError("Parent receipt capability is absent or invalid")
+    return capability
+
+
+def _selected_invocation_seed(
+    scenario_path: Path | str,
+    policy_path: Path | str,
+    seed_registry_path: Path | str,
+    repository: Path,
+    requested_seed: int | None,
+    *,
+    baseline_path: Path | str | None,
+    metric_path: Path | str | None,
+) -> int:
+    """Fully validate controlled inputs in the parent before allocating ownership."""
+
+    scenario = load_yaml_config(_assert_controlled_config(scenario_path, repository))
+    policy = load_yaml_config(_assert_controlled_config(policy_path, repository))
+    seed_registry = _load_json_config(_assert_controlled_config(seed_registry_path, repository))
+    baseline = load_yaml_config(
+        _assert_controlled_config(
+            baseline_path or repository / "configs" / "defenders" / "diagnostic_baseline.yaml",
+            repository,
+        )
+    )
+    metrics = load_yaml_config(
+        _assert_controlled_config(
+            metric_path or repository / "configs" / "metrics" / "diagnostic_metrics.yaml",
+            repository,
+        )
+    )
+    _protocol_version, registered = _validate_loaded_configuration_bundle(
+        scenario,
+        policy,
+        seed_registry,
+        baseline,
+        metrics,
+    )
+    selected = (
+        _expect_int(scenario.get("default_seed"), "default_seed")
+        if requested_seed is None
+        else requested_seed
+    )
+    if isinstance(selected, bool) or not isinstance(selected, int):
+        raise ConfigurationError("Selected seed must be an integer")
+    if selected not in registered:
+        raise ConfigurationError("Selected seed is not present in the controlled seed registry")
+    return selected
+
+
+def _deny_reportable_without_invocation(
+    *,
+    repository: Path,
+    scenario_path: Path | str,
+    policy_path: Path | str,
+    seed_registry_path: Path | str,
+    baseline_path: Path | str | None,
+    metric_path: Path | str | None,
+) -> None:
+    """Run the approval interlock before creating any invocation-owned path."""
+
+    scenario = load_yaml_config(_assert_controlled_config(scenario_path, repository))
+    policy_config = load_yaml_config(_assert_controlled_config(policy_path, repository))
+    seed_registry = _load_json_config(_assert_controlled_config(seed_registry_path, repository))
+    baseline_definition = load_yaml_config(
+        _assert_controlled_config(
+            baseline_path or repository / "configs" / "defenders" / "diagnostic_baseline.yaml",
+            repository,
+        )
+    )
+    metric_definition = load_yaml_config(
+        _assert_controlled_config(
+            metric_path or repository / "configs" / "metrics" / "diagnostic_metrics.yaml",
+            repository,
+        )
+    )
+    protocol_version, _registered_seeds = _validate_loaded_configuration_bundle(
+        scenario,
+        policy_config,
+        seed_registry,
+        baseline_definition,
+        metric_definition,
+    )
+    canonical_config: dict[str, object] = {
+        "evidence_label": EVIDENCE_LABEL,
+        "schema_version": SCHEMA_VERSION,
+        "protocol_version": protocol_version,
+        "scenario": scenario,
+        "safety_policy": policy_config,
+        "baseline_definition": baseline_definition,
+        "metric_definition": metric_definition,
+    }
+    validate_reportable_approval(
+        repository,
+        config_hash=canonical_sha256(canonical_config),
+        seed_registry_hash=canonical_sha256(seed_registry),
+        baseline_definition_hash=canonical_sha256(baseline_definition),
+        metric_definition_hash=canonical_sha256(metric_definition),
+        protocol_version=protocol_version,
+    )
+    raise ReportableModeDenied(
+        "The bootstrap implements diagnostics only; reportable execution remains unavailable"
+    )
+
+
+def _run_diagnostic_in_process(
+    scenario_path: Path | str,
+    policy_path: Path | str,
+    seed_registry_path: Path | str,
+    output_root: Path | str,
+    *,
+    seed: int | None = None,
+    workspace_root: Path | str | None = None,
+    repo_root: Path | str | None = None,
+    baseline_path: Path | str | None = None,
+    metric_path: Path | str | None = None,
+    reportable: bool = False,
+) -> RunResult:
+    """Parent-style in-process helper for hermetic tests; no worker self-provisioning."""
+
+    repository, workspace = _validate_public_workspace(
+        scenario_path,
+        workspace_root,
+        repo_root,
+    )
+    if reportable:
+        _deny_reportable_without_invocation(
+            repository=repository,
+            scenario_path=scenario_path,
+            policy_path=policy_path,
+            seed_registry_path=seed_registry_path,
+            baseline_path=baseline_path,
+            metric_path=metric_path,
+        )
+    selected_seed = _selected_invocation_seed(
+        scenario_path,
+        policy_path,
+        seed_registry_path,
+        repository,
+        seed,
+        baseline_path=baseline_path,
+        metric_path=metric_path,
+    )
+    ownership = _create_invocation_ownership(
+        Path(output_root),
+        workspace,
+        selected_seed,
+    )
+    try:
+        staged_result = _run_diagnostic_worker(
+            scenario_path,
+            policy_path,
+            seed_registry_path,
+            output_root,
+            seed=selected_seed,
+            workspace_root=workspace,
+            repo_root=repository,
+            baseline_path=baseline_path,
+            metric_path=metric_path,
+            reportable=reportable,
+            _ownership=_worker_ownership(ownership),
+        )
+        return _finalize_owned_result(ownership, staged_result, workspace)
+    except Exception as error:
+        _retain_parent_failure(workspace, ownership, error)
         raise
 
 
@@ -1405,12 +2009,22 @@ class _DiagnosticRequest:
     baseline_path: str | None
     metric_path: str | None
     reportable: bool
-    invocation_token: str
+    ownership: _InvocationOwnership
+
+
+def _worker_ownership(ownership: _InvocationOwnership) -> _InvocationOwnership:
+    """Remove the parent-only receipt capability before crossing into a worker."""
+
+    if ownership.receipt_capability is None:
+        raise RuntimeError("Parent receipt capability is absent")
+    return replace(ownership, receipt_capability=None)
 
 
 def _diagnostic_process_entry(sender: Connection, request: _DiagnosticRequest) -> None:
     """Execute one diagnostic in an isolated process and return a small typed envelope."""
     try:
+        if request.ownership.receipt_capability is not None:
+            raise RuntimeError("Diagnostic worker received parent-only receipt authority")
         result = _run_diagnostic_worker(
             request.scenario_path,
             request.policy_path,
@@ -1422,7 +2036,7 @@ def _diagnostic_process_entry(sender: Connection, request: _DiagnosticRequest) -
             baseline_path=request.baseline_path,
             metric_path=request.metric_path,
             reportable=request.reportable,
-            _invocation_token=request.invocation_token,
+            _ownership=request.ownership,
         )
         sender.send({"ok": True, "result": result.to_dict()})
     except Exception as error:
@@ -1456,74 +2070,41 @@ def _raise_worker_error(error_type: str, message: str) -> None:
 
 def _retain_interrupted_evidence(
     workspace: Path,
-    invocation_token: str,
+    ownership: _InvocationOwnership,
     error: Exception,
 ) -> None:
-    """Fail only this invocation and retain staging or atomically finalized evidence."""
-    lexical_staging_root = workspace / "var" / "tmp"
-    lexical_final_root = workspace / "var" / "runs"
-    if path_has_symlink_or_reparse(lexical_staging_root) or path_has_symlink_or_reparse(
-        lexical_final_root
-    ):
-        raise RuntimeError("Diagnostic evidence root contains a symlink or reparse point")
-    staging_root = assert_write_path(lexical_staging_root, workspace)
-    final_root = assert_write_path(lexical_final_root, workspace)
-    candidates: list[tuple[Path, bool]] = []
-    if staging_root.is_dir():
-        candidates.extend(
-            (path, True)
-            for path in staging_root.iterdir()
-            if path.is_dir() and path.name.endswith(f"-{invocation_token}.staging")
-        )
-    if final_root.is_dir():
-        candidates.extend(
-            (path, False)
-            for path in final_root.iterdir()
-            if path.is_dir() and path.name.endswith(f"-{invocation_token}")
-        )
-    if not candidates:
-        return
-    if len(candidates) != 1:
-        raise RuntimeError("Interrupted invocation has an ambiguous evidence directory")
-    candidate, is_staging = candidates[0]
-    if path_has_symlink_or_reparse(candidate):
-        raise RuntimeError("Interrupted invocation evidence path is indirect")
-    run_dir = assert_write_path(candidate, workspace)
-    run_id = run_dir.name.removesuffix(".staging") if is_staging else run_dir.name
-    match = re.fullmatch(
-        rf"diagnostic-.+-seed-(\d+)-{re.escape(invocation_token)}",
-        run_id,
-    )
-    if match is None:
-        raise RuntimeError("Interrupted invocation evidence name is invalid")
-    seed = int(match.group(1))
-    final_dir = assert_write_path(final_root / run_id, workspace)
+    """Retain only the exact directory established by the parent capability."""
+
     _retain_failed_run(
-        run_dir,
-        final_dir,
         workspace,
-        seed,
+        ownership,
         error,
-        log_path=run_dir / "logs" / "run.log",
     )
+    finalized = _validate_invocation_ownership(
+        ownership,
+        workspace,
+        allow_finalized=True,
+    )
+    if finalized != ownership.final_run_dir:
+        raise RuntimeError("Interrupted evidence did not retain at its exact final path")
 
 
-def _retain_timeout_evidence(workspace: Path, invocation_token: str) -> None:
+def _retain_timeout_evidence(workspace: Path, ownership: _InvocationOwnership) -> None:
     """Retain raw evidence after terminating one timed-out diagnostic worker."""
     _retain_interrupted_evidence(
         workspace,
-        invocation_token,
+        ownership,
         DiagnosticTimeoutError("Diagnostic worker exceeded the five-minute runtime boundary"),
     )
 
 
 def _retain_parent_failure(
     workspace: Path,
-    invocation_token: str,
+    ownership: _InvocationOwnership,
     error: Exception,
 ) -> None:
     try:
-        _retain_interrupted_evidence(workspace, invocation_token, error)
+        _retain_interrupted_evidence(workspace, ownership, error)
     except (OSError, RuntimeError, ValueError) as retention_error:
         raise RuntimeError(
             "Diagnostic worker failed and evidence retention also failed: "
@@ -1585,28 +2166,60 @@ def run_diagnostic(
         workspace_root,
         repo_root,
     )
-    invocation_token = uuid4().hex
+    if reportable:
+        _deny_reportable_without_invocation(
+            repository=repository,
+            scenario_path=scenario_path,
+            policy_path=policy_path,
+            seed_registry_path=seed_registry_path,
+            baseline_path=baseline_path,
+            metric_path=metric_path,
+        )
+    selected_seed = _selected_invocation_seed(
+        scenario_path,
+        policy_path,
+        seed_registry_path,
+        repository,
+        seed,
+        baseline_path=baseline_path,
+        metric_path=metric_path,
+    )
+    ownership = _create_invocation_ownership(
+        Path(output_root),
+        workspace,
+        selected_seed,
+    )
     request = _DiagnosticRequest(
         scenario_path=str(Path(scenario_path)),
         policy_path=str(Path(policy_path)),
         seed_registry_path=str(Path(seed_registry_path)),
         output_root=str(Path(output_root)),
-        seed=seed,
+        seed=selected_seed,
         workspace_root=str(workspace),
         repo_root=str(repository),
         baseline_path=str(Path(baseline_path)) if baseline_path is not None else None,
         metric_path=str(Path(metric_path)) if metric_path is not None else None,
         reportable=reportable,
-        invocation_token=invocation_token,
+        ownership=_worker_ownership(ownership),
     )
     context = multiprocessing.get_context("spawn")
     receiver, sender = context.Pipe(duplex=False)
     process = context.Process(
         target=_diagnostic_process_entry,
         args=(sender, request),
-        name=f"pacd-diagnostic-{invocation_token}",
+        name=f"pacd-diagnostic-{ownership.invocation_id}",
     )
-    process.start()
+    try:
+        process.start()
+    except Exception as start_error:
+        sender.close()
+        receiver.close()
+        try:
+            process.close()
+        except ValueError:
+            pass
+        _retain_parent_failure(workspace, ownership, start_error)
+        raise
     sender.close()
     process.join(_MAX_DIAGNOSTIC_SECONDS)
     if process.is_alive():
@@ -1622,7 +2235,7 @@ def run_diagnostic(
             )
         process.close()
         try:
-            _retain_timeout_evidence(workspace, invocation_token)
+            _retain_timeout_evidence(workspace, ownership)
         except (OSError, RuntimeError, ValueError) as retention_error:
             raise DiagnosticTimeoutError(
                 "Diagnostic worker was terminated at five minutes, but timeout evidence "
@@ -1636,7 +2249,7 @@ def run_diagnostic(
         receiver.close()
         process.close()
         error = RuntimeError(f"Diagnostic worker exited without a result (exit_code={exit_code})")
-        _retain_parent_failure(workspace, invocation_token, error)
+        _retain_parent_failure(workspace, ownership, error)
         raise error
     try:
         envelope = receiver.recv()
@@ -1646,27 +2259,27 @@ def run_diagnostic(
         error = RuntimeError(
             f"Diagnostic worker result channel failed: {type(receive_error).__name__}"
         )
-        _retain_parent_failure(workspace, invocation_token, error)
+        _retain_parent_failure(workspace, ownership, error)
         raise error from receive_error
     receiver.close()
     process.close()
     if not isinstance(envelope, dict) or not isinstance(envelope.get("ok"), bool):
         error = RuntimeError("Diagnostic worker returned an invalid result envelope")
-        _retain_parent_failure(workspace, invocation_token, error)
+        _retain_parent_failure(workspace, ownership, error)
         raise error
     if envelope["ok"] is not True:
         try:
             _raise_worker_error(str(envelope.get("error_type")), str(envelope.get("message")))
         except Exception as worker_error:
-            _retain_parent_failure(workspace, invocation_token, worker_error)
+            _retain_parent_failure(workspace, ownership, worker_error)
             raise
     value = envelope.get("result")
     if not isinstance(value, dict):
         error = RuntimeError("Diagnostic worker result is missing")
-        _retain_parent_failure(workspace, invocation_token, error)
+        _retain_parent_failure(workspace, ownership, error)
         raise error
     try:
-        return RunResult(
+        staged_result = RunResult(
             run_dir=Path(str(value["run_dir"])),
             run_id=str(value["run_id"]),
             seed=int(value["seed"]),
@@ -1675,11 +2288,20 @@ def run_diagnostic(
             summary_semantic_hash=str(value["summary_semantic_hash"]),
             manifest_path=Path(str(value["manifest_path"])),
             elapsed_seconds=float(value["elapsed_seconds"]),
+            invocation_id=str(value["invocation_id"]),
+            receipt_path=None,
             evidence_label=str(value["evidence_label"]),
         )
+        if value.get("receipt_path") is not None:
+            raise ValueError("Worker may not create or return an execution receipt")
     except (KeyError, TypeError, ValueError, OverflowError) as conversion_error:
         error = RuntimeError(
             f"Diagnostic worker result fields are invalid: {type(conversion_error).__name__}"
         )
-        _retain_parent_failure(workspace, invocation_token, error)
+        _retain_parent_failure(workspace, ownership, error)
         raise error from conversion_error
+    try:
+        return _finalize_owned_result(ownership, staged_result, workspace)
+    except Exception as finalization_error:
+        _retain_parent_failure(workspace, ownership, finalization_error)
+        raise

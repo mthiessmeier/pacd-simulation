@@ -8,7 +8,7 @@ import pytest
 from conftest import IsolatedWorkspace
 from pydantic import ValidationError
 
-from pacd_sim.harness.run import _run_diagnostic_worker as run_diagnostic
+from pacd_sim.harness.run import _run_diagnostic_in_process as run_diagnostic
 from pacd_sim.harness.run import load_yaml_config
 from pacd_sim.schema import StrictFrozenModel
 

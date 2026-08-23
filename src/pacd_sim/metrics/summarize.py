@@ -48,10 +48,8 @@ def _event_count(rows: list[dict[str, object]], event_type: str) -> int:
     return sum(row.get("event_type") == event_type for row in rows)
 
 
-def summary_from_raw(raw_events_path: Path | str) -> dict[str, object]:
-    """Compute one summary row using no configuration or in-memory run state."""
-    raw_path = Path(raw_events_path)
-    table = pq.read_table(raw_path)
+def summary_from_raw_table(table: pa.Table) -> dict[str, object]:
+    """Compute one summary row from an already bounded and materialized raw table."""
     expected_names = EVENT_SCHEMA.names
     if table.schema.names != expected_names:
         raise ValueError("Raw event columns do not match the fixed audit schema")
@@ -124,6 +122,11 @@ def summary_from_raw(raw_events_path: Path | str) -> dict[str, object]:
             for row in rows
         ),
     }
+
+
+def summary_from_raw(raw_events_path: Path | str) -> dict[str, object]:
+    """Compute one summary row using no configuration or in-memory run state."""
+    return summary_from_raw_table(pq.read_table(Path(raw_events_path)))
 
 
 def summarize_raw_events(

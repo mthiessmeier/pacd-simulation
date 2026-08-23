@@ -79,6 +79,15 @@ def test_reportable_mode_denied_for_malformed_approval(tmp_path: Path) -> None:
 
 
 @pytest.mark.negative
+def test_reportable_mode_denied_for_excessively_nested_approval(tmp_path: Path) -> None:
+    repo, approval = _temporary_repository(tmp_path)
+    approval.write_bytes(b"[" * 10_000 + b"0" + b"]" * 10_000)
+
+    with pytest.raises(ReportableModeDenied, match="invalid JSON"):
+        _validate(repo)
+
+
+@pytest.mark.negative
 def test_reportable_mode_denied_for_hash_mismatch(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

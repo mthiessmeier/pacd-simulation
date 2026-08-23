@@ -2,15 +2,21 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
+import os
 import platform
 import re
+import stat
 from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, BinaryIO, cast
 
+import pyarrow as pa
+import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
 from pacd_sim.audit.writer import EVENT_SCHEMA, EVENT_TYPES
@@ -32,6 +38,7 @@ from pacd_sim.harness.run import (
     load_yaml_config,
 )
 from pacd_sim.hypotheses.update import BeliefState, update_beliefs
+from pacd_sim.metrics.summarize import SUMMARY_SCHEMA
 from pacd_sim.reproducibility.canonical import canonical_json_bytes, canonical_sha256
 from pacd_sim.reproducibility.manifest import sha256_file
 from pacd_sim.reproducibility.paths import path_has_symlink_or_reparse
@@ -45,7 +52,18 @@ _COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 _RUN_ID_RE = re.compile(r"^diagnostic-(\d{8}T\d{6}\.\d{6}Z)-seed-([0-9]+)(?:-[0-9a-f]{32})?$")
 _MAX_RETAINED_JSON_BYTES = 4 * 1024 * 1024
 _MAX_RAW_ARTIFACT_BYTES = 64 * 1024 * 1024
+_MAX_SUMMARY_ARTIFACT_BYTES = 4 * 1024 * 1024
+_MAX_PARQUET_AGGREGATE_ENCODED_BYTES = 64 * 1024 * 1024
+_MAX_PARQUET_AGGREGATE_DECODED_BYTES = 64 * 1024 * 1024
+_MAX_PARQUET_METADATA_BYTES = 2 * 1024 * 1024
+_MAX_PARQUET_ROW_GROUPS = 128
+_MAX_PARQUET_COLUMN_CHUNKS = 4096
+_MAX_PARQUET_THRIFT_STRING_BYTES = 1024 * 1024
+_MAX_PARQUET_THRIFT_CONTAINER_ITEMS = 8192
 _MAX_RAW_LINE_BYTES = 128 * 1024
+_MAX_RAW_PAYLOAD_BYTES = 64 * 1024
+_MAX_RAW_IDENTIFIER_BYTES = 500
+_MAX_SUMMARY_STRING_BYTES = 1024
 _RAW_KEYS = frozenset(field.name for field in EVENT_SCHEMA)
 _ACTION_EVENT_TYPES = frozenset(
     {"candidate_action", "safety_decision", "simulated_execution", "verification", "audit"}
@@ -135,19 +153,101 @@ def strict_json_loads(text: str, *, source: str) -> object:
         )
     except json.JSONDecodeError as error:
         raise ValueError(f"Invalid JSON in {source}: {error}") from error
+    except RecursionError as error:
+        raise ValueError(f"Excessively nested JSON in {source}") from error
 
 
-def _read_strict_object(path: Path) -> dict[str, object]:
-    if path.stat().st_size > _MAX_RETAINED_JSON_BYTES:
-        raise ValueError(f"Retained JSON document exceeds the 4 MiB cap: {path.name}")
-    text = path.read_text(encoding="utf-8")
-    value = strict_json_loads(text, source=path.name)
-    if not isinstance(value, dict):
-        raise ValueError(f"Expected a JSON object: {path.name}")
-    result = {str(key): item for key, item in value.items()}
-    if text.encode("utf-8") != canonical_json_bytes(result):
-        raise ValueError(f"JSON document is not canonical: {path.name}")
-    return result
+class _StrictDocumentError(ValueError):
+    """Bounded parse failure that preserves the exact opened-file snapshot."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        digest: str,
+        identity: _StableParquetIdentity,
+    ) -> None:
+        super().__init__(message)
+        self.digest = digest
+        self.identity = identity
+
+
+def _read_strict_object(
+    path: Path,
+) -> tuple[dict[str, object], str, _StableParquetIdentity]:
+    if path_has_symlink_or_reparse(path):
+        raise ValueError(f"Retained JSON document path is indirect: {path.name}")
+    before = path.stat(follow_symlinks=False)
+    if (
+        not stat.S_ISREG(before.st_mode)
+        or before.st_nlink != 1
+        or before.st_size > _MAX_RETAINED_JSON_BYTES
+    ):
+        raise ValueError(f"Retained JSON document is not bounded and singly linked: {path.name}")
+    with path.open("rb") as handle:
+        opened = os.fstat(handle.fileno())
+        before_identity = (
+            before.st_dev,
+            before.st_ino,
+            before.st_size,
+            before.st_mtime_ns,
+            before.st_nlink,
+        )
+        if before_identity != (
+            opened.st_dev,
+            opened.st_ino,
+            opened.st_size,
+            opened.st_mtime_ns,
+            opened.st_nlink,
+        ):
+            raise ValueError(f"Opened retained JSON identity differs: {path.name}")
+        encoded = handle.read(_MAX_RETAINED_JSON_BYTES + 1)
+        opened_after = os.fstat(handle.fileno())
+    after = path.stat(follow_symlinks=False)
+    if (
+        len(encoded) > _MAX_RETAINED_JSON_BYTES
+        or before_identity
+        != (
+            opened_after.st_dev,
+            opened_after.st_ino,
+            opened_after.st_size,
+            opened_after.st_mtime_ns,
+            opened_after.st_nlink,
+        )
+        or before_identity
+        != (
+            after.st_dev,
+            after.st_ino,
+            after.st_size,
+            after.st_mtime_ns,
+            after.st_nlink,
+        )
+    ):
+        raise ValueError(f"Retained JSON document changed during bounded read: {path.name}")
+    identity = _StableParquetIdentity(
+        path=path,
+        device=before.st_dev,
+        inode=before.st_ino,
+        size=before.st_size,
+        mtime_ns=before.st_mtime_ns,
+        link_count=before.st_nlink,
+    )
+    digest = hashlib.sha256(encoded).hexdigest()
+    try:
+        text = encoded.decode("utf-8")
+        value = strict_json_loads(text, source=path.name)
+        if not isinstance(value, dict):
+            raise ValueError(f"Expected a JSON object: {path.name}")
+        result = {str(key): item for key, item in value.items()}
+        if text.encode("utf-8") != canonical_json_bytes(result):
+            raise ValueError(f"JSON document is not canonical: {path.name}")
+    except (RecursionError, UnicodeError, ValueError) as error:
+        raise _StrictDocumentError(
+            str(error),
+            digest=digest,
+            identity=identity,
+        ) from error
+    return result, digest, identity
 
 
 def _exact_keys(
@@ -663,48 +763,466 @@ def _expected_event_rows(
     return rows
 
 
+@dataclass(frozen=True)
+class RetainedEvidenceValidation:
+    """Strict evidence result carrying the only materialized Parquet tables."""
+
+    errors: tuple[str, ...]
+    raw_table: pa.Table | None = None
+    summary_table: pa.Table | None = None
+    raw_rows: tuple[dict[str, object], ...] = ()
+    summary_rows: tuple[dict[str, object], ...] = ()
+    raw_encoded_sha256: str | None = None
+    summary_encoded_sha256: str | None = None
+    raw_file_identity: _StableParquetIdentity | None = None
+    summary_file_identity: _StableParquetIdentity | None = None
+    documents: Mapping[str, dict[str, object]] | None = None
+    document_sha256: Mapping[str, str] | None = None
+    document_identities: Mapping[str, _StableParquetIdentity] | None = None
+    document_ingestion_failed: bool = False
+    parquet_ingestion_failed: bool = False
+
+
+@dataclass(frozen=True)
+class _StableParquetIdentity:
+    """Opened-file identity binding one table and digest to one path."""
+
+    path: Path
+    device: int
+    inode: int
+    size: int
+    mtime_ns: int
+    link_count: int
+
+    def stat_tuple(self) -> tuple[int, int, int, int, int]:
+        return (self.device, self.inode, self.size, self.mtime_ns, self.link_count)
+
+
+@dataclass(frozen=True)
+class _BoundedParquetIngestion:
+    errors: tuple[str, ...]
+    raw_table: pa.Table | None = None
+    raw_rows: tuple[dict[str, object], ...] = ()
+    raw_encoded_sha256: str | None = None
+    raw_file_identity: _StableParquetIdentity | None = None
+    summary_table: pa.Table | None = None
+    summary_rows: tuple[dict[str, object], ...] = ()
+    summary_encoded_sha256: str | None = None
+    summary_file_identity: _StableParquetIdentity | None = None
+
+
+def _opened_parquet_identity(path: Path, handle: BinaryIO) -> _StableParquetIdentity:
+    before = path.stat(follow_symlinks=False)
+    opened = os.fstat(handle.fileno())
+    before_tuple = (
+        before.st_dev,
+        before.st_ino,
+        before.st_size,
+        before.st_mtime_ns,
+        before.st_nlink,
+    )
+    opened_tuple = (
+        opened.st_dev,
+        opened.st_ino,
+        opened.st_size,
+        opened.st_mtime_ns,
+        opened.st_nlink,
+    )
+    if (
+        path_has_symlink_or_reparse(path)
+        or not stat.S_ISREG(before.st_mode)
+        or not stat.S_ISREG(opened.st_mode)
+        or before.st_nlink != 1
+        or before_tuple != opened_tuple
+    ):
+        raise ValueError("Parquet path is not a stable, singly linked regular file")
+    return _StableParquetIdentity(
+        path=path,
+        device=opened.st_dev,
+        inode=opened.st_ino,
+        size=opened.st_size,
+        mtime_ns=opened.st_mtime_ns,
+        link_count=opened.st_nlink,
+    )
+
+
+def _parquet_identity_is_stable(
+    identity: _StableParquetIdentity,
+    handle: BinaryIO | None = None,
+) -> bool:
+    try:
+        path_stat = identity.path.stat(follow_symlinks=False)
+        if path_has_symlink_or_reparse(identity.path) or identity.stat_tuple() != (
+            path_stat.st_dev,
+            path_stat.st_ino,
+            path_stat.st_size,
+            path_stat.st_mtime_ns,
+            path_stat.st_nlink,
+        ):
+            return False
+        if handle is not None:
+            opened = os.fstat(handle.fileno())
+            if identity.stat_tuple() != (
+                opened.st_dev,
+                opened.st_ino,
+                opened.st_size,
+                opened.st_mtime_ns,
+                opened.st_nlink,
+            ):
+                return False
+    except OSError:
+        return False
+    return True
+
+
+def _sha256_open_parquet(handle: BinaryIO, identity: _StableParquetIdentity) -> str:
+    digest = hashlib.sha256()
+    total = 0
+    handle.seek(0)
+    for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+        total += len(chunk)
+        if total > identity.size:
+            raise ValueError("Parquet file grew during bounded hashing")
+        digest.update(chunk)
+    handle.seek(0)
+    if total != identity.size or not _parquet_identity_is_stable(identity, handle):
+        raise ValueError("Parquet file changed during bounded hashing")
+    return digest.hexdigest()
+
+
+def _preflight_parquet_file(
+    source: BinaryIO,
+    *,
+    artifact_name: str,
+    expected_schema: pa.Schema,
+    expected_row_count: int,
+    decoded_size_limit: int,
+    errors: list[str],
+) -> tuple[Any | None, int]:
+    """Open only Parquet metadata and reject unbounded or inexact structures."""
+    try:
+        starting_error_count = len(errors)
+        parquet_file = pq.ParquetFile(
+            source,
+            thrift_string_size_limit=_MAX_PARQUET_THRIFT_STRING_BYTES,
+            thrift_container_size_limit=_MAX_PARQUET_THRIFT_CONTAINER_ITEMS,
+        )
+        metadata = parquet_file.metadata
+        if not parquet_file.schema_arrow.equals(expected_schema, check_metadata=True):
+            errors.append(f"{artifact_name} schema is not exact")
+        if metadata.num_rows != expected_row_count:
+            if artifact_name == "Raw Parquet":
+                errors.append(
+                    "Raw event count does not match the independently reconstructed "
+                    "diagnostic chain"
+                )
+            else:
+                errors.append(
+                    f"{artifact_name} row count is not exactly {expected_row_count}: "
+                    f"{metadata.num_rows}"
+                )
+        if metadata.num_columns != len(expected_schema):
+            errors.append(f"{artifact_name} column metadata count is not exact")
+        if not 1 <= metadata.num_row_groups <= min(_MAX_PARQUET_ROW_GROUPS, expected_row_count):
+            errors.append(f"{artifact_name} row-group metadata exceeds the bounded limit")
+        serialized_size = metadata.serialized_size
+        if serialized_size < 0 or serialized_size > _MAX_PARQUET_METADATA_BYTES:
+            errors.append(f"{artifact_name} footer metadata exceeds the bounded limit")
+        if len(errors) != starting_error_count:
+            return parquet_file, 0
+
+        decoded_column_bytes = 0
+        column_chunks = 0
+        row_group_rows = 0
+        for row_group_index in range(metadata.num_row_groups):
+            row_group = metadata.row_group(row_group_index)
+            row_group_rows += row_group.num_rows
+            if row_group.num_rows <= 0 or row_group.num_rows > expected_row_count:
+                errors.append(f"{artifact_name} row-group row count is invalid")
+            if row_group.num_columns != len(expected_schema):
+                errors.append(f"{artifact_name} row-group column count is not exact")
+                continue
+            if row_group.total_byte_size < 0 or row_group.total_byte_size > decoded_size_limit:
+                errors.append(f"{artifact_name} row-group decoded size exceeds the bounded limit")
+            for column_index in range(row_group.num_columns):
+                column_chunks += 1
+                if column_chunks > _MAX_PARQUET_COLUMN_CHUNKS:
+                    errors.append(f"{artifact_name} column metadata exceeds the bounded limit")
+                    break
+                column = row_group.column(column_index)
+                decoded_size = column.total_uncompressed_size
+                encoded_size = column.total_compressed_size
+                if decoded_size < 0 or encoded_size < 0:
+                    errors.append(f"{artifact_name} column metadata contains an invalid size")
+                    continue
+                if column.num_values != row_group.num_rows:
+                    errors.append(f"{artifact_name} column value count is not exact")
+                decoded_column_bytes += decoded_size
+                if decoded_column_bytes > decoded_size_limit:
+                    errors.append(f"{artifact_name} decoded column data exceeds the bounded cap")
+                    break
+        if row_group_rows != metadata.num_rows:
+            errors.append(f"{artifact_name} row-group totals do not match its row count")
+        return parquet_file, decoded_column_bytes
+    except (
+        IndexError,
+        MemoryError,
+        OSError,
+        OverflowError,
+        RuntimeError,
+        TypeError,
+        ValueError,
+    ) as error:
+        errors.append(f"Could not preflight {artifact_name}: {error}")
+        return None, 0
+
+
+def _validate_materialized_table(
+    table: pa.Table,
+    *,
+    artifact_name: str,
+    expected_schema: pa.Schema,
+    expected_row_count: int,
+    decoded_size_limit: int,
+    errors: list[str],
+) -> None:
+    """Validate the bounded table before exposing it to any verifier consumer."""
+    if not table.schema.equals(expected_schema, check_metadata=True):
+        errors.append(f"Materialized {artifact_name} schema is not exact")
+    if table.num_rows != expected_row_count:
+        errors.append(f"Materialized {artifact_name} row count is not exact")
+    if table.nbytes > decoded_size_limit:
+        errors.append(f"Materialized {artifact_name} exceeds the decoded-size cap")
+
+
+def _validate_string_bounds(
+    table: pa.Table,
+    *,
+    artifact_name: str,
+    field_limits: Mapping[str, int],
+    errors: list[str],
+) -> None:
+    """Enforce Arrow-buffer UTF-8 bounds before rows reach Python consumers."""
+    try:
+        for field_name, byte_limit in field_limits.items():
+            column = table[field_name]
+            if column.null_count:
+                errors.append(f"{artifact_name} field {field_name} contains a null value")
+                continue
+            maximum = pc.max(pc.binary_length(column)).as_py()
+            if not isinstance(maximum, int) or maximum > byte_limit:
+                errors.append(f"{artifact_name} field {field_name} exceeds its bounded UTF-8 limit")
+    except (
+        IndexError,
+        KeyError,
+        MemoryError,
+        OverflowError,
+        RuntimeError,
+        TypeError,
+        ValueError,
+    ) as error:
+        errors.append(f"Could not validate {artifact_name} string bounds: {error}")
+
+
+def _ingest_bounded_parquet(
+    artifacts: Mapping[str, Path],
+    *,
+    expected_raw_row_count: int,
+) -> _BoundedParquetIngestion:
+    """Preflight both retained Parquet files, then materialize each at most once."""
+    errors: list[str] = []
+    raw_path = artifacts["raw/events.parquet"]
+    summary_path = artifacts["derived/episode_summary.parquet"]
+
+    def failed() -> _BoundedParquetIngestion:
+        return _BoundedParquetIngestion(errors=tuple(errors))
+
+    try:
+        with raw_path.open("rb") as raw_handle, summary_path.open("rb") as summary_handle:
+            raw_identity = _opened_parquet_identity(raw_path, raw_handle)
+            summary_identity = _opened_parquet_identity(summary_path, summary_handle)
+            if raw_identity.size > _MAX_RAW_ARTIFACT_BYTES:
+                errors.append("Raw Parquet encoded file exceeds the 64 MiB cap")
+            if summary_identity.size > _MAX_SUMMARY_ARTIFACT_BYTES:
+                errors.append("Derived summary Parquet encoded file exceeds the 4 MiB cap")
+            if raw_identity.size + summary_identity.size > _MAX_PARQUET_AGGREGATE_ENCODED_BYTES:
+                errors.append("Aggregate encoded Parquet size exceeds the bounded cap")
+            if errors:
+                return failed()
+
+            raw_encoded_sha256 = _sha256_open_parquet(raw_handle, raw_identity)
+            summary_encoded_sha256 = _sha256_open_parquet(
+                summary_handle,
+                summary_identity,
+            )
+            raw_file, raw_decoded_size = _preflight_parquet_file(
+                raw_handle,
+                artifact_name="Raw Parquet",
+                expected_schema=EVENT_SCHEMA,
+                expected_row_count=expected_raw_row_count,
+                decoded_size_limit=_MAX_RAW_ARTIFACT_BYTES,
+                errors=errors,
+            )
+            summary_file, summary_decoded_size = _preflight_parquet_file(
+                summary_handle,
+                artifact_name="Derived summary Parquet",
+                expected_schema=SUMMARY_SCHEMA,
+                expected_row_count=1,
+                decoded_size_limit=_MAX_SUMMARY_ARTIFACT_BYTES,
+                errors=errors,
+            )
+            if raw_decoded_size + summary_decoded_size > _MAX_PARQUET_AGGREGATE_DECODED_BYTES:
+                errors.append("Aggregate decoded Parquet size exceeds the bounded cap")
+            if errors or raw_file is None or summary_file is None:
+                return failed()
+
+            try:
+                raw_table = raw_file.read()
+            except (
+                MemoryError,
+                OSError,
+                OverflowError,
+                RuntimeError,
+                TypeError,
+                ValueError,
+            ) as error:
+                errors.append(f"Could not materialize bounded Raw Parquet: {error}")
+                return failed()
+            if not _parquet_identity_is_stable(raw_identity, raw_handle):
+                errors.append("Raw Parquet path identity changed during materialization")
+                return failed()
+
+            _validate_materialized_table(
+                raw_table,
+                artifact_name="Raw Parquet",
+                expected_schema=EVENT_SCHEMA,
+                expected_row_count=expected_raw_row_count,
+                decoded_size_limit=_MAX_RAW_ARTIFACT_BYTES,
+                errors=errors,
+            )
+            if errors:
+                return failed()
+            _validate_string_bounds(
+                raw_table,
+                artifact_name="Raw Parquet",
+                field_limits={
+                    "evidence_label": _MAX_RAW_IDENTIFIER_BYTES,
+                    "schema_version": _MAX_RAW_IDENTIFIER_BYTES,
+                    "run_id": _MAX_RAW_IDENTIFIER_BYTES,
+                    "event_type": _MAX_RAW_IDENTIFIER_BYTES,
+                    "entity_id": _MAX_RAW_IDENTIFIER_BYTES,
+                    "action_id": _MAX_RAW_IDENTIFIER_BYTES,
+                    "disposition": _MAX_RAW_IDENTIFIER_BYTES,
+                    "outcome": _MAX_RAW_IDENTIFIER_BYTES,
+                    "config_hash": _MAX_RAW_IDENTIFIER_BYTES,
+                    "payload_json": _MAX_RAW_PAYLOAD_BYTES,
+                },
+                errors=errors,
+            )
+            if errors:
+                return failed()
+            try:
+                raw_rows = tuple(
+                    {str(key): item for key, item in row.items()} for row in raw_table.to_pylist()
+                )
+            except (MemoryError, OverflowError, RuntimeError, TypeError, ValueError) as error:
+                errors.append(f"Could not decode bounded Raw Parquet rows: {error}")
+                return failed()
+
+            try:
+                summary_table = summary_file.read()
+            except (
+                MemoryError,
+                OSError,
+                OverflowError,
+                RuntimeError,
+                TypeError,
+                ValueError,
+            ) as error:
+                errors.append(f"Could not materialize bounded Derived summary Parquet: {error}")
+                return failed()
+            if not _parquet_identity_is_stable(summary_identity, summary_handle):
+                errors.append(
+                    "Derived summary Parquet path identity changed during materialization"
+                )
+                return failed()
+
+            _validate_materialized_table(
+                summary_table,
+                artifact_name="Derived summary Parquet",
+                expected_schema=SUMMARY_SCHEMA,
+                expected_row_count=1,
+                decoded_size_limit=_MAX_SUMMARY_ARTIFACT_BYTES,
+                errors=errors,
+            )
+            if errors:
+                return failed()
+            _validate_string_bounds(
+                summary_table,
+                artifact_name="Derived summary Parquet",
+                field_limits={
+                    "evidence_label": _MAX_SUMMARY_STRING_BYTES,
+                    "schema_version": _MAX_SUMMARY_STRING_BYTES,
+                    "config_hash": _MAX_SUMMARY_STRING_BYTES,
+                    "completion_status": _MAX_SUMMARY_STRING_BYTES,
+                },
+                errors=errors,
+            )
+            if errors:
+                return failed()
+            try:
+                summary_rows = tuple(
+                    {str(key): item for key, item in row.items()}
+                    for row in summary_table.to_pylist()
+                )
+            except (MemoryError, OverflowError, RuntimeError, TypeError, ValueError) as error:
+                errors.append(f"Could not decode bounded Derived summary Parquet rows: {error}")
+                return failed()
+            if not _parquet_identity_is_stable(
+                raw_identity,
+                raw_handle,
+            ) or not _parquet_identity_is_stable(summary_identity, summary_handle):
+                errors.append("Parquet path identity changed during bounded ingestion")
+                return failed()
+            return _BoundedParquetIngestion(
+                errors=(),
+                raw_table=raw_table,
+                raw_rows=raw_rows,
+                raw_encoded_sha256=raw_encoded_sha256,
+                raw_file_identity=raw_identity,
+                summary_table=summary_table,
+                summary_rows=summary_rows,
+                summary_encoded_sha256=summary_encoded_sha256,
+                summary_file_identity=summary_identity,
+            )
+    except (
+        MemoryError,
+        OSError,
+        OverflowError,
+        RuntimeError,
+        TypeError,
+        ValueError,
+    ) as error:
+        errors.append(f"Could not establish stable bounded Parquet ingestion: {error}")
+        return failed()
+
+
 def _validate_raw_events(
     artifacts: Mapping[str, Path],
     manifest: Mapping[str, object],
     canonical_config: Mapping[str, object],
+    parquet_rows: tuple[dict[str, object], ...],
+    expected_rows: list[dict[str, object]],
     errors: list[str],
 ) -> None:
-    parquet_path = artifacts["raw/events.parquet"]
     jsonl_path = artifacts["raw/events.jsonl"]
     seed = manifest.get("seed")
     if not _is_integer(seed):
         errors.append("Cannot reconstruct raw events because manifest seed is invalid")
         return
-    expected_rows = _expected_event_rows(canonical_config, cast(int, seed))
-    if (
-        parquet_path.stat().st_size > _MAX_RAW_ARTIFACT_BYTES
-        or jsonl_path.stat().st_size > _MAX_RAW_ARTIFACT_BYTES
-    ):
+    if jsonl_path.stat().st_size > _MAX_RAW_ARTIFACT_BYTES:
         errors.append("Raw evidence exceeds the 64 MiB bounded-read cap")
         return
-    parquet_file = pq.ParquetFile(parquet_path)
-    if not parquet_file.schema_arrow.equals(EVENT_SCHEMA, check_metadata=True):
-        errors.append("Raw Parquet schema is not exactly EVENT_SCHEMA")
-        return
-    if parquet_file.metadata.num_rows != len(expected_rows):
-        errors.append(
-            "Raw event count does not match the independently reconstructed diagnostic chain"
-        )
-        return
-    decoded_column_bytes = 0
-    for row_group_index in range(parquet_file.metadata.num_row_groups):
-        row_group = parquet_file.metadata.row_group(row_group_index)
-        for column_index in range(row_group.num_columns):
-            column_bytes = row_group.column(column_index).total_uncompressed_size
-            if column_bytes < 0:
-                errors.append("Raw Parquet metadata contains an invalid decoded size")
-                return
-            decoded_column_bytes += column_bytes
-            if decoded_column_bytes > _MAX_RAW_ARTIFACT_BYTES:
-                errors.append("Raw Parquet decoded column data exceeds the 64 MiB cap")
-                return
-    table = parquet_file.read()
-    parquet_rows = [{str(key): item for key, item in row.items()} for row in table.to_pylist()]
     jsonl_rows: list[dict[str, object]] = []
     with jsonl_path.open("r", encoding="utf-8") as handle:
         for line_number, line in enumerate(handle, start=1):
@@ -722,7 +1240,7 @@ def _validate_raw_events(
             if line.rstrip("\r\n").encode("utf-8") != canonical_json_bytes(row):
                 errors.append(f"Raw JSONL row {line_number} is not canonical JSON")
             jsonl_rows.append(row)
-    if jsonl_rows != parquet_rows:
+    if tuple(jsonl_rows) != parquet_rows:
         errors.append("JSONL and Parquet raw-event rows are not exactly identical")
 
     run_id = manifest.get("run_id")
@@ -800,39 +1318,125 @@ def validate_retained_evidence(
     workspace: Path,
     *,
     repo_root: Path | str | None,
-) -> tuple[str, ...]:
-    """Validate exact schemas, controlled provenance, and reconstructed raw semantics."""
+) -> RetainedEvidenceValidation:
+    """Validate retained evidence and return the sole bounded Parquet materialization."""
     errors: list[str] = []
+    raw_table: pa.Table | None = None
+    summary_table: pa.Table | None = None
+    raw_rows: tuple[dict[str, object], ...] = ()
+    summary_rows: tuple[dict[str, object], ...] = ()
+    raw_encoded_sha256: str | None = None
+    summary_encoded_sha256: str | None = None
+    raw_file_identity: _StableParquetIdentity | None = None
+    summary_file_identity: _StableParquetIdentity | None = None
+    documents: dict[str, dict[str, object]] = {}
+    document_sha256: dict[str, str] = {}
+    document_identities: dict[str, _StableParquetIdentity] = {}
+    failed_document_names: set[str] = set()
+    document_ingestion_failed = False
+    parquet_ingestion_failed = False
     try:
         repository = _resolve_repository(workspace, repo_root)
         expected_config, expected_seeds, protocol_version, registered_seeds = (
             _load_controlled_bundle(repository)
         )
-        documents = {
-            name: _read_strict_object(artifacts[name])
-            for name in (
-                "canonical_config.json",
-                "seed_registry.json",
-                "status.json",
-                "manifest.json",
+        document_names = (
+            "canonical_config.json",
+            "seed_registry.json",
+            "status.json",
+            "manifest.json",
+        )
+        for name in document_names:
+            try:
+                document, digest, identity = _read_strict_object(artifacts[name])
+                documents[name] = document
+                document_sha256[name] = digest
+                document_identities[name] = identity
+            except _StrictDocumentError as error:
+                document_ingestion_failed = True
+                failed_document_names.add(name)
+                document_sha256[name] = error.digest
+                document_identities[name] = error.identity
+                errors.append(f"Strict retained-evidence verification failed for {name}: {error}")
+            except (OSError, RecursionError, TypeError, UnicodeError, ValueError) as error:
+                document_ingestion_failed = True
+                failed_document_names.add(name)
+                errors.append(f"Strict retained-evidence verification failed for {name}: {error}")
+        if document_ingestion_failed:
+            manifest = documents.get("manifest.json")
+            manifest_hashes = manifest.get("artifact_hashes") if manifest is not None else None
+            if isinstance(manifest_hashes, Mapping):
+                for name in sorted(failed_document_names):
+                    failed_digest = document_sha256.get(name)
+                    if failed_digest is not None and manifest_hashes.get(name) != failed_digest:
+                        errors.append(f"Checksum mismatch: {name}")
+            return RetainedEvidenceValidation(
+                errors=tuple(errors),
+                documents=documents,
+                document_sha256=document_sha256,
+                document_identities=document_identities,
+                document_ingestion_failed=True,
             )
-        }
-        _validate_document_shapes(
-            root,
-            documents,
-            expected_config,
-            expected_seeds,
-            protocol_version,
-            registered_seeds,
-            repository,
-            errors,
-        )
-        _validate_raw_events(
+        if len(documents) == len(document_names):
+            _validate_document_shapes(
+                root,
+                documents,
+                expected_config,
+                expected_seeds,
+                protocol_version,
+                registered_seeds,
+                repository,
+                errors,
+            )
+        manifest = documents.get("manifest.json")
+        if manifest is None:
+            return RetainedEvidenceValidation(
+                errors=tuple(errors),
+                documents=documents,
+                document_sha256=document_sha256,
+                document_identities=document_identities,
+            )
+        seed = manifest.get("seed")
+        if not _is_integer(seed):
+            errors.append("Cannot preflight Parquet row counts because manifest seed is invalid")
+            return RetainedEvidenceValidation(
+                errors=tuple(errors),
+                documents=documents,
+                document_sha256=document_sha256,
+                document_identities=document_identities,
+            )
+        expected_rows = _expected_event_rows(expected_config, cast(int, seed))
+        ingestion = _ingest_bounded_parquet(
             artifacts,
-            documents["manifest.json"],
-            expected_config,
-            errors,
+            expected_raw_row_count=len(expected_rows),
         )
+        errors.extend(ingestion.errors)
+        if ingestion.errors:
+            parquet_ingestion_failed = True
+            return RetainedEvidenceValidation(
+                errors=tuple(errors),
+                documents=documents,
+                document_sha256=document_sha256,
+                document_identities=document_identities,
+                parquet_ingestion_failed=True,
+            )
+        raw_table = ingestion.raw_table
+        raw_rows = ingestion.raw_rows
+        raw_encoded_sha256 = ingestion.raw_encoded_sha256
+        raw_file_identity = ingestion.raw_file_identity
+        summary_table = ingestion.summary_table
+        summary_rows = ingestion.summary_rows
+        summary_encoded_sha256 = ingestion.summary_encoded_sha256
+        summary_file_identity = ingestion.summary_file_identity
+        if len(documents) == len(document_names):
+            _validate_raw_events(
+                artifacts,
+                manifest,
+                expected_config,
+                raw_rows,
+                expected_rows,
+                errors,
+            )
     except (
         ConfigurationError,
         OSError,
@@ -843,4 +1447,20 @@ def validate_retained_evidence(
         ValueError,
     ) as error:
         errors.append(f"Strict retained-evidence verification failed: {error}")
-    return tuple(errors)
+        parquet_ingestion_failed = False
+    return RetainedEvidenceValidation(
+        errors=tuple(errors),
+        raw_table=raw_table,
+        summary_table=summary_table,
+        raw_rows=raw_rows,
+        summary_rows=summary_rows,
+        raw_encoded_sha256=raw_encoded_sha256,
+        summary_encoded_sha256=summary_encoded_sha256,
+        raw_file_identity=raw_file_identity,
+        summary_file_identity=summary_file_identity,
+        documents=documents,
+        document_sha256=document_sha256,
+        document_identities=document_identities,
+        document_ingestion_failed=document_ingestion_failed,
+        parquet_ingestion_failed=parquet_ingestion_failed,
+    )

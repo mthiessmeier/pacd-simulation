@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 from pacd_sim.harness.run import RunResult
-from pacd_sim.harness.run import _run_diagnostic_worker as run_diagnostic
+from pacd_sim.harness.run import _run_diagnostic_in_process as run_diagnostic
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CONFIG_ROOT = REPO_ROOT / "configs"

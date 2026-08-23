@@ -3,17 +3,17 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 import os
 import re
+import stat
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-import pyarrow.parquet as pq
-
 from pacd_sim.constants import EVIDENCE_LABEL
-from pacd_sim.metrics.summarize import summary_from_raw
+from pacd_sim.metrics.summarize import summary_from_raw_table
 from pacd_sim.reproducibility.canonical import canonical_sha256
 from pacd_sim.reproducibility.evidence_validation import (
     strict_json_loads,
@@ -22,7 +22,6 @@ from pacd_sim.reproducibility.evidence_validation import (
 from pacd_sim.reproducibility.manifest import (
     semantic_events_hash,
     semantic_summary_hash,
-    sha256_file,
 )
 from pacd_sim.reproducibility.paths import (
     PathBoundaryError,
@@ -31,6 +30,7 @@ from pacd_sim.reproducibility.paths import (
     path_has_symlink_or_reparse,
     resolve_workspace_root,
 )
+from pacd_sim.reproducibility.receipts import verify_execution_receipt
 
 _REQUIRED_ARTIFACTS = (
     "NON_REPORTABLE_DIAGNOSTIC",
@@ -87,20 +87,150 @@ class VerificationResult:
     checked_files: tuple[str, ...]
     raw_semantic_hash: str | None
     summary_semantic_hash: str | None
+    semantic_content_valid: bool = False
+    execution_identity_assured: bool = False
+    reportable: bool = False
+    receipt_path: Path | None = None
     evidence_label: str = EVIDENCE_LABEL
 
     def to_dict(self) -> dict[str, object]:
         """Return a JSON-ready result with a string path."""
         value = asdict(self)
         value["run_dir"] = str(self.run_dir)
+        value["receipt_path"] = str(self.receipt_path) if self.receipt_path is not None else None
         return value
 
 
-def _read_json_object(path: Path) -> dict[str, object]:
-    value = strict_json_loads(path.read_text(encoding="utf-8"), source=path.name)
-    if not isinstance(value, dict):
-        raise ValueError(f"Expected a JSON object: {path.name}")
-    return {str(key): item for key, item in value.items()}
+@dataclass(frozen=True)
+class _ArtifactSnapshot:
+    path: Path
+    device: int
+    inode: int
+    size: int
+    mtime_ns: int
+    link_count: int
+    sha256: str
+
+    def identity(self) -> tuple[int, int, int, int, int]:
+        return (self.device, self.inode, self.size, self.mtime_ns, self.link_count)
+
+
+def _stable_artifact_snapshot(path: Path) -> _ArtifactSnapshot:
+    """Stream one artifact through a stable, singly linked regular-file handle."""
+
+    if path_has_symlink_or_reparse(path):
+        raise ValueError(f"Artifact path is indirect: {path.name}")
+    before = path.stat(follow_symlinks=False)
+    if (
+        not stat.S_ISREG(before.st_mode)
+        or before.st_nlink != 1
+        or before.st_size > MAX_RUN_OUTPUT_BYTES
+    ):
+        raise ValueError(f"Artifact is not a bounded singly linked file: {path.name}")
+    expected_identity = (
+        before.st_dev,
+        before.st_ino,
+        before.st_size,
+        before.st_mtime_ns,
+        before.st_nlink,
+    )
+    digest = hashlib.sha256()
+    total = 0
+    with path.open("rb") as handle:
+        opened = os.fstat(handle.fileno())
+        if expected_identity != (
+            opened.st_dev,
+            opened.st_ino,
+            opened.st_size,
+            opened.st_mtime_ns,
+            opened.st_nlink,
+        ):
+            raise ValueError(f"Opened artifact identity differs from its path: {path.name}")
+        while chunk := handle.read(1024 * 1024):
+            total += len(chunk)
+            if total > before.st_size:
+                raise ValueError(f"Artifact grew during stable hashing: {path.name}")
+            digest.update(chunk)
+        opened_after = os.fstat(handle.fileno())
+    after = path.stat(follow_symlinks=False)
+    if (
+        total != before.st_size
+        or expected_identity
+        != (
+            opened_after.st_dev,
+            opened_after.st_ino,
+            opened_after.st_size,
+            opened_after.st_mtime_ns,
+            opened_after.st_nlink,
+        )
+        or expected_identity
+        != (
+            after.st_dev,
+            after.st_ino,
+            after.st_size,
+            after.st_mtime_ns,
+            after.st_nlink,
+        )
+    ):
+        raise ValueError(f"Artifact changed during stable hashing: {path.name}")
+    return _ArtifactSnapshot(
+        path=path,
+        device=before.st_dev,
+        inode=before.st_ino,
+        size=before.st_size,
+        mtime_ns=before.st_mtime_ns,
+        link_count=before.st_nlink,
+        sha256=digest.hexdigest(),
+    )
+
+
+def _cached_artifact_snapshot(
+    path: Path,
+    *,
+    device: int,
+    inode: int,
+    size: int,
+    mtime_ns: int,
+    link_count: int,
+    digest: str,
+) -> _ArtifactSnapshot:
+    """Convert one bounded-ingestion identity without reopening its path."""
+
+    snapshot = _ArtifactSnapshot(
+        path=path,
+        device=device,
+        inode=inode,
+        size=size,
+        mtime_ns=mtime_ns,
+        link_count=link_count,
+        sha256=digest,
+    )
+    current = path.stat(follow_symlinks=False)
+    if path_has_symlink_or_reparse(path) or snapshot.identity() != (
+        current.st_dev,
+        current.st_ino,
+        current.st_size,
+        current.st_mtime_ns,
+        current.st_nlink,
+    ):
+        raise ValueError(f"Artifact changed after bounded ingestion: {path.name}")
+    return snapshot
+
+
+def _revalidate_artifact_snapshots(
+    snapshots: Mapping[str, _ArtifactSnapshot],
+) -> tuple[str, ...]:
+    """Perform the last complete-path identity check after all verifier consumers."""
+
+    errors: list[str] = []
+    for name, expected in snapshots.items():
+        try:
+            current = _stable_artifact_snapshot(expected.path)
+            if current.identity() != expected.identity() or current.sha256 != expected.sha256:
+                raise ValueError("identity or digest changed")
+        except (OSError, RuntimeError, ValueError) as error:
+            errors.append(f"Artifact changed during complete verification: {name}: {error}")
+    return tuple(errors)
 
 
 def _parse_sha256s(path: Path) -> dict[str, str]:
@@ -123,11 +253,17 @@ def _parse_sha256s(path: Path) -> dict[str, str]:
     return hashes
 
 
-def _verify_labelled_rows(path: Path, errors: list[str]) -> None:
+def _verify_labelled_rows(
+    path: Path,
+    errors: list[str],
+    parquet_rows: tuple[dict[str, object], ...] | None = None,
+) -> None:
     try:
         if path.suffix == ".parquet":
-            rows = pq.read_table(path, columns=["evidence_label"]).to_pylist()
-            labels = [row.get("evidence_label") for row in rows]
+            if parquet_rows is None:
+                errors.append(f"No bounded Parquet ingestion is available for {path.name}")
+                return
+            labels = [row.get("evidence_label") for row in parquet_rows]
         elif path.suffix == ".csv":
             with path.open("r", encoding="utf-8", newline="") as handle:
                 labels = [row.get("evidence_label") for row in csv.DictReader(handle)]
@@ -236,16 +372,83 @@ def verify_run(
         "manifest.json",
         "raw/events.jsonl",
         "raw/events.parquet",
+        "derived/episode_summary.parquet",
     }
+    retained_validation = None
     if strict_required.issubset(artifacts):
-        errors.extend(
-            validate_retained_evidence(
-                root,
-                artifacts,
-                workspace,
-                repo_root=repo_root,
-            )
+        retained_validation = validate_retained_evidence(
+            root,
+            artifacts,
+            workspace,
+            repo_root=repo_root,
         )
+        errors.extend(retained_validation.errors)
+        if (
+            retained_validation.document_ingestion_failed
+            or retained_validation.parquet_ingestion_failed
+        ):
+            return VerificationResult(
+                run_dir=root,
+                valid=False,
+                errors=tuple(errors),
+                checked_files=tuple(sorted(checked)),
+                raw_semantic_hash=None,
+                summary_semantic_hash=None,
+            )
+
+    artifact_snapshots: dict[str, _ArtifactSnapshot] = {}
+    snapshot_errors: list[str] = []
+    for relative_name, artifact in artifacts.items():
+        try:
+            cached_identity = None
+            cached_digest = None
+            if retained_validation is not None:
+                if (
+                    retained_validation.document_identities is not None
+                    and retained_validation.document_sha256 is not None
+                    and relative_name in retained_validation.document_identities
+                    and relative_name in retained_validation.document_sha256
+                ):
+                    cached_identity = retained_validation.document_identities[relative_name]
+                    cached_digest = retained_validation.document_sha256[relative_name]
+                elif relative_name == "raw/events.parquet":
+                    cached_identity = retained_validation.raw_file_identity
+                    cached_digest = retained_validation.raw_encoded_sha256
+                elif relative_name == "derived/episode_summary.parquet":
+                    cached_identity = retained_validation.summary_file_identity
+                    cached_digest = retained_validation.summary_encoded_sha256
+            if cached_identity is not None and cached_digest is not None:
+                artifact_snapshots[relative_name] = _cached_artifact_snapshot(
+                    artifact,
+                    device=cached_identity.device,
+                    inode=cached_identity.inode,
+                    size=cached_identity.size,
+                    mtime_ns=cached_identity.mtime_ns,
+                    link_count=cached_identity.link_count,
+                    digest=cached_digest,
+                )
+            else:
+                artifact_snapshots[relative_name] = _stable_artifact_snapshot(artifact)
+        except (OSError, RuntimeError, ValueError) as error:
+            snapshot_errors.append(
+                f"Could not establish stable artifact snapshot: {relative_name}: {error}"
+            )
+    if snapshot_errors:
+        errors.extend(snapshot_errors)
+        return VerificationResult(
+            run_dir=root,
+            valid=False,
+            errors=tuple(errors),
+            checked_files=tuple(sorted(checked)),
+            raw_semantic_hash=None,
+            summary_semantic_hash=None,
+        )
+
+    def artifact_sha256(relative_name: str, artifact: Path) -> str:
+        snapshot = artifact_snapshots.get(relative_name)
+        if snapshot is None or snapshot.path != artifact:
+            raise ValueError(f"No stable artifact snapshot is available: {relative_name}")
+        return snapshot.sha256
 
     marker = artifacts.get("NON_REPORTABLE_DIAGNOSTIC")
     if marker is not None:
@@ -255,18 +458,14 @@ def verify_run(
         except (OSError, UnicodeError):
             errors.append("Diagnostic marker is unreadable")
 
-    json_objects: dict[str, dict[str, object]] = {}
-    for name in ("canonical_config.json", "seed_registry.json", "status.json", "manifest.json"):
-        path = artifacts.get(name)
-        if path is None:
-            continue
-        try:
-            value = _read_json_object(path)
-            json_objects[name] = value
-            if value.get("evidence_label") != EVIDENCE_LABEL:
-                errors.append(f"Evidence label missing or invalid in {name}")
-        except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as error:
-            errors.append(f"Could not parse {name}: {error}")
+    json_objects = (
+        dict(retained_validation.documents)
+        if retained_validation is not None and retained_validation.documents is not None
+        else {}
+    )
+    for name, value in json_objects.items():
+        if value.get("evidence_label") != EVIDENCE_LABEL:
+            errors.append(f"Evidence label missing or invalid in {name}")
 
     log_path = artifacts.get("logs/run.log")
     if log_path is not None:
@@ -285,7 +484,13 @@ def verify_run(
     ):
         path = artifacts.get(name)
         if path is not None:
-            _verify_labelled_rows(path, errors)
+            parquet_rows = None
+            if retained_validation is not None:
+                if name == "raw/events.parquet":
+                    parquet_rows = retained_validation.raw_rows
+                elif name == "derived/episode_summary.parquet":
+                    parquet_rows = retained_validation.summary_rows
+            _verify_labelled_rows(path, errors, parquet_rows)
 
     checksum_path = artifacts.get("SHA256SUMS.txt")
     checksum_values: dict[str, str] = {}
@@ -296,8 +501,11 @@ def verify_run(
             if set(checksum_values) != expected_names:
                 errors.append("SHA256SUMS.txt does not list exactly all non-checksum artifacts")
             for relative_name, expected in checksum_values.items():
-                artifact = artifacts.get(relative_name)
-                if artifact is not None and sha256_file(artifact) != expected:
+                checksum_artifact = artifacts.get(relative_name)
+                if (
+                    checksum_artifact is not None
+                    and artifact_sha256(relative_name, checksum_artifact) != expected
+                ):
                     errors.append(f"Checksum mismatch: {relative_name}")
         except (OSError, UnicodeError, ValueError) as error:
             errors.append(str(error))
@@ -317,8 +525,11 @@ def verify_run(
             if not isinstance(relative_name, str) or not isinstance(expected, str):
                 errors.append("Manifest artifact_hashes contains a non-string entry")
                 continue
-            artifact = artifacts.get(relative_name)
-            if artifact is None or sha256_file(artifact) != expected:
+            manifest_artifact = artifacts.get(relative_name)
+            if (
+                manifest_artifact is None
+                or artifact_sha256(relative_name, manifest_artifact) != expected
+            ):
                 errors.append(f"Manifest artifact hash mismatch: {relative_name}")
     else:
         errors.append("Manifest artifact_hashes is missing or invalid")
@@ -343,7 +554,10 @@ def verify_run(
         expected_component_hashes = {
             name: canonical_sha256(value) for name, value in components.items()
         }
-        expected_component_hashes["aggregate"] = sha256_file(artifacts["canonical_config.json"])
+        expected_component_hashes["aggregate"] = artifact_sha256(
+            "canonical_config.json",
+            artifacts["canonical_config.json"],
+        )
         for name, expected_digest in expected_component_hashes.items():
             if configuration_hashes.get(name) != expected_digest:
                 errors.append(f"Manifest component hash mismatch: {name}")
@@ -380,7 +594,7 @@ def verify_run(
 
     canonical_path = artifacts.get("canonical_config.json")
     if canonical_path is not None:
-        config_digest = sha256_file(canonical_path)
+        config_digest = artifact_sha256("canonical_config.json", canonical_path)
         if manifest.get("config_hash_start") != config_digest:
             errors.append("Manifest start configuration hash does not match canonical_config.json")
         if manifest.get("config_hash_end") != config_digest:
@@ -389,7 +603,10 @@ def verify_run(
             errors.append("Canonical configuration changed during the run")
 
     seed_path = artifacts.get("seed_registry.json")
-    if seed_path is not None and manifest.get("seed_registry_hash") != sha256_file(seed_path):
+    if seed_path is not None and manifest.get("seed_registry_hash") != artifact_sha256(
+        "seed_registry.json",
+        seed_path,
+    ):
         errors.append("Manifest seed-registry hash does not match seed_registry.json")
     seed_registry = json_objects.get("seed_registry.json", {})
     status = json_objects.get("status.json", {})
@@ -406,17 +623,19 @@ def verify_run(
     raw_jsonl = artifacts.get("raw/events.jsonl")
     summary_parquet = artifacts.get("derived/episode_summary.parquet")
     summary_csv = artifacts.get("derived/episode_summary.csv")
-    if raw_parquet is not None:
+    raw_table = retained_validation.raw_table if retained_validation is not None else None
+    raw_rows = retained_validation.raw_rows if retained_validation is not None else ()
+    summary_table = retained_validation.summary_table if retained_validation is not None else None
+    summary_rows = retained_validation.summary_rows if retained_validation is not None else ()
+    if raw_parquet is not None and raw_table is not None:
         try:
-            raw_table = pq.read_table(raw_parquet)
-            raw_rows_for_identity = raw_table.to_pylist()
-            raw_seeds = {row.get("seed") for row in raw_rows_for_identity}
-            raw_config_hashes = {row.get("config_hash") for row in raw_rows_for_identity}
+            raw_seeds = {row.get("seed") for row in raw_rows}
+            raw_config_hashes = {row.get("config_hash") for row in raw_rows}
             if raw_seeds != {manifest_seed}:
                 errors.append("Raw-event seed does not match the manifest seed")
             if raw_config_hashes != {manifest.get("config_hash_start")}:
                 errors.append("Raw-event configuration hash does not match the manifest")
-            raw_hash = semantic_events_hash(raw_parquet)
+            raw_hash = semantic_events_hash(raw_rows)
             if manifest.get("raw_semantic_hash") != raw_hash:
                 errors.append("Manifest raw semantic hash does not match raw events")
             if raw_jsonl is not None and semantic_events_hash(raw_jsonl) != raw_hash:
@@ -424,9 +643,8 @@ def verify_run(
         except (OSError, ValueError, json.JSONDecodeError) as error:
             errors.append(f"Raw semantic verification failed: {error}")
 
-    if summary_parquet is not None:
+    if summary_parquet is not None and summary_table is not None:
         try:
-            summary_rows = pq.read_table(summary_parquet).to_pylist()
             if len(summary_rows) != 1:
                 errors.append("Derived summary must contain exactly one row")
             else:
@@ -435,21 +653,20 @@ def verify_run(
                     errors.append("Derived-summary seed does not match the manifest seed")
                 if summary_row.get("config_hash") != manifest.get("config_hash_start"):
                     errors.append("Derived-summary configuration hash does not match the manifest")
-            summary_hash = semantic_summary_hash(summary_parquet)
+            summary_hash = semantic_summary_hash(summary_rows)
             if manifest.get("summary_semantic_hash") != summary_hash:
                 errors.append("Manifest summary semantic hash does not match derived summary")
             if summary_csv is not None and semantic_summary_hash(summary_csv) != summary_hash:
                 errors.append("CSV and Parquet summary semantics differ")
-            if raw_parquet is not None:
-                expected_summary = summary_from_raw(raw_parquet)
+            if raw_table is not None:
+                expected_summary = summary_from_raw_table(raw_table)
                 if canonical_sha256([expected_summary]) != summary_hash:
                     errors.append("Derived summary was not reproduced solely from raw events")
         except (OSError, ValueError, json.JSONDecodeError) as error:
             errors.append(f"Summary semantic verification failed: {error}")
 
-    if raw_parquet is not None:
+    if raw_parquet is not None and raw_table is not None:
         try:
-            raw_rows = pq.read_table(raw_parquet).to_pylist()
             event_types = [str(row.get("event_type")) for row in raw_rows]
             required_chain = (
                 "observation",
@@ -554,12 +771,23 @@ def verify_run(
         errors.append("Run status must declare reportable=false")
     if manifest.get("reportable") is not False:
         errors.append("Manifest must declare reportable=false")
-
+    receipt = verify_execution_receipt(
+        workspace_root=workspace,
+        run_dir=root,
+        manifest=manifest,
+    )
+    errors.extend(_revalidate_artifact_snapshots(artifact_snapshots))
+    semantic_content_valid = not errors
+    errors.extend(receipt.errors)
     return VerificationResult(
         run_dir=root,
-        valid=not errors,
+        valid=semantic_content_valid and receipt.identity_assured,
         errors=tuple(errors),
         checked_files=tuple(sorted(checked)),
         raw_semantic_hash=raw_hash,
         summary_semantic_hash=summary_hash,
+        semantic_content_valid=semantic_content_valid,
+        execution_identity_assured=receipt.identity_assured,
+        reportable=receipt.reportable,
+        receipt_path=receipt.receipt_path,
     )

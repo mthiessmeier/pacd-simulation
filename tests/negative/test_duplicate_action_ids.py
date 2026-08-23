@@ -9,7 +9,7 @@ from pacd_sim.harness.run import (
     ConfigurationError,
 )
 from pacd_sim.harness.run import (
-    _run_diagnostic_worker as run_diagnostic,
+    _run_diagnostic_in_process as run_diagnostic,
 )
 
 

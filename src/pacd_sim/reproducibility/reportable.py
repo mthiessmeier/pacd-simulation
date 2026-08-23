@@ -144,7 +144,7 @@ def _load_approval(path: Path) -> dict[str, object]:
         )
     except ReportableModeDenied:
         raise
-    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+    except (OSError, RecursionError, UnicodeError, json.JSONDecodeError) as error:
         raise ReportableModeDenied(
             "Author approval record is unreadable or invalid JSON"
         ) from error
