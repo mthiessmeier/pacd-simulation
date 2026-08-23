@@ -1046,7 +1046,8 @@ def _validate_invocation_ownership(
     ):
         raise RuntimeError("Invocation ownership capability does not match")
     if require_receipt_authority:
-        assert ownership.receipt_capability is not None
+        if ownership.receipt_capability is None:
+            raise RuntimeError("Parent receipt capability is absent")
         receipt_capability_sha256 = marker.get("receipt_capability_sha256")
         if not isinstance(receipt_capability_sha256, str) or not secrets.compare_digest(
             receipt_capability_sha256,
