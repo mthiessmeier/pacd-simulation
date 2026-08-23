@@ -1,10 +1,12 @@
 # PACD Environment Bootstrap — Validation Report
 
-**Generated:** 2026-08-23T02:14:55-04:00
+**Generated:** 2026-08-23T02:37:12-04:00
 **Evidence label:** `NON_REPORTABLE_DIAGNOSTIC`
 **Validated implementation commit:** `39cc2bcb04e36dee9133e66e71bd03ef33596e83`
+**Pre-delivery evidence commit:** `f5776b018f187e14e4996a2a1a26e84b00706423`
 **Branch:** `codex/environment-bootstrap-v1`
-**Pre-delivery status:** All local mandatory gates pass. Current repository privacy and the open-unmerged PR gate will be verified during the authorized delivery step.
+**Acceptance classification:** `PASSED — environment bootstrap complete`
+**Delivery status:** Private repository reverified; PR #1 is open and unmerged from the required feature branch to `main`.
 
 No reportable PACD experiment was executed. Results below validate only environment safety,
 reproducibility, architecture, and diagnostic plumbing; they do not support a PACD performance or
@@ -21,10 +23,10 @@ effectiveness claim.
 | HS-05 | PASS | Command log | No elevation, reboot, service, scheduled task, registry edit, execution-policy change, or persistent PATH change occurred. |
 | HS-06 | PASS | `INSTALLED_COMPONENTS.json`; run report | 219,232,276,480 bytes remained free at doctor time; downloads were 57,303,699 bytes and all diagnostic outputs 103,540 bytes. |
 | GH-01 | PASS | Work/decision logs | Targeted personal-account search found no PACD match; exact private `pacd-simulation` repository created. |
-| GH-02 | PENDING DELIVERY CHECK | Creation evidence | Repository was private at creation; current state will be queried immediately before/after PR creation. |
+| GH-02 | PASS | `status/DELIVERY_REPORT.json` | Repository visibility is `PRIVATE`; repository is unarchived and default branch remains `main`. |
 | GH-03 | PASS | Doctor and Git evidence | All changes are on `codex/environment-bootstrap-v1`; default branch was not modified. |
 | GH-04 | PASS | Command/work logs and local Git graph | No force-push, history rewrite, reset of user work, deletion, merge, or release operation occurred. |
-| GH-05 | PENDING DELIVERY | Authorized next step | Feature branch has not yet been pushed and the PR has not yet been opened. |
+| GH-05 | PASS | `status/DELIVERY_REPORT.json` | PR #1 is `OPEN`, non-draft, and unmerged from `codex/environment-bootstrap-v1` to `main`. |
 | GH-06 | PASS | `status/SECRET_SCAN.json` | Final candidate scan returned zero secrets; private host evidence is ignored. |
 | GH-07 | PASS | `LICENSE_PENDING.md` | No public license selected; author decision remains open. |
 | GH-08 | PASS | Repository tree and command log | No workflow exists; no CI, Actions, cloud compute, or paid usage was invoked. |

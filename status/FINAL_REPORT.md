@@ -1,8 +1,8 @@
 # PACD Environment Bootstrap — Final Report
 
-**Acceptance classification:** Not yet assigned; GH-05 private PR delivery is pending
-**Date/time:** 2026-08-23T02:14:55-04:00
-**Repository/branch/PR:** private `pacd-simulation` / `codex/environment-bootstrap-v1` / pending
+**Acceptance classification:** `PASSED — environment bootstrap complete`
+**Date/time:** 2026-08-23T02:37:12-04:00
+**Repository/branch/PR:** private `pacd-simulation` / `codex/environment-bootstrap-v1` / PR #1 (`OPEN`, unmerged)
 **Workspace root:** `%USERPROFILE%\PACD-Workspaces\PACD-Simulation`
 **Evidence label:** `NON_REPORTABLE_DIAGNOSTIC`
 
@@ -51,6 +51,8 @@ simulated-only execution, verification/rollback, audit/metrics, deterministic ha
 closed-world verifier, reportable interlock, documentation, and acceptance tests. Harness,
 defender, safety, execution, and metrics boundaries are independent. No GitHub Actions workflow,
 public/open-source license grant, production adapter, or approval marker exists.
+The required feature branch is pushed to the private repository, and PR #1 is open and unmerged
+against `main`.
 
 ## 6. Setup, doctor, tests, diagnostic, verification, and reconstruction commands
 
@@ -72,7 +74,7 @@ $TaskTemp = Join-Path $WorkspaceRoot ('var\tmp\acceptance-' + [guid]::NewGuid().
 & $Uv run --frozen --no-sync mypy src tests --no-incremental --cache-dir (Join-Path $TaskTemp 'mypy')
 & $Uv run --frozen --no-sync pytest -p no:cacheprovider --basetemp (Join-Path $TaskTemp 'pytest') -q
 & $Uv run --frozen --no-sync bandit -c pyproject.toml -r src
-$SecretExclude = '(^|[\\/])(uv\.lock|status[\\/](DEPENDENCY_INVENTORY|VULNERABILITY_AUDIT|SOURCE_AND_DOWNLOAD_HASHES|DIAGNOSTIC_RUN_REPORT|DOCTOR_REPORT|INSTALLED_COMPONENTS)\.(json|txt))$'
+$SecretExclude = '(^|[\\/])(uv\.lock|status[\\/](DEPENDENCY_INVENTORY|VULNERABILITY_AUDIT|SOURCE_AND_DOWNLOAD_HASHES|DIAGNOSTIC_RUN_REPORT|DOCTOR_REPORT|INSTALLED_COMPONENTS|DELIVERY_REPORT)\.(json|txt))$'
 & $Uv run --frozen --no-sync detect-secrets scan --no-verify --exclude-files $SecretExclude
 & $Uv run --frozen --no-sync pip-audit --local --skip-editable
 
@@ -106,7 +108,7 @@ The executed reconstruction used the previously absent retained target
 | Architecture | PASS | Architecture, tests, verifier | All AR-01 through AR-09 pass |
 | Quality/security | PASS | Quality, coverage, Bandit, secrets, audit reports | 108 tests; strict types; zero scan findings/candidates/vulnerabilities |
 | Diagnostic | PASS | Diagnostic report and three retained run roots | All DR-01 through DR-10 pass |
-| GitHub delivery | PENDING | Branch local; PR not yet opened | GH-02 current privacy and GH-05 will be closed during delivery |
+| GitHub delivery | PASS | `status/DELIVERY_REPORT.json` | Repository is private; PR #1 is open, non-draft, and unmerged; workflow count is zero |
 
 The full gate-by-gate disposition is in `VALIDATION_REPORT.md`.
 
@@ -127,7 +129,7 @@ No empirical PACD claim is authorized or made.
 Workspace path checks, strict write jails, reparse-point rejection, transactional staging,
 closed-world manifests, aggregate output limits, exact action/config binding, immutable hashes,
 simulated-only policy, reportable denial, and sanitized logs are retained. Original package
-payloads and the workspace copy matched the package manifest before work and will be rechecked
+payloads and the workspace copy matched all 16 package-manifest entries before work and again
 after delivery.
 
 ## 10. Escalations and dispositions
@@ -159,6 +161,8 @@ must remain untouched.
 
 ## 13. Final evidence statement
 
-All local mandatory acceptance gates pass. The report intentionally withholds the final
-acceptance classification until the current private-repository state is reverified, the feature
-branch is pushed without history rewriting, and an open unmerged PR is confirmed.
+`PASSED — environment bootstrap complete`. All 41 numbered acceptance gates pass, the
+repository remains private, and PR #1 is open and unmerged. Supporting paths are
+`status/VALIDATION_REPORT.md`, `status/DELIVERY_REPORT.json`,
+`status/DIAGNOSTIC_RUN_REPORT.json`, and `status/DOCTOR_REPORT.json`. This classification
+validates the bounded environment only and makes no empirical PACD claim.

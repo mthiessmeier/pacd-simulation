@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-23T02:14:55-04:00",
+  "generated_at": "2026-08-23T02:37:12-04:00",
   "pre_existing_preserved": [
     {
       "name": "PowerShell Core",
@@ -57,7 +57,7 @@
       "archive_sha256": "c28c7b3b584967a05b74d9eaf7481bff24ddc34930bf2d6e442c148236561eb1",
       "signature": "Valid Authenticode, GitHub, Inc.",
       "executed": true,
-      "disposition": "Preserve pending task continuation; no persistent PATH change"
+      "disposition": "Retain as a task-installed portable tool; no persistent PATH change"
     },
     {
       "name": "uv",
