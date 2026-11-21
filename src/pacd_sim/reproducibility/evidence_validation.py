@@ -20,7 +20,7 @@ import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
 from pacd_sim.audit.writer import EVENT_SCHEMA, EVENT_TYPES
-from pacd_sim.constants import EVIDENCE_LABEL, SCHEMA_VERSION
+from pacd_sim.constants import DIAGNOSTIC_SCENARIO_FILES, EVIDENCE_LABEL, SCHEMA_VERSION
 from pacd_sim.defenders.base import DefenderContext
 from pacd_sim.defenders.pacd.diagnostic import DiagnosticPACDDefender
 from pacd_sim.engine.scheduler import DeterministicScheduler
@@ -315,7 +315,6 @@ def _resolve_repository(workspace: Path, repo_root: Path | str | None) -> Path:
     controlled_paths = (
         repository / ".git",
         repository / "uv.lock",
-        repository / "configs" / "scenarios" / "diagnostic_identity_smoke.yaml",
         repository / "configs" / "policies" / "diagnostic_safety.yaml",
         repository / "configs" / "seeds" / "diagnostic_seeds.json",
         repository / "configs" / "defenders" / "diagnostic_baseline.yaml",
@@ -329,10 +328,18 @@ def _resolve_repository(workspace: Path, repo_root: Path | str | None) -> Path:
 
 def _load_controlled_bundle(
     repository: Path,
+    manifest: Mapping[str, object],
 ) -> tuple[dict[str, object], dict[str, object], str, tuple[int, ...]]:
-    scenario = load_yaml_config(
-        repository / "configs" / "scenarios" / "diagnostic_identity_smoke.yaml"
-    )
+    hashes = manifest.get("configuration_hashes")
+    if not isinstance(hashes, dict) or not _is_sha256(hashes.get("scenario")):
+        raise ValueError("Manifest configuration_hashes lacks a valid scenario digest")
+    # The manifest selects by content. Only checkout-owned filenames may reach the loader.
+    for filename in DIAGNOSTIC_SCENARIO_FILES:
+        scenario = load_yaml_config(repository / "configs" / "scenarios" / filename)
+        if canonical_sha256(scenario) == hashes["scenario"]:
+            break
+    else:
+        raise ValueError("Scenario digest does not match any fixture in the controlled repository")
     policy = load_yaml_config(repository / "configs" / "policies" / "diagnostic_safety.yaml")
     seed_registry = _load_json_config(repository / "configs" / "seeds" / "diagnostic_seeds.json")
     baseline = load_yaml_config(repository / "configs" / "defenders" / "diagnostic_baseline.yaml")
@@ -1408,9 +1415,6 @@ def validate_retained_evidence(
     parquet_ingestion_failed = False
     try:
         repository = _resolve_repository(workspace, repo_root)
-        expected_config, expected_seeds, protocol_version, registered_seeds = (
-            _load_controlled_bundle(repository)
-        )
         document_names = (
             "canonical_config.json",
             "seed_registry.json",
@@ -1445,17 +1449,19 @@ def validate_retained_evidence(
                     document_identities=document_identities,
                     document_ingestion_failed=True,
                 )
-        if len(documents) == len(document_names):
-            _validate_document_shapes(
-                root,
-                documents,
-                expected_config,
-                expected_seeds,
-                protocol_version,
-                registered_seeds,
-                repository,
-                errors,
-            )
+        expected_config, expected_seeds, protocol_version, registered_seeds = (
+            _load_controlled_bundle(repository, documents["manifest.json"])
+        )
+        _validate_document_shapes(
+            root,
+            documents,
+            expected_config,
+            expected_seeds,
+            protocol_version,
+            registered_seeds,
+            repository,
+            errors,
+        )
         if errors:
             return RetainedEvidenceValidation(
                 errors=tuple(errors),

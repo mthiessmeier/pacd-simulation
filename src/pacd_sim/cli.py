@@ -9,7 +9,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import TextIO
 
-from pacd_sim.constants import EVIDENCE_LABEL
+from pacd_sim.constants import DEFAULT_SCENARIO_FILE, EVIDENCE_LABEL
 from pacd_sim.harness.run import ConfigurationError, run_diagnostic
 from pacd_sim.reproducibility.doctor import run_doctor
 from pacd_sim.reproducibility.paths import (
@@ -101,7 +101,9 @@ def _parser() -> argparse.ArgumentParser:
     )
     diagnostic.add_argument("--repo-root", type=Path, default=_default_repo_root())
     diagnostic.add_argument("--workspace-root", type=Path)
-    diagnostic.add_argument("--scenario", type=Path)
+    diagnostic.add_argument(
+        "--scenario", type=Path, help=f"synthetic scenario YAML (default: {DEFAULT_SCENARIO_FILE})"
+    )
     diagnostic.add_argument("--policy", type=Path)
     diagnostic.add_argument("--seeds", type=Path)
     diagnostic.add_argument("--baseline", type=Path)
@@ -134,10 +136,7 @@ def _doctor_command(arguments: argparse.Namespace) -> int:
 def _diagnostic_command(arguments: argparse.Namespace) -> int:
     repository = arguments.repo_root.resolve(strict=True)
     workspace = _resolve_diagnostic_workspace(repository, arguments.workspace_root)
-    scenario = (
-        arguments.scenario
-        or repository / "configs" / "scenarios" / "diagnostic_identity_smoke.yaml"
-    )
+    scenario = arguments.scenario or repository / "configs" / "scenarios" / DEFAULT_SCENARIO_FILE
     policy = arguments.policy or repository / "configs" / "policies" / "diagnostic_safety.yaml"
     seeds = arguments.seeds or repository / "configs" / "seeds" / "diagnostic_seeds.json"
     output_root = arguments.output_root or workspace / "var" / "runs"

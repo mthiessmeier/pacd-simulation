@@ -7,7 +7,7 @@ fields at every level. Each decoded array becomes a tuple and retains its order.
 
 | File under `configs/` | Model | Constraints exercised by the diagnostic |
 |---|---|---|
-| `scenarios/diagnostic_identity_smoke.yaml` | `ScenarioConfig` | Synthetic scenario, 1–100 events and actions each, nonempty identity/session/service/mission collections, bounded telemetry noise and delay. |
+| `scenarios/diagnostic_identity_smoke.yaml` (default) or `scenarios/diagnostic_maintenance_window.yaml` | `ScenarioConfig` | Synthetic scenario, 1–100 events and actions each, nonempty identity/session/service/mission collections, bounded telemetry noise and delay. |
 | `policies/diagnostic_safety.yaml` | `PolicyConfig` | Simulated adapter, disabled network, explicit allowed/escalated/prohibited classes. The existing governor policy checks that the classes are disjoint. |
 | `seeds/diagnostic_seeds.json` | `SeedRegistryConfig` | 1–100 distinct nonnegative signed 64-bit integers. The harness checks membership of the default and selected seeds. |
 | `defenders/diagnostic_baseline.yaml` | `BaselineConfig` | Named baseline, synthetic-only observations and no actions. |
@@ -23,7 +23,7 @@ uv run --frozen --no-sync python -c "from pacd_sim.harness.run import validate_d
 
 The first command emits JSON Schema for field shapes. The second also enforces
 file, uniqueness, reference and cross-input rules and returns individual and
-aggregate canonical digests. Doctor, diagnostic invocation and retained-run
+aggregate canonical digests for the default bundle after checking both scenarios. Doctor, diagnostic invocation and retained-run
 verification use the same typed input check. Shape inspection alone cannot
 establish that a bundle is executable.
 

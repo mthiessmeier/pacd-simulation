@@ -117,6 +117,16 @@ def test_invalid_config_stops_public_harness_before_ownership(
     assert not (isolated_workspace.root / "var" / "receipts").exists()
 
 
+def test_configuration_check_validates_the_second_governed_scenario(
+    isolated_workspace: IsolatedWorkspace,
+) -> None:
+    path = isolated_workspace.config_root / "scenarios/diagnostic_maintenance_window.yaml"
+    with path.open("a", encoding="utf-8") as stream:
+        stream.write("\nunknown_scenario_field: true\n")
+    with pytest.raises(ConfigurationError, match="unknown_scenario_field"):
+        validate_diagnostic_configuration_files(isolated_workspace.repo_root)
+
+
 def test_derived_id_limits_preserve_executable_boundary_cases(
     isolated_workspace: IsolatedWorkspace,
 ) -> None:

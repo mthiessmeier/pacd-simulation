@@ -27,7 +27,12 @@ from yaml.nodes import MappingNode, Node, ScalarNode, SequenceNode
 from pacd_sim.actions.models import DefensiveAction, RequestedAuthority
 from pacd_sim.audit.writer import AuditWriter
 from pacd_sim.configuration import DiagnosticInputs, ScenarioConfig
-from pacd_sim.constants import EVIDENCE_LABEL, SCHEMA_VERSION
+from pacd_sim.constants import (
+    DEFAULT_SCENARIO_FILE,
+    DIAGNOSTIC_SCENARIO_FILES,
+    EVIDENCE_LABEL,
+    SCHEMA_VERSION,
+)
 from pacd_sim.defenders.base import DefenderContext
 from pacd_sim.defenders.pacd.diagnostic import DiagnosticPACDDefender
 from pacd_sim.engine.scheduler import DeterministicScheduler, ScheduledEvent
@@ -565,11 +570,11 @@ def _validate_loaded_configuration_bundle(
 def validate_diagnostic_configuration_files(
     repo_root: Path | str,
 ) -> dict[str, str]:
-    """Fully validate all governed diagnostic inputs without creating output."""
+    """Validate every shipped scenario and return the default bundle's diagnostic hashes."""
     repository = Path(repo_root).resolve(strict=True)
     scenario = load_yaml_config(
         _assert_controlled_config(
-            repository / "configs" / "scenarios" / "diagnostic_identity_smoke.yaml",
+            repository / "configs" / "scenarios" / DEFAULT_SCENARIO_FILE,
             repository,
         )
     )
@@ -604,6 +609,17 @@ def validate_diagnostic_configuration_files(
         baseline_definition,
         metric_definition,
     )
+    for filename in DIAGNOSTIC_SCENARIO_FILES[1:]:
+        path = _assert_controlled_config(
+            repository / "configs" / "scenarios" / filename, repository
+        )
+        _validate_loaded_configuration_bundle(
+            load_yaml_config(path),
+            policy_config,
+            seed_registry,
+            baseline_definition,
+            metric_definition,
+        )
     canonical_config: dict[str, object] = {
         "evidence_label": EVIDENCE_LABEL,
         "schema_version": SCHEMA_VERSION,
