@@ -18,6 +18,7 @@ from pacd_sim.defenders.baselines.static import (
 from pacd_sim.defenders.observations import BaselineObservation
 from pacd_sim.defenders.pacd import corroboration
 from pacd_sim.harness.run import ConfigurationError, run_diagnostic
+from pacd_sim.metrics.dispositions import episode_dispositions
 from pacd_sim.reproducibility.canonical import canonical_sha256
 from pacd_sim.reproducibility.doctor import run_doctor
 from pacd_sim.reproducibility.paths import (
@@ -139,6 +140,7 @@ def _parser() -> argparse.ArgumentParser:
     for name, description in (
         ("baseline", "replay the static human-review rule on verified observations"),
         ("defender-trace", "trace the PACD planner's review proposals on verified observations"),
+        ("metrics", "report action dispositions and the escalation fraction for one verified run"),
     ):
         replay = subparsers.add_parser(name, help=description)
         replay.add_argument("run_dir", type=Path)
@@ -231,11 +233,14 @@ def _defender_trace(observations: tuple[BaselineObservation, ...]) -> dict[str, 
     return trace
 
 
-def _observation_command(arguments: argparse.Namespace) -> int:
+def _verified_report_command(arguments: argparse.Namespace) -> int:
     repository = _default_repo_root().resolve(strict=True)
     workspace = _resolve_diagnostic_workspace(repository, arguments.workspace_root)
     verification, material = verify_run_with_summary(
-        arguments.run_dir, workspace_root=workspace, repo_root=repository, include_observations=True
+        arguments.run_dir,
+        workspace_root=workspace,
+        repo_root=repository,
+        include_observations=arguments.command != "metrics",
     )
     payload = verification.to_dict()
     if not verification.valid or material is None:
@@ -244,7 +249,12 @@ def _observation_command(arguments: argparse.Namespace) -> int:
         return 1
 
     payload["status"] = "VERIFIED"
-    if arguments.command == "defender-trace":
+    if arguments.command == "metrics":
+        metrics = episode_dispositions(material.episode)
+        payload["run_id"] = verification.run_dir.name
+        payload["metrics"] = metrics
+        payload["metrics_sha256"] = canonical_sha256(metrics)
+    elif arguments.command == "defender-trace":
         payload["defender_trace"] = _defender_trace(material.observations)
     else:
         payload["baseline"] = _static_report(material.observations)
@@ -253,7 +263,7 @@ def _observation_command(arguments: argparse.Namespace) -> int:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Dispatch environment checks, diagnostics, verification, or static baseline replay."""
+    """Dispatch local environment checks, diagnostics, verification and read-only reports."""
     parser = _parser()
     arguments = parser.parse_args(argv)
     try:
@@ -263,8 +273,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _diagnostic_command(arguments)
         if arguments.command == "verify":
             return _verify_command(arguments)
-        if arguments.command in ("baseline", "defender-trace"):
-            return _observation_command(arguments)
+        if arguments.command in ("baseline", "defender-trace", "metrics"):
+            return _verified_report_command(arguments)
     except ReportableModeDenied as error:
         _emit_json(
             _failure_payload(

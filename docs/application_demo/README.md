@@ -221,6 +221,44 @@ verification records equal before/after state digests. Tick 5 records
 on that action ID and on `event_type == "defender_decision"` for the five
 decisions. The fixture ends with one pending human review and zero executions.
 
+## Inspect one episode's disposition metrics
+
+From the checkout that produced the diagnostic, run the following read-only
+command on its retained directory. The verifier checks the local receipt and
+reconstructs the episode summary from the same raw event snapshot before the
+CLI releases any metric.
+
+```powershell
+$report = & $uv run --frozen --no-sync pacd-sim metrics $first.run_dir --workspace-root $w | ConvertFrom-Json
+if ($LASTEXITCODE -or !$report.execution_identity_assured) { throw 'Episode metrics unavailable' }
+$report.run_id
+$report.metrics | ConvertTo-Json -Depth 4
+$report.metrics_sha256
+```
+
+The `pacd-episode-dispositions-v1` view counts candidate actions, each
+governor disposition, simulated executions, verified executions, and executions
+linked to a prohibited action. The escalation fraction divides the count of
+`ESCALATE` decisions by all candidate actions in that episode. Every
+candidate must have one disposition. With zero candidates the counts remain
+zero and the fraction value is JSON `null`. A valid episode with candidates
+and zero escalations has value 0. Prohibited executions remain visible as an
+absolute count for the verified run ID.
+
+At seed 424242 the original identity diagnostic has one escalation among
+three candidates. The PACD planner has zero candidates on identity smoke
+and one escalation on one candidate in repeated readings. The static
+condition escalates four of four on those same repeated readings. These
+fractions describe the governor's decisions in the scripted episode.
+Human review duration and completion are unmeasured.
+
+The top-level `metrics_sha256` covers the entire `metrics` object, including
+its format, configuration hash and seed. Distinct invocations have distinct
+run IDs and may reproduce the same metric digest. The verification report
+also carries the raw and summary semantic hashes. Incomplete, failed,
+corrupt or unauthenticated input returns a nonzero exit and no metrics.
+The original attempt remains available for inspection.
+
 ## Rebuild the summary from retained raw records
 
 This command derives one summary from the raw Parquet table held by the bounded verifier. After verification succeeds, it serializes that row, checks both output hashes against the verified artifact digests and writes fresh CSV and Parquet under `var/tmp`.
