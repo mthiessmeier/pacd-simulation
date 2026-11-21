@@ -72,7 +72,7 @@ from pacd_sim.reproducibility.reportable import (
     git_is_dirty,
     validate_reportable_approval,
 )
-from pacd_sim.schema import PolicyDisposition, VerificationDisposition
+from pacd_sim.schema import STABLE_ID_MAX_LENGTH, PolicyDisposition, VerificationDisposition
 from pacd_sim.state.snapshot import create_snapshot
 from pacd_sim.telemetry.generator import DetectorProfile, Sensor, SyntheticTelemetryGenerator
 
@@ -573,6 +573,16 @@ def _validate_loaded_configuration_bundle(
     ]
     if any(environment.get_session(action.target_id) is None for action in approved_actions):
         raise ConfigurationError("Approved diagnostic action targets an unknown session")
+    # The diagnostic processes configured actions once, at the first adversary
+    # observation. Every approved candidate needs a matching proposal and a
+    # verification record there for the episode to complete.
+    response_tick = min(event.tick for event in events if event.kind == "simulated_adversary")
+    response_tick += inputs.scenario.telemetry.delay_ticks
+    for action in approved_actions:
+        if len(f"verification-execution-{action.id}") > STABLE_ID_MAX_LENGTH:
+            raise ConfigurationError("Approved action ID is too long for its verification record")
+        if len(f"action-pacd-isolate-{action.target_id}-{response_tick}") > STABLE_ID_MAX_LENGTH:
+            raise ConfigurationError("Approved session target ID is too long for its proposal")
     return protocol_version, registered_seeds
 
 

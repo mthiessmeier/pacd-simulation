@@ -49,6 +49,18 @@ surrogates and over-budget YAML expansions. Telemetry bounds now fail in the
 parent's input check, before invocation allocation. Schema version and
 classification are mandatory, including for older retained configurations.
 
+The scheduler requires unique event IDs. Each generated record ID has a
+256-character limit. Reserving room for the v1 context and hypothesis names
+leaves 199 characters for an event ID and 234 for an event's subject ID.
+Configured action IDs allow 240 characters for policy decisions and 233 when
+the governor approves an action that needs an execution verification record.
+Observed subject IDs, configured action IDs and their targets must also fit the
+500 UTF-8 bytes available in the corresponding raw audit columns.
+For an approved session target, the parent also checks the full proposal ID
+using the first adversary event's tick plus the configured delay. Other
+proposals depend on the observations, current state and defender decision.
+Their IDs are validated when those proposals are constructed.
+
 ### Record types
 
 Shared version, provenance and numeric types live in `src/pacd_sim/schema.py`.

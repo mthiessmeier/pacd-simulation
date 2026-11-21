@@ -2,15 +2,18 @@
 
 from typing import Annotated, Literal, Self
 
-from pydantic import BeforeValidator, Field, model_validator
+from pydantic import AfterValidator, BeforeValidator, Field, model_validator
 
 from pacd_sim.actions.models import RequestedAuthority
 from pacd_sim.schema import (
+    STABLE_ID_MAX_LENGTH,
     DiagnosticRecord,
+    NonemptyText,
     Probability,
     Signed64Count,
     StableId,
     StrictFrozenModel,
+    validate_audit_text,
 )
 
 
@@ -33,9 +36,9 @@ type NonemptyArray[T] = Annotated[
 type BoundedArray[T] = Annotated[
     tuple[T, ...], Field(min_length=1, max_length=100), BeforeValidator(_freeze_array)
 ]
-type NonemptyText = Annotated[str, Field(min_length=1)]
 type Enabled = Annotated[Literal[True], BeforeValidator(_require_bool)]
 type Disabled = Annotated[Literal[False], BeforeValidator(_require_bool)]
+type AuditId = Annotated[StableId, AfterValidator(validate_audit_text)]
 
 
 class TelemetryConfig(StrictFrozenModel):
@@ -65,16 +68,27 @@ class MissionConfig(StrictFrozenModel):
 
 
 class EventConfig(StrictFrozenModel):
-    id: StableId
+    # The full-coverage v1 harness creates a context for every observation.
+    id: Annotated[
+        StableId,
+        Field(
+            max_length=STABLE_ID_MAX_LENGTH
+            - len("defender-context-observation-sensor-synthetic-diagnostic-")
+        ),
+    ]
     tick: Annotated[int, Field(ge=0, le=10_000)]
     kind: StableId
-    identity_id: StableId | None
+    # Each observed subject gets both the benign and compromise hypotheses.
+    identity_id: (
+        Annotated[AuditId, Field(max_length=STABLE_ID_MAX_LENGTH - len("hypothesis--compromise"))]
+        | None
+    )
 
 
 class ActionConfig(StrictFrozenModel):
-    id: StableId
+    id: Annotated[AuditId, Field(max_length=STABLE_ID_MAX_LENGTH - len("policy-decision-"))]
     action_type: StableId
-    target_id: StableId
+    target_id: AuditId
     reversible: bool
     requested_authority: RequestedAuthority
 
@@ -91,6 +105,12 @@ class ScenarioConfig(DiagnosticRecord):
     missions: NonemptyArray[MissionConfig]
     events: BoundedArray[EventConfig]
     actions: BoundedArray[ActionConfig]
+
+    @model_validator(mode="after")
+    def _unique_event_ids(self) -> Self:
+        if len({event.id for event in self.events}) != len(self.events):
+            raise ValueError("diagnostic event IDs must be unique")
+        return self
 
 
 class PolicyConfig(DiagnosticRecord):

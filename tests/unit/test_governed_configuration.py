@@ -15,6 +15,7 @@ from pacd_sim.configuration import DiagnosticInputs, SeedRegistryConfig
 from pacd_sim.harness.run import (
     ConfigurationError,
     _load_json_config,
+    _run_diagnostic_in_process,
     load_yaml_config,
     run_diagnostic,
     validate_diagnostic_configuration_files,
@@ -72,6 +73,15 @@ def test_seed_registry_roundtrip_preserves_values_and_wire_hash(values: list[int
         (0, "criticality: 0.8", "criticality: 0.8\n    unrecognized: false"),
         (0, "delay_ticks: 1", "delay_ticks: 2\n  delay_ticks: 1"),
         (0, "noise_standard_deviation: 0.05", "noise_standard_deviation: .nan"),
+        (0, "event-benign-admin", "event-simulated-adversary"),
+        (0, "event-benign-admin", "e" * 200),
+        (0, "identity-synthetic-user", "i" * 235),
+        (0, "action-allowed", "a" * 234),
+        (0, "action-prohibited", "p" * 241),
+        (0, "session-synthetic-001", "s" * 235),
+        (0, "identity-synthetic-user", "界" * 167),
+        (0, "action-prohibited", "界" * 167),
+        (0, "synthetic-denied-target", "界" * 167),
         (1, "network_enabled: false", "network_enabled: 0"),
         (2, '"seeds":', '"unexpected": [], "seeds":'),
         (2, '"seeds":', '"seeds": [0], "seeds":'),
@@ -87,8 +97,10 @@ def test_invalid_config_stops_public_harness_before_ownership(
     files = controlled_config_files(isolated_workspace.config_root)
     source = files[index].read_text(encoding="utf-8")
     assert old in source
-    files[index].write_text(source.replace(old, new, 1), encoding="utf-8")
+    files[index].write_text(source.replace(old, new), encoding="utf-8")
     scenario, policy, seeds, baseline, metrics = files
+    with pytest.raises(ConfigurationError):
+        validate_diagnostic_configuration_files(isolated_workspace.repo_root)
     with pytest.raises(ConfigurationError):
         run_diagnostic(
             scenario,
@@ -103,6 +115,37 @@ def test_invalid_config_stops_public_harness_before_ownership(
     assert list(isolated_workspace.output_root.iterdir()) == []
     assert not (isolated_workspace.root / "var" / "invocations").exists()
     assert not (isolated_workspace.root / "var" / "receipts").exists()
+
+
+def test_derived_id_limits_preserve_executable_boundary_cases(
+    isolated_workspace: IsolatedWorkspace,
+) -> None:
+    scenario, policy, seeds, baseline, metrics = controlled_config_files(
+        isolated_workspace.config_root
+    )
+    source = scenario.read_text(encoding="utf-8")
+    for previous, replacement in (
+        ("event-benign-admin", "e" * 199),
+        ("identity-synthetic-user", "i" * 234),
+        ("action-allowed", "a" * 233),
+        # This fits both the 240-character bound and the 500-byte audit column.
+        ("action-prohibited", "界" * 130 + "p" * 110),
+        ("session-synthetic-001", "s" * 234),
+    ):
+        source = source.replace(previous, replacement)
+    scenario.write_text(source, encoding="utf-8")
+    validate_diagnostic_configuration_files(isolated_workspace.repo_root)
+    result = _run_diagnostic_in_process(
+        scenario,
+        policy,
+        seeds,
+        isolated_workspace.output_root,
+        baseline_path=baseline,
+        metric_path=metrics,
+        repo_root=isolated_workspace.repo_root,
+        workspace_root=isolated_workspace.root,
+    )
+    assert result.run_dir.is_dir()
 
 
 @pytest.mark.parametrize("suffix", [".json", ".yaml"])

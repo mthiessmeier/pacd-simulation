@@ -40,7 +40,7 @@ if ($first.raw_semantic_hash -ne $replay.raw_semantic_hash -or
 
 ## Rebuild the summary from retained raw records
 
-This separate command verifies the completed run, calls the existing raw-Parquet summarizer, writes fresh CSV and Parquet under `var/tmp`, and compares each regenerated file's SHA-256 with the retained original.
+This command derives one summary from the raw Parquet table held by the bounded verifier. After verification succeeds, it serializes that row, checks both output hashes against the verified artifact digests and writes fresh CSV and Parquet under `var/tmp`.
 
 ```powershell
 & $uv run --frozen --no-sync python docs/application_demo/regenerate.py $first.run_dir
@@ -50,7 +50,7 @@ For the schema demonstration, run the contract and compatibility checks from the
 
 ```powershell
 $fresh = Join-Path $w ('t\i1-' + [guid]::NewGuid().ToString('N').Substring(0,8))
-& $uv run --frozen --no-sync pytest -p no:cacheprovider --basetemp $fresh -q tests/unit/test_governed_configuration.py tests/unit/test_diagnostic_records.py tests/reproducibility/test_diagnostic_replay.py::test_v1_schema_migration_preserves_accepted_diagnostic
+& $uv run --frozen --no-sync pytest -p no:cacheprovider --basetemp $fresh -q tests/unit/test_governed_configuration.py tests/unit/test_diagnostic_records.py tests/reproducibility/test_verified_regeneration.py tests/reproducibility/test_diagnostic_replay.py::test_v1_schema_migration_preserves_accepted_diagnostic
 ```
 
 The accepted fixture uses two identities, one session, a service and one mission. The governor binds a decision to its policy, target and pre-state. The verifier checks the intended isolated session state. The defender context in this diagnostic includes immutable environment state and beliefs. A research comparison first needs an explicit observation-only interface and a documented ground-truth boundary.

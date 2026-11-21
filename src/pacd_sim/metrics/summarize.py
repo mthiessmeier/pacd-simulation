@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import csv
+import hashlib
+import io
 import json
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Final, Literal
 
@@ -12,7 +15,11 @@ import pyarrow.parquet as pq
 
 from pacd_sim.audit.writer import EVENT_SCHEMA
 from pacd_sim.constants import EVIDENCE_LABEL, SCHEMA_VERSION
-from pacd_sim.reproducibility.paths import assert_write_path
+from pacd_sim.reproducibility.paths import (
+    PathBoundaryError,
+    assert_write_path,
+    path_has_symlink_or_reparse,
+)
 from pacd_sim.schema import DiagnosticRecord, Sha256Digest, Signed64Count
 
 
@@ -167,23 +174,51 @@ def summarize_raw_events(
 ) -> dict[str, object]:
     """Write fixed Parquet and CSV summaries created only from raw Parquet."""
     summary = summary_from_raw(raw_events_path)
-    output_dir = assert_write_path(derived_dir, workspace_root)
-    output_dir.mkdir(parents=False, exist_ok=False)
-    parquet_path = assert_write_path(output_dir / "episode_summary.parquet", workspace_root)
-    csv_path = assert_write_path(output_dir / "episode_summary.csv", workspace_root)
+    write_episode_summary(
+        EpisodeRecord.model_validate(summary), derived_dir, workspace_root=workspace_root
+    )
+    return summary
 
+
+def write_episode_summary(
+    episode: EpisodeRecord,
+    derived_dir: Path | str,
+    *,
+    workspace_root: Path | str,
+    expected_hashes: Mapping[str, str] | None = None,
+) -> dict[str, str]:
+    """Serialize the bounded row and exclusively create both v1 summary files."""
+    summary = episode.model_dump()
     table = pa.Table.from_pylist([summary], schema=SUMMARY_SCHEMA)
+    parquet = pa.BufferOutputStream()
     pq.write_table(
         table,
-        parquet_path,
+        parquet,
         compression="NONE",
         data_page_version="1.0",
         use_dictionary=False,
         write_statistics=False,
     )
     field_names = [name for name, _data_type in SUMMARY_FIELDS]
-    with csv_path.open("x", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=field_names, lineterminator="\n")
-        writer.writeheader()
-        writer.writerow(summary)
-    return summary
+    csv_text = io.StringIO(newline="")
+    writer = csv.DictWriter(csv_text, fieldnames=field_names, lineterminator="\n")
+    writer.writeheader()
+    writer.writerow(summary)
+    encoded = {
+        "episode_summary.parquet": parquet.getvalue().to_pybytes(),
+        "episode_summary.csv": csv_text.getvalue().encode("utf-8"),
+    }
+    hashes = {name: hashlib.sha256(data).hexdigest() for name, data in encoded.items()}
+    if expected_hashes is not None and hashes != expected_hashes:
+        raise ValueError("Regenerated summary differs from the verified artifact digests")
+    if path_has_symlink_or_reparse(derived_dir):
+        raise PathBoundaryError("Summary output directory path contains a symlink or reparse point")
+    output_dir = assert_write_path(derived_dir, workspace_root)
+    output_dir.mkdir(parents=False, exist_ok=False)
+    for name, data in encoded.items():
+        target = output_dir / name
+        if path_has_symlink_or_reparse(target):
+            raise PathBoundaryError("Summary output file path contains a symlink or reparse point")
+        with target.open("xb") as handle:
+            handle.write(data)
+    return hashes

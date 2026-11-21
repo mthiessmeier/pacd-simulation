@@ -15,7 +15,13 @@ from pacd_sim.constants import EVIDENCE_LABEL, SCHEMA_VERSION
 from pacd_sim.reproducibility.canonical import canonical_json_bytes
 from pacd_sim.reproducibility.manifest import validate_retained_json_text_depth
 from pacd_sim.reproducibility.paths import assert_write_path
-from pacd_sim.schema import DiagnosticRecord, NonNegativeFloat, Sha256Digest, Signed64Count
+from pacd_sim.schema import (
+    DiagnosticRecord,
+    NonNegativeFloat,
+    Sha256Digest,
+    Signed64Count,
+    validate_audit_text,
+)
 
 EventType = Literal[
     "run_started",
@@ -51,9 +57,7 @@ class AuditEvent(DiagnosticRecord):
     @field_validator("entity_id", "action_id", "disposition", "outcome")
     @classmethod
     def _bound_event_text(cls, value: str) -> str:
-        if len(value.encode("utf-8")) > 500:
-            raise ValueError("Audit identifiers and outcomes are limited to 500 UTF-8 bytes")
-        return value
+        return validate_audit_text(value)
 
     @field_validator("payload_json")
     @classmethod
