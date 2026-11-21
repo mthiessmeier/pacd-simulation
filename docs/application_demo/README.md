@@ -90,6 +90,33 @@ the reconstructed event rows and the local receipt. The same `verify` command
 works for both fixtures. Event kinds are scripted labels visible to this
 diagnostic's classifier. The benign control shows what happened in this episode.
 
+## Replay a static defense baseline
+
+From the checkout that produced a retained run, evaluate a fixed triage rule
+on its verified observations. The command below uses the maintenance run
+created above.
+
+```powershell
+$report = & $uv run --frozen --no-sync pacd-sim baseline $pair[0].run_dir --workspace-root $w | ConvertFrom-Json
+if ($LASTEXITCODE -or !$report.valid) { throw 'Baseline replay failed' }
+$report.baseline.decisions | ConvertTo-Json -Depth 5
+```
+
+The baseline receives the delivery tick, observed subject ID and sensor signal
+one observation at a time. At a signal of 0.75 or higher it proposes
+`require_human_review` for an identified subject. Otherwise it abstains.
+The v1 wire value `synthetic-unknown` represents a missing subject. A literal
+ID with the same spelling also produces an abstention. Event kind, source
+event ID, environment state, beliefs and later observations are outside the
+policy input. The output includes the rule version and a canonical SHA-256
+digest of its ordered inputs.
+
+This is a retrospective implementation of the draft baseline matrix's
+**Static defense** condition. The original diagnostic produced the recorded
+session transitions. The baseline reports proposals and leaves those records
+intact. Prospective intervention, resource equalization and a comparative
+protocol remain future work.
+
 ## Rebuild the summary from retained raw records
 
 This command derives one summary from the raw Parquet table held by the bounded verifier. After verification succeeds, it serializes that row, checks both output hashes against the verified artifact digests and writes fresh CSV and Parquet under `var/tmp`.

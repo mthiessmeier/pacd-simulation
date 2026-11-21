@@ -8,7 +8,21 @@ from pacd_sim.actions.models import DefensiveAction, action_sort_key
 from pacd_sim.environment.model import EnvironmentState
 from pacd_sim.evidence.normalize import EvidenceItem
 from pacd_sim.hypotheses.update import BeliefState
-from pacd_sim.schema import ConsequentialRecord, StableId
+from pacd_sim.schema import (
+    ConsequentialRecord,
+    NonNegativeTick,
+    Probability,
+    StableId,
+    StrictFrozenModel,
+)
+
+
+class BaselineObservation(StrictFrozenModel):
+    """Sensor fields available to an observation-only baseline at delivery."""
+
+    tick: NonNegativeTick
+    subject_id: StableId | None
+    signal: Probability
 
 
 class DefenderContext(ConsequentialRecord):

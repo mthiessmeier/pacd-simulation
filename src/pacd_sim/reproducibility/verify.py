@@ -15,6 +15,7 @@ from typing import cast
 
 from pacd_sim.configuration import EventConfig, ScenarioConfig
 from pacd_sim.constants import EVIDENCE_LABEL
+from pacd_sim.defenders.base import BaselineObservation
 from pacd_sim.metrics.summarize import EpisodeRecord, summary_from_raw_table
 from pacd_sim.reproducibility.canonical import canonical_sha256
 from pacd_sim.reproducibility.evidence_validation import (
@@ -134,11 +135,12 @@ class VerificationResult:
 
 @dataclass(frozen=True)
 class VerifiedSummary:
-    """A summary recomputed from bounded raw evidence and its verified output digests."""
+    """Raw-derived summary and optional sensor observations from the same verified snapshot."""
 
     episode: EpisodeRecord
     csv_sha256: str
     parquet_sha256: str
+    observations: tuple[BaselineObservation, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -335,6 +337,7 @@ def _verify_run_impl(
     *,
     repo_root: Path | str | None = None,
     include_event_sequence: bool = False,
+    include_observations: bool = False,
 ) -> tuple[VerificationResult, VerifiedSummary | None]:
     """Implement complete verification behind the public defensive boundary."""
     errors: list[str] = []
@@ -869,10 +872,26 @@ def _verify_run_impl(
                 if row["event_type"] == "observation"
             )
             result = replace(result, event_sequence=sequence)
+        observations: tuple[BaselineObservation, ...] = ()
+        if include_observations:
+            # The v1 sensor writes this sentinel for a missing subject. A literal ID
+            # with the same spelling is indistinguishable on the wire and also abstains.
+            observations = tuple(
+                BaselineObservation(
+                    tick=int(cast(float, row["tick"])),
+                    subject_id=None
+                    if row["entity_id"] == "synthetic-unknown"
+                    else cast(str, row["entity_id"]),
+                    signal=json.loads(cast(str, row["payload_json"]))["signal"],
+                )
+                for row in raw_rows
+                if row["event_type"] == "observation"
+            )
         return result, VerifiedSummary(
             episode=EpisodeRecord.model_validate(expected_summary),
             csv_sha256=artifact_snapshots["derived/episode_summary.csv"].sha256,
             parquet_sha256=artifact_snapshots["derived/episode_summary.parquet"].sha256,
+            observations=observations,
         )
     return result, None
 
@@ -883,8 +902,9 @@ def verify_run_with_summary(
     *,
     repo_root: Path | str | None = None,
     include_event_sequence: bool = False,
+    include_observations: bool = False,
 ) -> tuple[VerificationResult, VerifiedSummary | None]:
-    """Verify one run and release its raw-derived summary only with full local assurance."""
+    """Release the summary and requested sensor fields only after full local verification."""
 
     try:
         return _verify_run_impl(
@@ -892,6 +912,7 @@ def verify_run_with_summary(
             workspace_root=workspace_root,
             repo_root=repo_root,
             include_event_sequence=include_event_sequence,
+            include_observations=include_observations,
         )
     except RecursionError as error:
         return VerificationResult(
