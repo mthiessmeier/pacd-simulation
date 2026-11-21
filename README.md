@@ -1,10 +1,11 @@
 # PACD Simulation
 
-**Reproduce the current work sample.** The [checkout instructions](#reconstruct-inside-the-bounded-workspace)
-pin the Increment 6 implementation at [`5eb554c`](https://github.com/mthiessmeier/pacd-simulation/commit/5eb554c21b008038ecc50d0f7433977bef64ba7a).
-The [diagnostic walkthrough](#run-the-diagnostic) registers two attempts and runs
-the accepted planner on repeated sensor readings in one. Expect one verified completion
-and one incomplete attempt. The completed episode has one escalated candidate and zero executions.
+**Reproduce the final Phase 2 work sample at accepted main [`d5a2969`](https://github.com/mthiessmeier/pacd-simulation/commit/d5a29699e14409bfd54d30c51117c81077639ee6).**
+Run the [checkout](#reconstruct-inside-the-bounded-workspace) and [diagnostic](#run-the-diagnostic)
+blocks in order in the same PowerShell session. The walkthrough registers two attempts and
+runs the planner on repeated sensor readings in one. Expect one verified completion and one
+incomplete attempt. The completed episode has one escalated candidate and zero simulated
+executions. The final commands replay the register and regenerate the episode summary.
 
 This private repository contains a bounded, local-first, CPU-only PACD simulation environment.
 Its current outputs are environment diagnostics only. They do not establish PACD effectiveness,
@@ -53,9 +54,9 @@ Begin outside protected Desktop, Documents, Downloads, and redirected equivalent
 
 ```powershell
 $WorkspaceRoot = Join-Path $env:USERPROFILE 'PACD-Workspaces\PACD-Simulation'
-$Revision = '5eb554c21b008038ecc50d0f7433977bef64ba7a'
+$Revision = 'd5a29699e14409bfd54d30c51117c81077639ee6'
 $RepoParent = Join-Path $WorkspaceRoot 'repo'
-$RepoRoot = Join-Path $RepoParent ('evaluator-i6-' + [guid]::NewGuid().ToString('N').Substring(0,10))
+$RepoRoot = Join-Path $RepoParent ('evaluator-phase2-' + [guid]::NewGuid().ToString('N').Substring(0,10))
 $uv = Join-Path $WorkspaceRoot 'var\cache\tools\uv\0.12.5\uv.exe'
 $UvCache = Join-Path $WorkspaceRoot 'var\cache\uv-project'
 $PreCommitCache = Join-Path $WorkspaceRoot 'var\cache\pre-commit'
@@ -80,7 +81,7 @@ if (Test-Path -LiteralPath $RepoRoot) { throw 'Choose an unused checkout path' }
 git clone --no-checkout https://github.com/mthiessmeier/pacd-simulation.git $RepoRoot
 if ($LASTEXITCODE) { throw 'Private repository clone failed' }
 Set-Location -LiteralPath $RepoRoot
-git switch --create reproduce-increment6 $Revision
+git switch --create reproduce-phase2 $Revision
 if ($LASTEXITCODE -or (git rev-parse HEAD) -ne $Revision) { throw 'Reproduction checkout failed' }
 & $uv sync --frozen --offline --python 3.13.15
 if ($LASTEXITCODE) { throw 'Frozen environment setup failed' }
@@ -88,9 +89,9 @@ if ($LASTEXITCODE) { throw 'Frozen environment setup failed' }
 if ($LASTEXITCODE) { throw 'Environment verification failed' }
 ```
 
-The pin includes the complete implementation and its [detailed demo](docs/application_demo/README.md).
-The follow-up README commit records that immutable revision. The last accepted
-Increment 5 merge is [`9c9dfce`](https://github.com/mthiessmeier/pacd-simulation/commit/9c9dfcec659870c41aa7cc95846d6760d9c31df7).
+This revision contains all six accepted diagnostic increments. The acceptance record
+documents the gates and independent replay on this merge. [Phase 2 acceptance](https://github.com/mthiessmeier/pacd-simulation/pull/8#issuecomment-7068565861)
+· [Detailed demonstration at the accepted revision](https://github.com/mthiessmeier/pacd-simulation/blob/d5a29699e14409bfd54d30c51117c81077639ee6/docs/application_demo/README.md)
 
 ## Check the lock without network access
 
@@ -145,6 +146,8 @@ $Diagnostic = & $uv run --frozen --no-sync pacd-sim diagnostic --workspace-root 
 if ($LASTEXITCODE) { throw 'Diagnostic failed' }
 $Verified = & $uv run --frozen --no-sync pacd-sim verify $Diagnostic.run_dir --workspace-root $WorkspaceRoot --show-event-sequence | ConvertFrom-Json
 if ($LASTEXITCODE -or !$Verified.execution_identity_assured) { throw 'Run verification failed' }
+$Manifest = Get-Content -Raw -LiteralPath (Join-Path $Diagnostic.run_dir 'manifest.json') | ConvertFrom-Json
+if ($Manifest.code_commit -ne $Revision -or $Manifest.dirty_state -ne $false) { throw 'Run manifest does not match the clean accepted checkout' }
 $Trace = & $uv run --frozen --no-sync pacd-sim defender-trace $Diagnostic.run_dir --workspace-root $WorkspaceRoot | ConvertFrom-Json
 if ($LASTEXITCODE) { throw 'Planner replay failed' }
 $Trace.defender_trace.decisions | Select-Object outcome, previous_elevated_tick
@@ -156,11 +159,18 @@ if ($LASTEXITCODE -or $SetReport.status_counts.COMPLETED -ne 1 -or $SetReport.st
 $SetReport.attempts | Select-Object attempt_id, status, reason
 $SetReport.completion_fraction
 $SetReport.observed_escalation_fraction
+
+$Replay = & $uv run --frozen --no-sync pacd-sim metrics --register $RegisterPath --register-sha256 $RegisterPin --workspace-root $WorkspaceRoot | ConvertFrom-Json
+if ($LASTEXITCODE -or $Replay.report_sha256 -ne $SetReport.report_sha256) { throw 'Registered report changed on replay' }
+& $uv run --frozen --no-sync python docs/application_demo/regenerate.py $Diagnostic.run_dir
+if ($LASTEXITCODE) { throw 'Episode summary regeneration failed' }
 ```
 
 The completion fraction is 1/2. The escalation fraction is 1/1 and counts
 only candidate actions from verified completions. Re-reading the same register
 with its pin reproduces `report_sha256` while the retained evidence is unchanged.
+Regeneration reads the verified raw events, writes fresh CSV and Parquet summaries under
+`var/tmp`, and checks both file hashes against the retained artifacts.
 The [set report definition](docs/application_demo/README.md#account-for-a-registered-set-of-attempts)
 also covers failed, timed-out and invalid episodes.
 
