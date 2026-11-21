@@ -189,7 +189,7 @@ def receipt_path_for(workspace_root: Path | str, invocation_id: str) -> Path:
     return _receipt_control_path(workspace, invocation_id)
 
 
-def _stable_singly_linked_bytes(path: Path, *, max_bytes: int) -> bytes:
+def read_stable_bytes(path: Path, *, max_bytes: int) -> bytes:
     """Read one small control record through one stable regular-file handle."""
 
     if path_has_symlink_or_reparse(path):
@@ -249,7 +249,24 @@ def _stable_singly_linked_bytes(path: Path, *, max_bytes: int) -> bytes:
         )
     ):
         raise ValueError("Controlled record changed during its stable read")
+    if path_has_symlink_or_reparse(path):
+        raise ValueError("Controlled record path became indirect")
     return payload
+
+
+def read_ownership_marker(workspace: Path, invocation_id: str) -> tuple[dict[str, object], str]:
+    """Read the exact canonical marker and its content digest for one invocation."""
+    _validate_invocation_id(invocation_id)
+    path = _ownership_control_path(workspace, invocation_id, marker=True)
+    encoded = read_stable_bytes(path, max_bytes=_MAX_OWNERSHIP_MARKER_BYTES)
+    if _ownership_control_path(workspace, invocation_id, marker=True) != path:
+        raise ValueError("Invocation ownership marker lexical path changed")
+    marker = json.loads(encoded, object_pairs_hook=_unique_object)
+    if not isinstance(marker, dict) or frozenset(marker) != _OWNERSHIP_KEYS:
+        raise ValueError("Invocation ownership marker keys are not exact")
+    if canonical_json_bytes(marker) != encoded:
+        raise ValueError("Invocation ownership marker is not canonical JSON")
+    return marker, hashlib.sha256(encoded).hexdigest()
 
 
 def _stable_singly_linked_sha256(path: Path, *, max_bytes: int) -> str:
@@ -355,7 +372,7 @@ def _validate_receipt_creation_authority(
         raise ValueError("Receipt creation capability is invalid")
     marker_path = _ownership_control_path(workspace, invocation_id, marker=True)
     try:
-        marker_bytes = _stable_singly_linked_bytes(
+        marker_bytes = read_stable_bytes(
             marker_path,
             max_bytes=_MAX_OWNERSHIP_MARKER_BYTES,
         )
@@ -676,18 +693,7 @@ def verify_execution_receipt(
 
         if _ownership_control_path(workspace, invocation_id, marker=True) != marker_path:
             raise ValueError("Invocation ownership marker lexical path changed before verification")
-        marker_bytes = _stable_singly_linked_bytes(
-            marker_path,
-            max_bytes=_MAX_OWNERSHIP_MARKER_BYTES,
-        )
-        if _ownership_control_path(workspace, invocation_id, marker=True) != marker_path:
-            raise ValueError("Invocation ownership marker lexical path changed")
-        marker = json.loads(marker_bytes, object_pairs_hook=_unique_object)
-        if not isinstance(marker, dict) or frozenset(marker) != _OWNERSHIP_KEYS:
-            raise ValueError("Invocation ownership marker keys are not exact")
-        if canonical_json_bytes(marker) != marker_bytes:
-            raise ValueError("Invocation ownership marker is not canonical JSON")
-        marker_digest = hashlib.sha256(marker_bytes).hexdigest()
+        marker, marker_digest = read_ownership_marker(workspace, invocation_id)
         expected_staging = assert_write_path(
             workspace / "var" / "tmp" / f"{run_id}.staging",
             workspace,

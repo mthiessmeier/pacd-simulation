@@ -247,6 +247,22 @@ def assert_write_path(
     return target
 
 
+def assert_direct_workspace_path(path: Path, workspace: Path) -> Path:
+    """Confine an evaluator input before opening it, preserving its lexical spelling."""
+    lexical = path.absolute()
+    if (
+        not lexical.is_relative_to(workspace)
+        or ".." in path.parts
+        or _has_windows_alternate_path_spelling(path)
+        or path_has_symlink_or_reparse(lexical)
+    ):
+        raise PathBoundaryError("Evaluator input must be a direct workspace path")
+    resolved = assert_write_path(lexical, workspace)
+    if resolved != lexical:
+        raise PathBoundaryError("Evaluator input resolves indirectly")
+    return lexical
+
+
 def ensure_directory(path: Path | str, workspace_root: Path | str | None = None) -> Path:
     """Create a confined directory tree and return its resolved path."""
     target = assert_write_path(path, workspace_root)

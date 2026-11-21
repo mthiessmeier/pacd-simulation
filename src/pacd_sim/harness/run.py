@@ -77,7 +77,7 @@ from pacd_sim.reproducibility.paths import (
     path_has_symlink_or_reparse,
     resolve_workspace_root,
 )
-from pacd_sim.reproducibility.receipts import create_execution_receipt
+from pacd_sim.reproducibility.receipts import create_execution_receipt, receipt_path_for
 from pacd_sim.reproducibility.reportable import (
     ReportableModeDenied,
     git_commit,
@@ -779,11 +779,19 @@ def _create_invocation_ownership(
 ) -> _InvocationOwnership:
     """Exclusively establish exact staging ownership before a worker starts."""
 
-    selected_invocation_id = invocation_id or uuid4().hex
+    selected_invocation_id = uuid4().hex if invocation_id is None else invocation_id
     _validate_invocation_id(selected_invocation_id)
     if isinstance(seed, bool) or not isinstance(seed, int) or seed < 0:
         raise ValueError("Diagnostic invocation seed is invalid")
     workspace = resolve_workspace_root(workspace_root)
+    if invocation_id is not None:
+        receipt = receipt_path_for(workspace, selected_invocation_id)
+        try:
+            receipt.stat(follow_symlinks=False)
+        except FileNotFoundError:
+            pass
+        else:
+            raise FileExistsError("A retained receipt already occupies the registered invocation")
     if path_has_symlink_or_reparse(output_root):
         raise PathBoundaryError("Diagnostic output path contains a symlink or reparse point")
     output_input = workspace / "var" / "runs"
@@ -2053,6 +2061,7 @@ def _run_diagnostic_in_process(
     baseline_path: Path | str | None = None,
     metric_path: Path | str | None = None,
     reportable: bool = False,
+    invocation_id: str | None = None,
 ) -> RunResult:
     """Parent-style in-process helper for hermetic tests; no worker self-provisioning."""
 
@@ -2083,6 +2092,7 @@ def _run_diagnostic_in_process(
         Path(output_root),
         workspace,
         selected_seed,
+        invocation_id=invocation_id,
     )
     try:
         staged_result = _run_diagnostic_worker(
@@ -2266,6 +2276,7 @@ def run_diagnostic(
     baseline_path: Path | str | None = None,
     metric_path: Path | str | None = None,
     reportable: bool = False,
+    invocation_id: str | None = None,
 ) -> RunResult:
     """Run one diagnostic in a killable process bounded to five wall-clock minutes."""
     repository, workspace = _validate_public_workspace(
@@ -2295,6 +2306,7 @@ def run_diagnostic(
         Path(output_root),
         workspace,
         selected_seed,
+        invocation_id=invocation_id,
     )
     request = _DiagnosticRequest(
         scenario_path=str(Path(scenario_path)),
