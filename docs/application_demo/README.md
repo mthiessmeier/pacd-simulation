@@ -111,11 +111,46 @@ event ID, environment state, beliefs and later observations are outside the
 policy input. The output includes the rule version and a canonical SHA-256
 digest of its ordered inputs.
 
-This is a retrospective implementation of the draft baseline matrix's
-**Static defense** condition. The original diagnostic produced the recorded
-session transitions. The baseline reports proposals and leaves those records
-intact. Prospective intervention, resource equalization and a comparative
-protocol remain future work.
+The `baseline` command reports the fixed rule's decisions on a completed run.
+Use the following diagnostic to observe how the governor handles the same
+rule's proposals as each synthetic reading arrives.
+
+## Run the static rule prospectively
+
+From the checkout and workspace configured above, produce two independent
+invocations per scenario. Each verification reconstructs the scripted events,
+sensor readings, decisions, and governed state from the selected inputs.
+
+```powershell
+$baseline = 'configs/defenders/static_review.yaml'
+foreach ($name in 'diagnostic_identity_smoke', 'diagnostic_maintenance_window') {
+    $scenario = "configs/scenarios/$name.yaml"
+    $pair = foreach ($i in 1..2) {
+        $run = & $uv run --frozen --no-sync pacd-sim diagnostic --workspace-root $w --scenario $scenario --baseline $baseline --seed 424242 | ConvertFrom-Json
+        if ($LASTEXITCODE) { throw "Diagnostic failed for $name" }
+        $check = & $uv run --frozen --no-sync pacd-sim verify $run.run_dir --workspace-root $w --show-event-sequence | ConvertFrom-Json
+        if ($LASTEXITCODE -or !$check.execution_identity_assured) { throw "Verification failed for $name" }
+        $check
+    }
+    if ($pair[0].run_dir -eq $pair[1].run_dir -or
+        $pair[0].raw_semantic_hash -ne $pair[1].raw_semantic_hash -or
+        $pair[0].summary_semantic_hash -ne $pair[1].summary_semantic_hash -or
+        $pair[0].event_sequence.sha256 -ne $pair[1].event_sequence.sha256) { throw "Replay differs for $name" }
+    & $uv run --frozen --no-sync pacd-sim baseline $pair[0].run_dir --workspace-root $w
+    if ($LASTEXITCODE) { throw "Rule replay failed for $name" }
+    & $uv run --frozen --no-sync python docs/application_demo/regenerate.py $pair[0].run_dir
+    if ($LASTEXITCODE) { throw "Regeneration failed for $name" }
+}
+```
+
+The identity fixture delivers observations at ticks 2 and 3. The maintenance
+fixture delivers them at ticks 5, 8 and 11. With seed 424242, the rule requests
+human review on the second observation in each fixture and abstains on the
+others. Each `baseline_decision` in `raw/events.jsonl` binds its outcome to
+the sensor input digest and any resulting candidate. The common governor
+returns `ESCALATE`. The verification records equal before/after state digests,
+and the audit records zero executions. Human completion times, resource
+budgets and comparative performance are outside these diagnostic runs.
 
 ## Rebuild the summary from retained raw records
 

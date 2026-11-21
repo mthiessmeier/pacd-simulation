@@ -19,9 +19,16 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
+from pacd_sim.actions.models import DefensiveAction
 from pacd_sim.audit.writer import EVENT_SCHEMA, EVENT_TYPES
-from pacd_sim.constants import DIAGNOSTIC_SCENARIO_FILES, EVIDENCE_LABEL, SCHEMA_VERSION
+from pacd_sim.constants import (
+    DIAGNOSTIC_BASELINE_FILES,
+    DIAGNOSTIC_SCENARIO_FILES,
+    EVIDENCE_LABEL,
+    SCHEMA_VERSION,
+)
 from pacd_sim.defenders.base import DefenderContext
+from pacd_sim.defenders.baselines.static import STATIC_REVIEW_VERSION
 from pacd_sim.defenders.pacd.diagnostic import DiagnosticPACDDefender
 from pacd_sim.engine.scheduler import DeterministicScheduler
 from pacd_sim.environment.availability import continuity_transition, evaluate_availability
@@ -38,6 +45,7 @@ from pacd_sim.harness.run import (
     _validate_loaded_configuration_bundle,
     load_yaml_config,
 )
+from pacd_sim.harness.static_review import static_review_candidate
 from pacd_sim.hypotheses.update import BeliefState, update_beliefs
 from pacd_sim.metrics.summarize import SUMMARY_SCHEMA
 from pacd_sim.reproducibility.canonical import canonical_json_bytes, canonical_sha256
@@ -317,7 +325,6 @@ def _resolve_repository(workspace: Path, repo_root: Path | str | None) -> Path:
         repository / "uv.lock",
         repository / "configs" / "policies" / "diagnostic_safety.yaml",
         repository / "configs" / "seeds" / "diagnostic_seeds.json",
-        repository / "configs" / "defenders" / "diagnostic_baseline.yaml",
         repository / "configs" / "metrics" / "diagnostic_metrics.yaml",
     )
     for path in controlled_paths:
@@ -326,23 +333,42 @@ def _resolve_repository(workspace: Path, repo_root: Path | str | None) -> Path:
     return repository
 
 
+def _select_controlled_yaml(
+    directory: Path, filenames: tuple[str, ...], digest: object, component: str
+) -> dict[str, object]:
+    if not _is_sha256(digest):
+        raise ValueError(f"Manifest configuration_hashes lacks a valid {component} digest")
+    # The manifest selects by content. Only checkout-owned filenames may reach the loader.
+    for filename in filenames:
+        fixture = load_yaml_config(directory / filename)
+        if canonical_sha256(fixture) == digest:
+            return fixture
+    raise ValueError(
+        f"{component.capitalize()} digest does not match any fixture in the controlled repository"
+    )
+
+
 def _load_controlled_bundle(
     repository: Path,
     manifest: Mapping[str, object],
 ) -> tuple[dict[str, object], dict[str, object], str, tuple[int, ...]]:
     hashes = manifest.get("configuration_hashes")
-    if not isinstance(hashes, dict) or not _is_sha256(hashes.get("scenario")):
-        raise ValueError("Manifest configuration_hashes lacks a valid scenario digest")
-    # The manifest selects by content. Only checkout-owned filenames may reach the loader.
-    for filename in DIAGNOSTIC_SCENARIO_FILES:
-        scenario = load_yaml_config(repository / "configs" / "scenarios" / filename)
-        if canonical_sha256(scenario) == hashes["scenario"]:
-            break
-    else:
-        raise ValueError("Scenario digest does not match any fixture in the controlled repository")
+    if not isinstance(hashes, dict):
+        raise ValueError("Manifest configuration_hashes is missing or invalid")
+    scenario = _select_controlled_yaml(
+        repository / "configs" / "scenarios",
+        DIAGNOSTIC_SCENARIO_FILES,
+        hashes.get("scenario"),
+        "scenario",
+    )
     policy = load_yaml_config(repository / "configs" / "policies" / "diagnostic_safety.yaml")
     seed_registry = _load_json_config(repository / "configs" / "seeds" / "diagnostic_seeds.json")
-    baseline = load_yaml_config(repository / "configs" / "defenders" / "diagnostic_baseline.yaml")
+    baseline = _select_controlled_yaml(
+        repository / "configs" / "defenders",
+        DIAGNOSTIC_BASELINE_FILES,
+        hashes.get("baseline_definition"),
+        "baseline_definition",
+    )
     metrics = load_yaml_config(repository / "configs" / "metrics" / "diagnostic_metrics.yaml")
     protocol_version, seeds = _validate_loaded_configuration_bundle(
         scenario,
@@ -516,6 +542,8 @@ def _expected_event_rows(
     canonical_config: Mapping[str, object], seed: int
 ) -> list[dict[str, object]]:
     scenario = cast(dict[str, object], canonical_config["scenario"])
+    baseline_definition = cast(dict[str, object], canonical_config["baseline_definition"])
+    is_static = baseline_definition["actions"] == "require_human_review"
     evaluate_missions = "availability_model" in scenario
     policy_config = cast(dict[str, object], canonical_config["safety_policy"])
     protocol_version = cast(str, canonical_config["protocol_version"])
@@ -582,7 +610,7 @@ def _expected_event_rows(
     actions_processed = False
     governor = SafetyGovernor(_build_policy(policy_config))
     defender = DiagnosticPACDDefender(compromise_threshold=0.5)
-    for observation in observations:
+    for ordinal, observation in enumerate(observations, start=1):
         emit(
             "observation",
             tick=observation.tick,
@@ -646,30 +674,50 @@ def _expected_event_rows(
                 "hypothesis_ids": [item.id for item in belief_state.hypotheses],
             },
         )
-        context = DefenderContext(
-            id=f"defender-context-{observation.id}",
-            tick=observation.tick,
-            configuration_version=protocol_version,
-            evidence=tuple(evidence_items),
-            belief_state=belief_state,
-            environment=state,
-        )
-        defender_decision = defender.decide(context)
-        if observation.event_kind != "simulated_adversary" or actions_processed:
-            continue
-        actions = _build_actions(scenario, protocol_version, observation.tick)
+        if is_static:
+            projected, candidate = static_review_candidate(observation, ordinal, protocol_version)
+            emit(
+                "baseline_decision",
+                tick=observation.tick,
+                entity_id=observation.identity_id or observation.target_id or "synthetic-unknown",
+                outcome="abstained" if candidate is None else "proposed",
+                payload={
+                    "observation_id": observation.id,
+                    "observation_sha256": canonical_sha256(projected),
+                    "policy": STATIC_REVIEW_VERSION,
+                    "candidate_action_id": candidate.id if candidate is not None else None,
+                },
+            )
+            if candidate is None:
+                continue
+            actions: tuple[DefensiveAction, ...] = (candidate,)
+            proposals: tuple[DefensiveAction, ...] = actions
+            defender_id = STATIC_REVIEW_VERSION
+        else:
+            context = DefenderContext(
+                id=f"defender-context-{observation.id}",
+                tick=observation.tick,
+                configuration_version=protocol_version,
+                evidence=tuple(evidence_items),
+                belief_state=belief_state,
+                environment=state,
+            )
+            defender_decision = defender.decide(context)
+            if observation.event_kind != "simulated_adversary" or actions_processed:
+                continue
+            actions = _build_actions(scenario, protocol_version, observation.tick)
+            proposals = defender_decision.proposed_actions
+            defender_id = defender.defender_id
         for action in actions:
             matching_proposal = next(
                 (
                     proposal
-                    for proposal in defender_decision.proposed_actions
+                    for proposal in proposals
                     if _proposal_matches_candidate(proposal, action)
                 ),
                 None,
             )
-            proposer = (
-                defender.defender_id if matching_proposal is not None else "diagnostic-safety-probe"
-            )
+            proposer = defender_id if matching_proposal is not None else "diagnostic-safety-probe"
             emit(
                 "candidate_action",
                 tick=action.tick,
@@ -716,6 +764,8 @@ def _expected_event_rows(
                 },
             )
             if decision.disposition is PolicyDisposition.APPROVE:
+                if is_static:
+                    raise ConfigurationError("Static human-review proposal cannot be approved")
                 if matching_proposal is None or action.action_type != "isolate_session":
                     raise ConfigurationError(
                         "Only a defender-proposed supported isolation action may be reconstructed "
@@ -785,6 +835,14 @@ def _expected_event_rows(
                         },
                     )
             else:
+                nonexecution: dict[str, object] = {
+                    "reason": "governor disposition did not permit execution"
+                }
+                if is_static:
+                    state_digest = canonical_sha256(state)
+                    nonexecution.update(
+                        state_before_digest=state_digest, state_after_digest=state_digest
+                    )
                 emit(
                     "verification",
                     tick=decision.tick,
@@ -792,7 +850,7 @@ def _expected_event_rows(
                     action_id=action.id,
                     disposition=decision.disposition.value,
                     outcome="not_executed",
-                    payload={"reason": "governor disposition did not permit execution"},
+                    payload=nonexecution,
                 )
             emit(
                 "audit",

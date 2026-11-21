@@ -1,4 +1,4 @@
-"""A fixed signal rule for retrospective triage on synthetic observations."""
+"""A fixed signal rule for human review of synthetic observations."""
 
 from typing import Final, Literal
 

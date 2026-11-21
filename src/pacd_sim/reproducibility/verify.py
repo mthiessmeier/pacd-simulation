@@ -731,17 +731,26 @@ def _verify_run_impl(
     if raw_parquet is not None and raw_table is not None:
         try:
             event_types = [str(row.get("event_type")) for row in raw_rows]
+            is_static = (
+                isinstance(baseline_definition, Mapping)
+                and baseline_definition.get("actions") == "require_human_review"
+            )
             required_chain = (
                 "observation",
                 "evidence",
                 "state_update",
                 "hypothesis",
-                "candidate_action",
-                "safety_decision",
-                "simulated_execution",
-                "verification",
-                "audit",
-                "manifest",
+            ) + (
+                ("baseline_decision", "manifest")
+                if is_static
+                else (
+                    "candidate_action",
+                    "safety_decision",
+                    "simulated_execution",
+                    "verification",
+                    "audit",
+                    "manifest",
+                )
             )
             if not _is_ordered_subsequence(event_types, required_chain):
                 errors.append("Required ordered diagnostic event chain is incomplete")
@@ -751,17 +760,19 @@ def _verify_run_impl(
                 if row.get("event_type") == "safety_decision"
                 and row.get("disposition") == "PROHIBIT"
             }
-            if not prohibited:
+            if not is_static and not prohibited:
                 errors.append("No prohibited safety decision is retained")
             retained_dispositions = {
                 row.get("disposition")
                 for row in raw_rows
                 if row.get("event_type") == "safety_decision"
             }
-            required_dispositions = {"APPROVE", "ESCALATE", "PROHIBIT"}
-            if not required_dispositions.issubset(retained_dispositions):
+            known_dispositions = {"APPROVE", "ESCALATE", "PROHIBIT"}
+            if is_static and "APPROVE" in retained_dispositions:
+                errors.append("Static human-review proposal received APPROVE")
+            if not is_static and not known_dispositions.issubset(retained_dispositions):
                 errors.append("Raw audit does not retain APPROVE, ESCALATE, and PROHIBIT decisions")
-            unknown_dispositions = retained_dispositions - required_dispositions
+            unknown_dispositions = retained_dispositions - known_dispositions
             if unknown_dispositions:
                 errors.append("Raw audit contains an unknown safety disposition")
             decision_by_action: dict[object, object] = {}
@@ -791,6 +802,8 @@ def _verify_run_impl(
                 is_execution = row.get("event_type") == "simulated_execution"
                 declares_executed = isinstance(payload, dict) and payload.get("executed") is True
                 if is_execution or declares_executed:
+                    if is_static:
+                        errors.append("Static human-review proposal reached execution")
                     action_id = row.get("action_id")
                     if decision_by_action.get(action_id) != "APPROVE":
                         errors.append(

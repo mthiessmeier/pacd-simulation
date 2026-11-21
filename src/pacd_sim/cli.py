@@ -112,7 +112,11 @@ def _parser() -> argparse.ArgumentParser:
     )
     diagnostic.add_argument("--policy", type=Path)
     diagnostic.add_argument("--seeds", type=Path)
-    diagnostic.add_argument("--baseline", type=Path)
+    diagnostic.add_argument(
+        "--baseline",
+        type=Path,
+        help="defender YAML (use static_review.yaml for prospective review)",
+    )
     diagnostic.add_argument("--metrics", type=Path)
     diagnostic.add_argument("--output-root", type=Path)
     diagnostic.add_argument("--seed", type=int)

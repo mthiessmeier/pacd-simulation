@@ -170,6 +170,19 @@ class BaselineConfig(DiagnosticRecord):
     observations: Literal["synthetic_only"]
     actions: Literal["none"]
 
+    @field_validator("name")
+    @classmethod
+    def _reserve_static_rule_name(cls, value: str) -> str:
+        if value == "static_signal_review_v1":
+            raise ValueError("static_signal_review_v1 requires the human-review action")
+        return value
+
+
+class StaticReviewBaselineConfig(DiagnosticRecord):
+    name: Literal["static_signal_review_v1"]
+    observations: Literal["synthetic_only"]
+    actions: Literal["require_human_review"]
+
 
 class MetricConfig(DiagnosticRecord):
     metrics: Array[Literal["event_count", "approved_action_count", "prohibited_action_count"]]
@@ -198,5 +211,5 @@ class DiagnosticInputs(StrictFrozenModel):
     scenario: ScenarioConfig
     policy: PolicyConfig
     seeds: SeedRegistryConfig
-    baseline: BaselineConfig
+    baseline: Annotated[BaselineConfig | StaticReviewBaselineConfig, Field(discriminator="actions")]
     metrics: MetricConfig
