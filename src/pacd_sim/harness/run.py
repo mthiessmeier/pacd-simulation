@@ -25,7 +25,7 @@ from yaml.events import AliasEvent
 from yaml.nodes import MappingNode, Node, ScalarNode, SequenceNode
 
 from pacd_sim.actions.models import DefensiveAction, RequestedAuthority
-from pacd_sim.audit.writer import AuditWriter
+from pacd_sim.audit.writer import AuditWriter, EventType
 from pacd_sim.configuration import DiagnosticInputs, ScenarioConfig
 from pacd_sim.constants import (
     DEFAULT_BASELINE_FILE,
@@ -37,6 +37,7 @@ from pacd_sim.constants import (
 )
 from pacd_sim.defenders.base import DefenderContext
 from pacd_sim.defenders.baselines.static import STATIC_REVIEW_VERSION
+from pacd_sim.defenders.pacd import corroboration
 from pacd_sim.defenders.pacd.diagnostic import DiagnosticPACDDefender
 from pacd_sim.engine.scheduler import DeterministicScheduler, ScheduledEvent
 from pacd_sim.environment.availability import continuity_transition, evaluate_availability
@@ -52,7 +53,7 @@ from pacd_sim.evidence.normalize import EvidenceItem, normalize_observation
 from pacd_sim.execution.broker import SimulatedExecutionBroker
 from pacd_sim.execution.verification import verify_execution
 from pacd_sim.governance.governor import GovernanceContext, SafetyGovernor, SafetyPolicy
-from pacd_sim.harness.static_review import static_review_candidate
+from pacd_sim.harness.static_review import review_action, sensor_reading, static_review_candidate
 from pacd_sim.hypotheses.update import BeliefState, update_beliefs
 from pacd_sim.metrics.summarize import summarize_raw_events
 from pacd_sim.reproducibility.canonical import canonical_json_bytes, canonical_sha256
@@ -1352,6 +1353,11 @@ def _run_diagnostic_worker(
         governor = SafetyGovernor(safety_policy)
         broker = SimulatedExecutionBroker(governor)
         prospective = baseline_definition["actions"] == "require_human_review"
+        planner = (
+            corroboration.CorroboratedReviewPlanner()
+            if baseline_definition["name"] == corroboration.POLICY
+            else None
+        )
         defender = DiagnosticPACDDefender(compromise_threshold=0.5)
         evidence_items: list[EvidenceItem] = []
         belief_state = BeliefState(configuration_version=protocol_version)
@@ -1439,23 +1445,41 @@ def _run_diagnostic_worker(
             actions: tuple[DefensiveAction, ...]
             proposed_actions: tuple[DefensiveAction, ...]
             if prospective:
-                reading, candidate = static_review_candidate(observation, ordinal, protocol_version)
+                decision_type: EventType
+                detail: dict[str, object] = {}
+                if planner is None:
+                    reading, candidate = static_review_candidate(
+                        observation, ordinal, protocol_version
+                    )
+                    defender_id = STATIC_REVIEW_VERSION
+                    decision_type = "baseline_decision"
+                    outcome = "abstained" if candidate is None else "proposed"
+                else:
+                    reading = sensor_reading(observation)
+                    step = planner.observe(reading)
+                    candidate = review_action(
+                        reading, step.proposal, f"action-pacd-review-{ordinal}", protocol_version
+                    )
+                    defender_id = corroboration.POLICY
+                    decision_type = "defender_decision"
+                    outcome = step.outcome
+                    detail["previous_elevated_tick"] = step.previous_elevated_tick
                 audit.emit(
-                    "baseline_decision",
+                    decision_type,
                     tick=reading.tick,
                     entity_id=reading.subject_id or "synthetic-unknown",
-                    outcome="abstained" if candidate is None else "proposed",
+                    outcome=outcome,
                     payload={
+                        **detail,
                         "observation_id": observation.id,
                         "observation_sha256": canonical_sha256(reading),
-                        "policy": STATIC_REVIEW_VERSION,
+                        "policy": defender_id,
                         "candidate_action_id": candidate.id if candidate else None,
                     },
                 )
                 if candidate is None:
                     continue
                 actions = proposed_actions = (candidate,)
-                defender_id = STATIC_REVIEW_VERSION
             else:
                 context = DefenderContext(
                     id=f"defender-context-{observation.id}",

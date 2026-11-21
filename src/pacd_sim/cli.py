@@ -117,7 +117,7 @@ def _parser() -> argparse.ArgumentParser:
     diagnostic.add_argument(
         "--baseline",
         type=Path,
-        help="defender YAML (use static_review.yaml for prospective review)",
+        help="defender YAML, e.g. static_review.yaml or pacd_corroborated_review.yaml",
     )
     diagnostic.add_argument("--metrics", type=Path)
     diagnostic.add_argument("--output-root", type=Path)

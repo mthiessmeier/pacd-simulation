@@ -154,9 +154,9 @@ budgets and comparative performance are outside these diagnostic runs.
 
 ## Trace the Increment 5 PACD planner
 
-The new planner asks whether the same observed subject produced an elevated
-signal on two distinct delivery ticks. Run it against a verified trace from
-either fixture and either diagnostic condition. From the checkout and frozen
+The planner asks whether the same observed subject produced an elevated
+signal on two distinct delivery ticks. Replay it on a verified run from
+any governed fixture or defender condition. From the checkout and frozen
 environment that produced `$first`, use the following commands.
 
 ```powershell
@@ -176,13 +176,50 @@ Missing subjects abstain. The trace records the prior qualifying tick when
 available, the decision and any proposal. Its digest binds the policy version,
 rule settings, ordered readings and decisions.
 
-Each shipped fixture has a single elevated reading for its user at the two
+The identity smoke and maintenance fixtures each have a single elevated reading for their user at the two
 registered seeds. A reviewer can see the planner wait for more evidence and
 the episode end without a referral. This illustrates the cost of requiring
 confirmation. The threshold and window are diagnostic design choices. The
 command reads verified evidence and keeps the source run's decisions and
-state transitions intact. Prospective governor evaluation for this planner
-and any measurement of performance remain future work.
+state transitions intact.
+
+## Run the PACD planner under the shared governor
+
+Select `configs/defenders/pacd_corroborated_review.yaml` to run a fresh
+planner inside each diagnostic. Each delivered reading produces a
+`defender_decision` in the audit before the next sensor reading is generated.
+A proposal creates one human-review candidate for the shared governor.
+
+```powershell
+$policy = 'configs/defenders/pacd_corroborated_review.yaml'
+foreach ($case in 'identity_smoke', 'maintenance_window', 'repeated_readings') {
+    $scenario = "configs/scenarios/diagnostic_$case.yaml"
+    $pair = foreach ($i in 1..2) {
+        $run = & $uv run --frozen --no-sync pacd-sim diagnostic --workspace-root $w --scenario $scenario --baseline $policy --seed 424242 | ConvertFrom-Json
+        if ($LASTEXITCODE) { throw "Diagnostic failed for $case" }
+        $verified = & $uv run --frozen --no-sync pacd-sim verify $run.run_dir --workspace-root $w --show-event-sequence | ConvertFrom-Json
+        if ($LASTEXITCODE -or !$verified.execution_identity_assured) { throw "Verification failed for $case" }
+        $trace = & $uv run --frozen --no-sync pacd-sim defender-trace $run.run_dir --workspace-root $w | ConvertFrom-Json
+        if ($LASTEXITCODE -or !$trace.valid) { throw "Defender replay failed for $case" }
+        [pscustomobject]@{Run=$run; Events=$verified.event_sequence.sha256; Trace=$trace.defender_trace.trace_sha256}
+    }
+    if ($pair[0].Run.run_id -eq $pair[1].Run.run_id -or
+        $pair[0].Run.raw_semantic_hash -ne $pair[1].Run.raw_semantic_hash -or
+        $pair[0].Run.summary_semantic_hash -ne $pair[1].Run.summary_semantic_hash -or
+        $pair[0].Events -ne $pair[1].Events -or $pair[0].Trace -ne $pair[1].Trace) { throw "Replay differs for $case" }
+    & $uv run --frozen --no-sync python docs/application_demo/regenerate.py $pair[0].Run.run_dir
+    if ($LASTEXITCODE) { throw "Regeneration failed for $case" }
+}
+```
+
+The repeated-reading YAML is the exact fixture from the earlier reviewer
+demonstration, now selectable from the same checkout. At seed 424242 the two
+elevated readings at tick 3 leave the planner waiting. The tick-4 reading
+produces `action-pacd-review-4`. The governor returns `ESCALATE` and
+verification records equal before/after state digests. Tick 5 records
+`already_referred`. To inspect the action, filter `raw/events.jsonl`
+on that action ID and on `event_type == "defender_decision"` for the five
+decisions. The fixture ends with one pending human review and zero executions.
 
 ## Rebuild the summary from retained raw records
 

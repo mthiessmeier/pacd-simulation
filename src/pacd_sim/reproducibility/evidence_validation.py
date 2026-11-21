@@ -29,6 +29,7 @@ from pacd_sim.constants import (
 )
 from pacd_sim.defenders.base import DefenderContext
 from pacd_sim.defenders.baselines.static import STATIC_REVIEW_VERSION
+from pacd_sim.defenders.pacd import corroboration
 from pacd_sim.defenders.pacd.diagnostic import DiagnosticPACDDefender
 from pacd_sim.engine.scheduler import DeterministicScheduler
 from pacd_sim.environment.availability import continuity_transition, evaluate_availability
@@ -45,7 +46,7 @@ from pacd_sim.harness.run import (
     _validate_loaded_configuration_bundle,
     load_yaml_config,
 )
-from pacd_sim.harness.static_review import static_review_candidate
+from pacd_sim.harness.static_review import review_action, sensor_reading, static_review_candidate
 from pacd_sim.hypotheses.update import BeliefState, update_beliefs
 from pacd_sim.metrics.summarize import SUMMARY_SCHEMA
 from pacd_sim.reproducibility.canonical import canonical_json_bytes, canonical_sha256
@@ -543,7 +544,12 @@ def _expected_event_rows(
 ) -> list[dict[str, object]]:
     scenario = cast(dict[str, object], canonical_config["scenario"])
     baseline_definition = cast(dict[str, object], canonical_config["baseline_definition"])
-    is_static = baseline_definition["actions"] == "require_human_review"
+    review_only = baseline_definition["actions"] == "require_human_review"
+    planner = (
+        corroboration.CorroboratedReviewPlanner()
+        if baseline_definition["name"] == corroboration.POLICY
+        else None
+    )
     evaluate_missions = "availability_model" in scenario
     policy_config = cast(dict[str, object], canonical_config["safety_policy"])
     protocol_version = cast(str, canonical_config["protocol_version"])
@@ -674,25 +680,42 @@ def _expected_event_rows(
                 "hypothesis_ids": [item.id for item in belief_state.hypotheses],
             },
         )
-        if is_static:
-            projected, candidate = static_review_candidate(observation, ordinal, protocol_version)
+        if review_only:
+            if planner is None:
+                defender_id = STATIC_REVIEW_VERSION
+                projected, candidate = static_review_candidate(
+                    observation, ordinal, protocol_version
+                )
+                decision_event = "baseline_decision"
+                outcome = "abstained" if candidate is None else "proposed"
+                decision_payload: dict[str, object] = {}
+            else:
+                defender_id = corroboration.POLICY
+                projected = sensor_reading(observation)
+                step = planner.observe(projected)
+                candidate = review_action(
+                    projected, step.proposal, f"action-pacd-review-{ordinal}", protocol_version
+                )
+                decision_event = "defender_decision"
+                outcome = step.outcome
+                decision_payload = {"previous_elevated_tick": step.previous_elevated_tick}
+            decision_payload.update(
+                observation_id=observation.id,
+                observation_sha256=canonical_sha256(projected),
+                policy=defender_id,
+                candidate_action_id=candidate.id if candidate is not None else None,
+            )
             emit(
-                "baseline_decision",
-                tick=observation.tick,
-                entity_id=observation.identity_id or observation.target_id or "synthetic-unknown",
-                outcome="abstained" if candidate is None else "proposed",
-                payload={
-                    "observation_id": observation.id,
-                    "observation_sha256": canonical_sha256(projected),
-                    "policy": STATIC_REVIEW_VERSION,
-                    "candidate_action_id": candidate.id if candidate is not None else None,
-                },
+                decision_event,
+                tick=projected.tick,
+                entity_id=projected.subject_id or "synthetic-unknown",
+                outcome=outcome,
+                payload=decision_payload,
             )
             if candidate is None:
                 continue
             actions: tuple[DefensiveAction, ...] = (candidate,)
             proposals: tuple[DefensiveAction, ...] = actions
-            defender_id = STATIC_REVIEW_VERSION
         else:
             context = DefenderContext(
                 id=f"defender-context-{observation.id}",
@@ -764,8 +787,8 @@ def _expected_event_rows(
                 },
             )
             if decision.disposition is PolicyDisposition.APPROVE:
-                if is_static:
-                    raise ConfigurationError("Static human-review proposal cannot be approved")
+                if review_only:
+                    raise ConfigurationError("Human-review proposal cannot be approved")
                 if matching_proposal is None or action.action_type != "isolate_session":
                     raise ConfigurationError(
                         "Only a defender-proposed supported isolation action may be reconstructed "
@@ -838,7 +861,7 @@ def _expected_event_rows(
                 nonexecution: dict[str, object] = {
                     "reason": "governor disposition did not permit execution"
                 }
-                if is_static:
+                if review_only:
                     state_digest = canonical_sha256(state)
                     nonexecution.update(
                         state_before_digest=state_digest, state_after_digest=state_digest

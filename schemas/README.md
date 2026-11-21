@@ -7,11 +7,12 @@ fields at every level. Each decoded array becomes a tuple and retains its order.
 
 | File under `configs/` | Model | Constraints exercised by the diagnostic |
 |---|---|---|
-| `scenarios/diagnostic_identity_smoke.yaml` (default) or `scenarios/diagnostic_maintenance_window.yaml` | `ScenarioConfig` | Synthetic scenario, 1–100 events and actions each, nonempty identity/session/service/mission collections, bounded telemetry noise and delay. |
+| `scenarios/diagnostic_identity_smoke.yaml` (default), `scenarios/diagnostic_maintenance_window.yaml` or `scenarios/diagnostic_repeated_readings.yaml` | `ScenarioConfig` | Synthetic scenario, 1–100 events and actions each, nonempty identity/session/service/mission collections, bounded telemetry noise and delay. |
 | `policies/diagnostic_safety.yaml` | `PolicyConfig` | Simulated adapter, disabled network, explicit allowed/escalated/prohibited classes. The existing governor policy checks that the classes are disjoint. |
 | `seeds/diagnostic_seeds.json` | `SeedRegistryConfig` | 1–100 distinct nonnegative signed 64-bit integers. The harness checks membership of the default and selected seeds. |
 | `defenders/diagnostic_baseline.yaml` | `BaselineConfig` | Named baseline, synthetic-only observations and no actions. |
 | `defenders/static_review.yaml` | `StaticReviewBaselineConfig` | Selects `static_signal_review_v1` with synthetic-only observations and human-review requests. |
+| `defenders/pacd_corroborated_review.yaml` | `CorroboratedReviewConfig` | Selects `pacd_corroborated_review_v1` with synthetic-only observations and human-review requests. Planner memory is local to each invocation. |
 | `metrics/diagnostic_metrics.yaml` | `MetricConfig` | One entry each for event, approved-action and prohibited-action counts. Comparative claims must be disabled. |
 
 From the project checkout and its locked environment, these read-only commands
@@ -24,7 +25,7 @@ uv run --frozen --no-sync python -c "from pacd_sim.harness.run import validate_d
 
 The first command emits JSON Schema for field shapes. The second also enforces
 file, uniqueness, reference and cross-input rules and returns individual and
-aggregate canonical digests for the default bundle after checking both scenarios with both defender configurations. Doctor, diagnostic invocation and retained-run
+aggregate canonical digests for the default bundle after checking all nine scenario/defender pairs. Doctor, diagnostic invocation and retained-run
 verification use the same typed input check. Shape inspection alone cannot
 establish that a bundle is executable.
 
