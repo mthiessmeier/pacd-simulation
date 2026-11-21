@@ -2,32 +2,71 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Final, TextIO
+from typing import Annotated, Final, Literal, TextIO, get_args
 
 import pyarrow as pa
 import pyarrow.parquet as pq
+from pydantic import Field, field_validator
 
 from pacd_sim.constants import EVIDENCE_LABEL, SCHEMA_VERSION
 from pacd_sim.reproducibility.canonical import canonical_json_bytes
+from pacd_sim.reproducibility.manifest import validate_retained_json_text_depth
 from pacd_sim.reproducibility.paths import assert_write_path
+from pacd_sim.schema import DiagnosticRecord, NonNegativeFloat, Sha256Digest, Signed64Count
 
-EVENT_TYPES: Final[frozenset[str]] = frozenset(
-    {
-        "run_started",
-        "observation",
-        "evidence",
-        "state_update",
-        "hypothesis",
-        "candidate_action",
-        "safety_decision",
-        "simulated_execution",
-        "verification",
-        "audit",
-        "manifest",
-    }
-)
+EventType = Literal[
+    "run_started",
+    "observation",
+    "evidence",
+    "state_update",
+    "hypothesis",
+    "candidate_action",
+    "safety_decision",
+    "simulated_execution",
+    "verification",
+    "audit",
+    "manifest",
+]
+EVENT_TYPES: Final[frozenset[str]] = frozenset(get_args(EventType))
+
+
+class AuditEvent(DiagnosticRecord):
+    """One v1 raw row, identified within its run by the one-based sequence."""
+
+    run_id: Annotated[str, Field(min_length=1, max_length=200)]
+    sequence: Annotated[int, Field(ge=1, lt=2**63)]
+    tick: NonNegativeFloat
+    seed: Signed64Count
+    event_type: EventType
+    entity_id: str
+    action_id: str
+    disposition: str
+    outcome: str
+    config_hash: Sha256Digest
+    payload_json: Annotated[str, Field(max_length=64 * 1024)]
+
+    @field_validator("entity_id", "action_id", "disposition", "outcome")
+    @classmethod
+    def _bound_event_text(cls, value: str) -> str:
+        if len(value.encode("utf-8")) > 500:
+            raise ValueError("Audit identifiers and outcomes are limited to 500 UTF-8 bytes")
+        return value
+
+    @field_validator("payload_json")
+    @classmethod
+    def _canonical_payload(cls, value: str) -> str:
+        data = value.encode("utf-8")
+        if len(data) > 64 * 1024:
+            raise ValueError("Audit payload exceeds the 64 KiB diagnostic cap")
+        validate_retained_json_text_depth(value, source="audit payload_json")
+        decoded = json.loads(value)
+        if not isinstance(decoded, dict) or canonical_json_bytes(decoded) != data:
+            raise ValueError("Audit payload must be a canonical JSON object")
+        return value
+
 
 EVENT_SCHEMA: Final[pa.Schema] = pa.schema(
     [
@@ -106,43 +145,30 @@ class AuditWriter:
         """Append one validated event to the human-readable raw stream."""
         if self._closed:
             raise RuntimeError("AuditWriter is closed")
-        if event_type not in EVENT_TYPES:
-            raise ValueError(f"Unsupported event_type: {event_type}")
-        if isinstance(tick, bool) or not isinstance(tick, (int, float)) or float(tick) < 0:
-            raise ValueError("tick must be a nonnegative number")
-        for field_name, value in {
-            "entity_id": entity_id,
-            "action_id": action_id,
-            "disposition": disposition,
-            "outcome": outcome,
-        }.items():
-            if not isinstance(value, str) or len(value) > 500:
-                raise ValueError(f"{field_name} must be a string of at most 500 characters")
-
         payload_dict = dict(payload or {})
         payload_text = canonical_json_bytes(payload_dict).decode("utf-8")
-        if len(payload_text.encode("utf-8")) > 64 * 1024:
-            raise ValueError("Audit payload exceeds the 64 KiB diagnostic cap")
-
-        self._sequence += 1
-        row: dict[str, object] = {
-            "evidence_label": EVIDENCE_LABEL,
-            "schema_version": SCHEMA_VERSION,
-            "run_id": self._run_id,
-            "sequence": self._sequence,
-            "tick": float(tick),
-            "seed": self._seed,
-            "event_type": event_type,
-            "entity_id": entity_id,
-            "action_id": action_id,
-            "disposition": disposition,
-            "outcome": outcome,
-            "config_hash": self._config_hash,
-            "payload_json": payload_text,
-        }
+        record = AuditEvent.model_validate(
+            {
+                "evidence_label": EVIDENCE_LABEL,
+                "schema_version": SCHEMA_VERSION,
+                "run_id": self._run_id,
+                "sequence": self._sequence + 1,
+                "tick": tick,
+                "seed": self._seed,
+                "event_type": event_type,
+                "entity_id": entity_id,
+                "action_id": action_id,
+                "disposition": disposition,
+                "outcome": outcome,
+                "config_hash": self._config_hash,
+                "payload_json": payload_text,
+            }
+        )
+        row = record.model_dump()
         self._jsonl.write(canonical_json_bytes(row).decode("utf-8") + "\n")
         self._jsonl.flush()
         self._rows.append(row)
+        self._sequence = record.sequence
         return dict(row)
 
     def close(self) -> tuple[Path, Path]:

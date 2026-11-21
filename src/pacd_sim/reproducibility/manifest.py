@@ -8,14 +8,109 @@ import json
 import math
 import re
 from collections.abc import Iterable, Mapping, Sequence
+from datetime import datetime
 from pathlib import Path
-from typing import cast
+from typing import Annotated, Literal, Self, cast
 
 import pyarrow.parquet as pq
+from pydantic import ConfigDict, Field, field_validator, model_validator
 
 from pacd_sim.constants import EVIDENCE_LABEL, SCHEMA_VERSION
 from pacd_sim.reproducibility.canonical import canonical_json_bytes, canonical_sha256
 from pacd_sim.reproducibility.paths import assert_write_path
+from pacd_sim.schema import (
+    DiagnosticRecord,
+    NonemptyText,
+    Sha256Digest,
+    Signed64Count,
+    StableId,
+    StrictFrozenModel,
+)
+
+
+class ConfigurationHashes(StrictFrozenModel):
+    """Canonical digests for the five entries of the configuration hash object."""
+
+    aggregate: Sha256Digest
+    scenario: Sha256Digest
+    safety_policy: Sha256Digest
+    baseline_definition: Sha256Digest
+    metric_definition: Sha256Digest
+
+
+class ArtifactHashes(StrictFrozenModel):
+    """The completed v1 run's fixed artifact allowlist, keyed by relative wire path."""
+
+    model_config = ConfigDict(serialize_by_alias=True)
+
+    label: Sha256Digest = Field(alias="NON_REPORTABLE_DIAGNOSTIC")
+    configuration: Sha256Digest = Field(alias="canonical_config.json")
+    summary_csv: Sha256Digest = Field(alias="derived/episode_summary.csv")
+    summary_parquet: Sha256Digest = Field(alias="derived/episode_summary.parquet")
+    run_log: Sha256Digest = Field(alias="logs/run.log")
+    events_jsonl: Sha256Digest = Field(alias="raw/events.jsonl")
+    events_parquet: Sha256Digest = Field(alias="raw/events.parquet")
+    seeds: Sha256Digest = Field(alias="seed_registry.json")
+    status: Sha256Digest = Field(alias="status.json")
+
+
+class RunManifest(DiagnosticRecord):
+    """Typed v1 manifest. A failure can amend an already-built manifest."""
+
+    run_id: StableId
+    seed: Signed64Count
+    started_at: str
+    ended_at: str
+    completion_status: Literal["COMPLETED", "FAILED"]
+    failure_type: StableId | None = Field(default=None, exclude_if=lambda value: value is None)
+    reportable: Literal[False]
+    code_commit: (
+        Annotated[str, Field(pattern=r"^[a-f0-9]{40}$", max_length=40)] | Literal["UNAVAILABLE"]
+    )
+    dirty_state: bool
+    python_version: StableId
+    lockfile_hash: Sha256Digest | Literal["UNAVAILABLE"]
+    os_class: StableId
+    cpu_worker_count: Annotated[int, Field(ge=1)]
+    protocol_version: NonemptyText
+    config_hash_start: Sha256Digest
+    config_hash_end: Sha256Digest
+    configuration_hashes: ConfigurationHashes
+    seed_registry_hash: Sha256Digest
+    baseline_definition_hash: Sha256Digest
+    metric_definition_hash: Sha256Digest
+    raw_semantic_hash: Sha256Digest
+    summary_semantic_hash: Sha256Digest
+    test_status: Literal["NOT_RUN"]
+    artifact_hashes: ArtifactHashes
+
+    @field_validator("reportable", mode="before")
+    @classmethod
+    def _diagnostic_only(cls, value: object) -> Literal[False]:
+        if value is not False:
+            raise ValueError("Diagnostic manifests require reportable=false")
+        return False
+
+    @model_validator(mode="after")
+    def _bind_manifest_fields(self) -> Self:
+        if self.completion_status == "FAILED":
+            if not self.failure_type:
+                raise ValueError("A failed manifest must identify its failure type")
+        elif "failure_type" in self.model_fields_set:
+            raise ValueError("A completed manifest cannot declare a failure type")
+        started = datetime.fromisoformat(self.started_at)
+        ended = datetime.fromisoformat(self.ended_at)
+        if started.utcoffset() is None or ended.utcoffset() is None or ended < started:
+            raise ValueError("Manifest start and end times must be zoned and ordered")
+        if (
+            self.config_hash_start != self.configuration_hashes.aggregate
+            or self.config_hash_end != self.config_hash_start
+            or self.baseline_definition_hash != self.configuration_hashes.baseline_definition
+            or self.metric_definition_hash != self.configuration_hashes.metric_definition
+        ):
+            raise ValueError("Manifest configuration hash bindings disagree")
+        return self
+
 
 _VOLATILE_KEYS = frozenset(
     {
@@ -310,39 +405,41 @@ def build_manifest(
     test_status: str = "NOT_RUN",
 ) -> dict[str, object]:
     """Build the manifest data structure without performing any write."""
-    return {
-        "evidence_label": EVIDENCE_LABEL,
-        "schema_version": SCHEMA_VERSION,
-        "run_id": run_id,
-        "seed": seed,
-        "started_at": started_at,
-        "ended_at": ended_at,
-        "completion_status": completion_status,
-        "reportable": False,
-        "code_commit": code_commit,
-        "dirty_state": dirty_state,
-        "python_version": python_version,
-        "lockfile_hash": lockfile_hash,
-        "os_class": os_class,
-        "cpu_worker_count": cpu_worker_count,
-        "protocol_version": protocol_version,
-        "config_hash_start": config_hash_start,
-        "config_hash_end": config_hash_end,
-        "configuration_hashes": {
-            "aggregate": config_hash_start,
-            "scenario": scenario_hash,
-            "safety_policy": safety_policy_hash,
-            "baseline_definition": baseline_definition_hash,
-            "metric_definition": metric_definition_hash,
-        },
-        "seed_registry_hash": seed_registry_hash,
-        "baseline_definition_hash": baseline_definition_hash,
-        "metric_definition_hash": metric_definition_hash,
-        "raw_semantic_hash": raw_semantic_hash,
-        "summary_semantic_hash": summary_semantic_hash,
-        "test_status": test_status,
-        "artifact_hashes": dict(sorted(artifact_hashes.items())),
-    }
+    return RunManifest.model_validate(
+        {
+            "evidence_label": EVIDENCE_LABEL,
+            "schema_version": SCHEMA_VERSION,
+            "run_id": run_id,
+            "seed": seed,
+            "started_at": started_at,
+            "ended_at": ended_at,
+            "completion_status": completion_status,
+            "reportable": False,
+            "code_commit": code_commit,
+            "dirty_state": dirty_state,
+            "python_version": python_version,
+            "lockfile_hash": lockfile_hash,
+            "os_class": os_class,
+            "cpu_worker_count": cpu_worker_count,
+            "protocol_version": protocol_version,
+            "config_hash_start": config_hash_start,
+            "config_hash_end": config_hash_end,
+            "configuration_hashes": {
+                "aggregate": config_hash_start,
+                "scenario": scenario_hash,
+                "safety_policy": safety_policy_hash,
+                "baseline_definition": baseline_definition_hash,
+                "metric_definition": metric_definition_hash,
+            },
+            "seed_registry_hash": seed_registry_hash,
+            "baseline_definition_hash": baseline_definition_hash,
+            "metric_definition_hash": metric_definition_hash,
+            "raw_semantic_hash": raw_semantic_hash,
+            "summary_semantic_hash": summary_semantic_hash,
+            "test_status": test_status,
+            "artifact_hashes": artifact_hashes,
+        }
+    ).model_dump(by_alias=True)
 
 
 def write_manifest(
@@ -352,10 +449,9 @@ def write_manifest(
     workspace_root: Path | str,
 ) -> Path:
     """Write a new manifest with mandatory diagnostic labeling."""
-    if manifest.get("evidence_label") != EVIDENCE_LABEL:
-        raise ValueError("Manifest evidence label is missing or invalid")
+    record = RunManifest.model_validate(manifest)
     return write_canonical_json(
-        Path(run_dir) / "manifest.json", dict(manifest), workspace_root=workspace_root
+        Path(run_dir) / "manifest.json", record, workspace_root=workspace_root
     )
 
 

@@ -20,11 +20,13 @@ from typing import Any, TextIO, cast
 from uuid import uuid4
 
 import yaml
-from yaml.nodes import MappingNode
-from yaml.tokens import AliasToken, TagToken
+from pydantic import ValidationError
+from yaml.events import AliasEvent
+from yaml.nodes import MappingNode, Node, ScalarNode, SequenceNode
 
 from pacd_sim.actions.models import DefensiveAction, RequestedAuthority
 from pacd_sim.audit.writer import AuditWriter
+from pacd_sim.configuration import DiagnosticInputs
 from pacd_sim.constants import EVIDENCE_LABEL, SCHEMA_VERSION
 from pacd_sim.defenders.base import DefenderContext
 from pacd_sim.defenders.pacd.diagnostic import DiagnosticPACDDefender
@@ -49,6 +51,7 @@ from pacd_sim.reproducibility.manifest import (
     semantic_events_hash,
     semantic_summary_hash,
     sha256_file,
+    validate_retained_json_text_depth,
     write_canonical_json,
     write_manifest,
     write_sha256s,
@@ -109,7 +112,62 @@ class DiagnosticTimeoutError(RuntimeError):
 
 
 class _StrictSafeLoader(yaml.SafeLoader):  # type: ignore[misc]
-    """SafeLoader variant that additionally rejects duplicate mapping keys."""
+    """Check the YAML syntax tree before construction or merge-key flattening."""
+
+    def __init__(self, text: str, max_aliases: int) -> None:
+        super().__init__(text)
+        self.aliases_left = max_aliases
+        self.depth = 0
+        self.nodes = 0
+
+    def compose_node(self, parent: Node | None, index: object) -> Node:
+        event = self.peek_event()
+        if isinstance(event, AliasEvent):
+            self.aliases_left -= 1
+            if self.aliases_left < 0:
+                raise ConfigurationError("Configuration exceeds the alias limit")
+        elif getattr(event, "tag", None) is not None:
+            raise ConfigurationError("Explicit YAML tags are not permitted")
+        self.nodes += 1
+        # Source syntax counts mapping keys as nodes as well as mapping values.
+        if self.nodes > 2 * _MAX_CONFIG_NODES:
+            raise ConfigurationError("Configuration exceeds the syntax-node limit")
+        if self.depth > _MAX_CONFIG_DEPTH:
+            raise ConfigurationError("Configuration exceeds the nesting-depth limit")
+        self.depth += 1
+        try:
+            return super().compose_node(parent, index)
+        finally:
+            self.depth -= 1
+
+
+def _check_yaml_expansion(root: Node) -> None:
+    """Charge each alias use, including keys hidden by YAML map merging."""
+    count = 0
+    scalar_bytes = 0
+
+    def visit(node: Node, depth: int) -> None:
+        nonlocal count, scalar_bytes
+        count += 1
+        if count > 2 * _MAX_CONFIG_NODES:
+            raise ConfigurationError("Configuration exceeds the expanded syntax-node limit")
+        if depth > _MAX_CONFIG_DEPTH:
+            raise ConfigurationError("Recursive or excessively nested YAML alias")
+        if isinstance(node, MappingNode):
+            if sum(key.tag == "tag:yaml.org,2002:merge" for key, _ in node.value) > 1:
+                raise ConfigurationError("Duplicate configuration merge key")
+            for key, value in node.value:
+                visit(key, depth + 1)
+                visit(value, depth + 1)
+        elif isinstance(node, SequenceNode):
+            for child in node.value:
+                visit(child, depth + 1)
+        elif isinstance(node, ScalarNode):
+            scalar_bytes += len(node.value.encode("utf-8"))
+            if scalar_bytes > _MAX_CONFIG_BYTES:
+                raise ConfigurationError("Configuration exceeds the expanded scalar-byte limit")
+
+    visit(root, 0)
 
 
 def _construct_unique_mapping(
@@ -148,6 +206,8 @@ def _validate_configuration_tree(value: object) -> None:
             raise ConfigurationError("Configuration exceeds the nesting-depth limit")
         if isinstance(item, float) and not math.isfinite(item):
             raise ConfigurationError("Configuration may not contain NaN or infinity")
+        if isinstance(item, str):
+            item.encode("utf-8")  # Escaped surrogates cannot be canonicalized as UTF-8.
         if isinstance(item, Mapping):
             identity = id(item)
             if identity in active_containers:
@@ -156,6 +216,7 @@ def _validate_configuration_tree(value: object) -> None:
             for key, child in item.items():
                 if not isinstance(key, str):
                     raise ConfigurationError("Configuration mapping keys must be strings")
+                key.encode("utf-8")
                 visit(child, depth + 1)
             active_containers.remove(identity)
             return
@@ -174,6 +235,19 @@ def _validate_configuration_tree(value: object) -> None:
     visit(value, 0)
 
 
+def _read_configuration_text(path: Path) -> str:
+    if not path.is_file() or path_has_symlink_or_reparse(path):
+        raise ConfigurationError("Configuration input must be a regular, non-symlink file")
+    with path.open("rb") as handle:
+        encoded = handle.read(_MAX_CONFIG_BYTES + 1)
+    if len(encoded) > _MAX_CONFIG_BYTES:
+        raise ConfigurationError("Configuration exceeds the 1 MiB input limit")
+    try:
+        return encoded.decode("utf-8")
+    except UnicodeError as error:
+        raise ConfigurationError("Configuration must be UTF-8") from error
+
+
 def load_yaml_config(path: Path | str, *, max_aliases: int = 20) -> dict[str, object]:
     """Load bounded YAML through SafeLoader with no custom tags or duplicate keys."""
     if isinstance(max_aliases, bool) or not isinstance(max_aliases, int) or max_aliases < 0:
@@ -181,32 +255,24 @@ def load_yaml_config(path: Path | str, *, max_aliases: int = 20) -> dict[str, ob
     source = Path(path)
     if source.suffix.lower() not in {".yaml", ".yml"}:
         raise ConfigurationError("Configuration input must use .yaml or .yml")
-    if not source.is_file() or source.is_symlink():
-        raise ConfigurationError("Configuration input must be a regular, non-symlink file")
-    if source.stat().st_size > _MAX_CONFIG_BYTES:
-        raise ConfigurationError("Configuration exceeds the 1 MiB input limit")
-    text = source.read_text(encoding="utf-8")
+    text = _read_configuration_text(source)
     try:
-        tokens = tuple(yaml.scan(text))
-    except yaml.YAMLError as error:
-        raise ConfigurationError("Configuration is not valid YAML") from error
-    alias_count = sum(isinstance(token, AliasToken) for token in tokens)
-    if alias_count > max_aliases:
-        raise ConfigurationError(
-            f"Configuration contains {alias_count} aliases; maximum is {max_aliases}"
-        )
-    if any(isinstance(token, TagToken) for token in tokens):
-        raise ConfigurationError("Explicit YAML tags are not permitted")
-    loader = _StrictSafeLoader(text)
-    try:
-        value = loader.get_single_data()
-    except (yaml.YAMLError, ConfigurationError) as error:
+        loader = _StrictSafeLoader(text, max_aliases)
+        try:
+            root = loader.get_single_node()
+            if not isinstance(root, MappingNode):
+                raise ConfigurationError("Configuration root must be a mapping")
+            _check_yaml_expansion(root)
+            value = loader.construct_document(root)
+        finally:
+            loader.dispose()
+        _validate_configuration_tree(value)
+    except ConfigurationError:
+        raise
+    except (yaml.YAMLError, ValueError, OverflowError) as error:
         raise ConfigurationError("Configuration failed strict safe loading") from error
-    finally:
-        loader.dispose()
     if not isinstance(value, dict):
         raise ConfigurationError("Configuration root must be a mapping")
-    _validate_configuration_tree(value)
     return {str(key): item for key, item in value.items()}
 
 
@@ -220,20 +286,22 @@ def _unique_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
 
 
 def _load_json_config(path: Path) -> dict[str, object]:
-    if not path.is_file() or path.is_symlink():
-        raise ConfigurationError("JSON configuration must be a regular, non-symlink file")
-    if path.stat().st_size > _MAX_CONFIG_BYTES:
-        raise ConfigurationError("JSON configuration exceeds the 1 MiB input limit")
+    text = _read_configuration_text(path)
     try:
+        # The shared lexical guard bounds the decoder stack. The configuration
+        # tree below has a tighter limit than retained evidence.
+        validate_retained_json_text_depth(text, source="configuration")
         value = json.loads(
-            path.read_text(encoding="utf-8"),
+            text,
             object_pairs_hook=_unique_json_object,
         )
-    except (UnicodeError, json.JSONDecodeError) as error:
+        _validate_configuration_tree(value)
+    except ConfigurationError:
+        raise
+    except ValueError as error:
         raise ConfigurationError("JSON configuration is invalid") from error
     if not isinstance(value, dict):
         raise ConfigurationError("JSON configuration root must be an object")
-    _validate_configuration_tree(value)
     return {str(key): item for key, item in value.items()}
 
 
@@ -292,109 +360,6 @@ def _expect_probability(value: object, name: str) -> float:
     if not math.isfinite(result) or not 0.0 <= result <= 1.0:
         raise ConfigurationError(f"{name} must be finite and in [0,1]")
     return result
-
-
-def _validate_label(config: Mapping[str, object], name: str) -> None:
-    if config.get("evidence_label") != EVIDENCE_LABEL:
-        raise ConfigurationError(f"{name} must be labeled {EVIDENCE_LABEL}")
-    if config.get("schema_version") != SCHEMA_VERSION:
-        raise ConfigurationError(f"{name} schema_version must be {SCHEMA_VERSION}")
-
-
-def _require_exact_keys(
-    value: Mapping[str, object],
-    expected: set[str],
-    name: str,
-) -> None:
-    actual = set(value)
-    missing = sorted(expected - actual)
-    unexpected = sorted(actual - expected)
-    if missing or unexpected:
-        details: list[str] = []
-        if missing:
-            details.append(f"missing={','.join(missing)}")
-        if unexpected:
-            details.append(f"unexpected={','.join(unexpected)}")
-        raise ConfigurationError(f"{name} keys are not exact: {'; '.join(details)}")
-
-
-def _validate_exact_configuration_shapes(
-    scenario: Mapping[str, object],
-    policy: Mapping[str, object],
-    baseline: Mapping[str, object],
-    metrics: Mapping[str, object],
-    seed_registry: Mapping[str, object],
-) -> None:
-    _require_exact_keys(
-        scenario,
-        {
-            "evidence_label",
-            "schema_version",
-            "protocol_version",
-            "name",
-            "synthetic",
-            "default_seed",
-            "telemetry",
-            "identities",
-            "sessions",
-            "services",
-            "missions",
-            "events",
-            "actions",
-        },
-        "scenario",
-    )
-    telemetry = _expect_mapping(scenario.get("telemetry"), "telemetry")
-    _require_exact_keys(
-        telemetry,
-        {"noise_standard_deviation", "delay_ticks"},
-        "telemetry",
-    )
-    nested_shapes = (
-        ("identities", {"id", "role"}, "identity"),
-        ("sessions", {"id", "identity_id", "service_id"}, "session"),
-        ("services", {"id", "mission_id"}, "service"),
-        ("missions", {"id", "criticality"}, "mission"),
-        ("events", {"id", "tick", "kind", "identity_id"}, "event"),
-        (
-            "actions",
-            {"id", "action_type", "target_id", "reversible", "requested_authority"},
-            "action",
-        ),
-    )
-    for collection_name, expected_keys, item_name in nested_shapes:
-        for raw_item in _expect_list(scenario.get(collection_name), collection_name):
-            item = _expect_mapping(raw_item, item_name)
-            _require_exact_keys(item, expected_keys, item_name)
-
-    _require_exact_keys(
-        policy,
-        {
-            "evidence_label",
-            "schema_version",
-            "allowed_action_types",
-            "escalated_action_types",
-            "prohibited_action_types",
-            "execution_adapter",
-            "network_enabled",
-        },
-        "policy",
-    )
-    _require_exact_keys(
-        baseline,
-        {"evidence_label", "schema_version", "name", "observations", "actions"},
-        "baseline",
-    )
-    _require_exact_keys(
-        metrics,
-        {"evidence_label", "schema_version", "metrics", "comparative_claims"},
-        "metrics",
-    )
-    _require_exact_keys(
-        seed_registry,
-        {"evidence_label", "schema_version", "seeds"},
-        "seed registry",
-    )
 
 
 def _build_environment(scenario: Mapping[str, object], protocol_version: str) -> EnvironmentState:
@@ -559,18 +524,6 @@ def _build_policy(config: Mapping[str, object]) -> SafetyPolicy:
     )
 
 
-def _validate_seed_registry(registry: Mapping[str, object]) -> tuple[int, ...]:
-    _validate_label(registry, "seed registry")
-    seeds = tuple(
-        _expect_int(value, "seed") for value in _expect_list(registry.get("seeds"), "seeds")
-    )
-    if not seeds or len(seeds) > 100 or len(seeds) != len(set(seeds)):
-        raise ConfigurationError("Seed registry must contain 1-100 unique seeds")
-    if any(seed < 0 or seed >= 2**63 for seed in seeds):
-        raise ConfigurationError("Seeds must be nonnegative signed 64-bit integers")
-    return seeds
-
-
 def _validate_loaded_configuration_bundle(
     scenario: Mapping[str, object],
     policy_config: Mapping[str, object],
@@ -578,47 +531,24 @@ def _validate_loaded_configuration_bundle(
     baseline_definition: Mapping[str, object],
     metric_definition: Mapping[str, object],
 ) -> tuple[str, tuple[int, ...]]:
-    for name, config in (
-        ("scenario", scenario),
-        ("policy", policy_config),
-        ("baseline", baseline_definition),
-        ("metrics", metric_definition),
-    ):
-        _validate_label(config, name)
-    _validate_exact_configuration_shapes(
-        scenario,
-        policy_config,
-        baseline_definition,
-        metric_definition,
-        seed_registry,
-    )
-    _expect_string(scenario.get("name"), "scenario.name")
-    _expect_string(baseline_definition.get("name"), "baseline.name")
-    if scenario.get("synthetic") is not True:
-        raise ConfigurationError("Diagnostic scenario must explicitly declare synthetic=true")
-    if baseline_definition.get("observations") != "synthetic_only":
-        raise ConfigurationError("Diagnostic baseline must use synthetic_only observations")
-    if baseline_definition.get("actions") != "none":
-        raise ConfigurationError("Diagnostic baseline must declare actions=none")
-    if metric_definition.get("comparative_claims") is not False:
-        raise ConfigurationError("Diagnostic metrics must prohibit comparative claims")
-    configured_metrics = tuple(
-        _expect_string(value, "metrics.metrics")
-        for value in _expect_list(metric_definition.get("metrics"), "metrics.metrics")
-    )
-    expected_metrics = {
-        "event_count",
-        "approved_action_count",
-        "prohibited_action_count",
-    }
-    if set(configured_metrics) != expected_metrics or len(configured_metrics) != len(
-        expected_metrics
-    ):
-        raise ConfigurationError("Diagnostic metric definitions do not match the governed set")
+    try:
+        inputs = DiagnosticInputs.model_validate(
+            {
+                "scenario": scenario,
+                "policy": policy_config,
+                "seeds": seed_registry,
+                "baseline": baseline_definition,
+                "metrics": metric_definition,
+            }
+        )
+    except ValidationError as error:
+        issue = error.errors(include_url=False, include_input=False)[0]
+        field = ".".join(str(segment) for segment in issue["loc"])
+        raise ConfigurationError(f"Invalid configuration field {field}: {issue['msg']}") from error
 
-    protocol_version = _expect_string(scenario.get("protocol_version"), "protocol_version")
-    registered_seeds = _validate_seed_registry(seed_registry)
-    default_seed = _expect_int(scenario.get("default_seed"), "default_seed")
+    protocol_version = inputs.scenario.protocol_version
+    registered_seeds = inputs.seeds.seeds
+    default_seed = inputs.scenario.default_seed
     if default_seed not in registered_seeds:
         raise ConfigurationError("Scenario default_seed is absent from the seed registry")
 

@@ -12,9 +12,12 @@ type StableId = Annotated[
     StringConstraints(min_length=1, max_length=256),
 ]
 type NonNegativeTick = Annotated[int, Field(ge=0)]
+type NonemptyText = Annotated[str, Field(min_length=1)]
 type Probability = Annotated[float, Field(ge=0.0, le=1.0)]
 type NonNegativeFloat = Annotated[float, Field(ge=0.0)]
 type SyntheticSource = Literal["synthetic"]
+type Sha256Digest = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$", max_length=64)]
+type Signed64Count = Annotated[int, Field(ge=0, lt=2**63)]
 
 
 class StrictFrozenModel(BaseModel):
@@ -25,7 +28,15 @@ class StrictFrozenModel(BaseModel):
         frozen=True,
         strict=True,
         validate_default=True,
+        allow_inf_nan=False,
     )
+
+
+class DiagnosticRecord(StrictFrozenModel):
+    """Provenance shared by the existing v1 diagnostic wire records."""
+
+    evidence_label: Literal["NON_REPORTABLE_DIAGNOSTIC"]
+    schema_version: Literal["1.0"]
 
 
 class SyntheticRecord(StrictFrozenModel):

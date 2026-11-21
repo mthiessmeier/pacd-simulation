@@ -5,7 +5,7 @@ from __future__ import annotations
 import csv
 import json
 from pathlib import Path
-from typing import Final
+from typing import Final, Literal
 
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -13,6 +13,34 @@ import pyarrow.parquet as pq
 from pacd_sim.audit.writer import EVENT_SCHEMA
 from pacd_sim.constants import EVIDENCE_LABEL, SCHEMA_VERSION
 from pacd_sim.reproducibility.paths import assert_write_path
+from pacd_sim.schema import DiagnosticRecord, Sha256Digest, Signed64Count
+
+
+class MetricRecord(DiagnosticRecord):
+    """Absolute diagnostic counts for one seed and governed configuration."""
+
+    seed: Signed64Count
+    config_hash: Sha256Digest
+    event_count: Signed64Count
+    observation_count: Signed64Count
+    evidence_count: Signed64Count
+    state_update_count: Signed64Count
+    hypothesis_count: Signed64Count
+    candidate_action_count: Signed64Count
+    approved_action_count: Signed64Count
+    escalated_action_count: Signed64Count
+    prohibited_action_count: Signed64Count
+    simulated_execution_count: Signed64Count
+    verified_execution_count: Signed64Count
+    benign_negative_control_count: Signed64Count
+    prohibited_execution_count: Signed64Count
+
+
+class EpisodeRecord(MetricRecord):
+    """Flat v1 summary with the completion marker observable in the raw stream."""
+
+    completion_status: Literal["EVENT_CHAIN_COMPLETED", "INCOMPLETE"]
+
 
 SUMMARY_FIELDS: Final[tuple[tuple[str, pa.DataType], ...]] = (
     ("evidence_label", pa.string()),
@@ -82,46 +110,48 @@ def summary_from_raw_table(table: pa.Table) -> dict[str, object]:
         if isinstance(payload, dict) and payload.get("classification") == "benign_negative_control":
             benign_negative_controls += 1
 
-    return {
-        "evidence_label": EVIDENCE_LABEL,
-        "schema_version": SCHEMA_VERSION,
-        "seed": seed,
-        "config_hash": config_hash,
-        "completion_status": (
-            "EVENT_CHAIN_COMPLETED"
-            if any(row.get("event_type") == "manifest" for row in rows)
-            else "INCOMPLETE"
-        ),
-        "event_count": len(rows),
-        "observation_count": _event_count(rows, "observation"),
-        "evidence_count": _event_count(rows, "evidence"),
-        "state_update_count": _event_count(rows, "state_update"),
-        "hypothesis_count": _event_count(rows, "hypothesis"),
-        "candidate_action_count": _event_count(rows, "candidate_action"),
-        "approved_action_count": sum(
-            row.get("event_type") == "safety_decision" and row.get("disposition") == "APPROVE"
-            for row in rows
-        ),
-        "escalated_action_count": sum(
-            row.get("event_type") == "safety_decision" and row.get("disposition") == "ESCALATE"
-            for row in rows
-        ),
-        "prohibited_action_count": sum(
-            row.get("event_type") == "safety_decision" and row.get("disposition") == "PROHIBIT"
-            for row in rows
-        ),
-        "simulated_execution_count": _event_count(rows, "simulated_execution"),
-        "verified_execution_count": sum(
-            row.get("event_type") == "verification" and row.get("outcome") == "verified"
-            for row in rows
-        ),
-        "benign_negative_control_count": benign_negative_controls,
-        "prohibited_execution_count": sum(
-            row.get("event_type") == "simulated_execution"
-            and str(row.get("action_id")) in prohibited_actions
-            for row in rows
-        ),
-    }
+    return EpisodeRecord.model_validate(
+        {
+            "evidence_label": EVIDENCE_LABEL,
+            "schema_version": SCHEMA_VERSION,
+            "seed": seed,
+            "config_hash": config_hash,
+            "completion_status": (
+                "EVENT_CHAIN_COMPLETED"
+                if any(row.get("event_type") == "manifest" for row in rows)
+                else "INCOMPLETE"
+            ),
+            "event_count": len(rows),
+            "observation_count": _event_count(rows, "observation"),
+            "evidence_count": _event_count(rows, "evidence"),
+            "state_update_count": _event_count(rows, "state_update"),
+            "hypothesis_count": _event_count(rows, "hypothesis"),
+            "candidate_action_count": _event_count(rows, "candidate_action"),
+            "approved_action_count": sum(
+                row.get("event_type") == "safety_decision" and row.get("disposition") == "APPROVE"
+                for row in rows
+            ),
+            "escalated_action_count": sum(
+                row.get("event_type") == "safety_decision" and row.get("disposition") == "ESCALATE"
+                for row in rows
+            ),
+            "prohibited_action_count": sum(
+                row.get("event_type") == "safety_decision" and row.get("disposition") == "PROHIBIT"
+                for row in rows
+            ),
+            "simulated_execution_count": _event_count(rows, "simulated_execution"),
+            "verified_execution_count": sum(
+                row.get("event_type") == "verification" and row.get("outcome") == "verified"
+                for row in rows
+            ),
+            "benign_negative_control_count": benign_negative_controls,
+            "prohibited_execution_count": sum(
+                row.get("event_type") == "simulated_execution"
+                and str(row.get("action_id")) in prohibited_actions
+                for row in rows
+            ),
+        }
+    ).model_dump()
 
 
 def summary_from_raw(raw_events_path: Path | str) -> dict[str, object]:
