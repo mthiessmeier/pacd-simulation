@@ -1,0 +1,7 @@
+# Phase 2 Increment 4 acceptance · November 21, 2026
+
+Michael Thiessmeier approved PR #6 at `2483b1cd260bb9cee99837047bde65b4be6652c1`. The main merge is `9e9c1697cdd7f55e496b7959a6b0e736aec203bc`, with previous main `d48e950e72482a4daa027385039432fc4e766593` as its first parent. The approved head and the merge share tree `1eb978792692688c1d53324cee8830d5eb0815c9`. [Owner approval and main verification](https://github.com/mthiessmeier/pacd-simulation/pull/6#issuecomment-7067744776)
+
+Two fresh frozen offline environments each passed 354 tests and skipped one Windows directory-symlink privilege case. All four reportable requests were denied. Ten new runs reproduced the approved hashes, decision sequences and regenerated summaries. Across the six prospective runs the fixed static rule abstained nine times and proposed human review six times. The governor escalated each request, verification found equal before/after state digests, and none reached the execution broker. The main rerun also reproduced the independent receipt and tamper challenge results.
+
+Acceptance covers the fixed baseline's prospective human-review proposals and its retrospective replay on the two synthetic fixtures. Evidence classification is `NON_REPORTABLE_DIAGNOSTIC`. Main gate ledger SHA-256 `7c4fe215a1a0a67f43a8d0ada6a757771d6402ce2fcd3a6dc09541a10890951d`. Main CLI matrix SHA-256 `561622d987e6e84a5aa863670548b2f032df73fd497a8b32372341105eb1c243`.

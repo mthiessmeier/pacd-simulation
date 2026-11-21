@@ -172,9 +172,9 @@ class BaselineConfig(DiagnosticRecord):
 
     @field_validator("name")
     @classmethod
-    def _reserve_static_rule_name(cls, value: str) -> str:
-        if value == "static_signal_review_v1":
-            raise ValueError("static_signal_review_v1 requires the human-review action")
+    def _reserve_review_policy_names(cls, value: str) -> str:
+        if value in {"static_signal_review_v1", "pacd_corroborated_review_v1"}:
+            raise ValueError(f"{value} requires the human-review action")
         return value
 
 
@@ -182,6 +182,17 @@ class StaticReviewBaselineConfig(DiagnosticRecord):
     name: Literal["static_signal_review_v1"]
     observations: Literal["synthetic_only"]
     actions: Literal["require_human_review"]
+
+
+class CorroboratedReviewConfig(DiagnosticRecord):
+    name: Literal["pacd_corroborated_review_v1"]
+    observations: Literal["synthetic_only"]
+    actions: Literal["require_human_review"]
+
+
+type ReviewConfig = Annotated[
+    StaticReviewBaselineConfig | CorroboratedReviewConfig, Field(discriminator="name")
+]
 
 
 class MetricConfig(DiagnosticRecord):
@@ -211,5 +222,5 @@ class DiagnosticInputs(StrictFrozenModel):
     scenario: ScenarioConfig
     policy: PolicyConfig
     seeds: SeedRegistryConfig
-    baseline: Annotated[BaselineConfig | StaticReviewBaselineConfig, Field(discriminator="actions")]
+    baseline: Annotated[BaselineConfig | ReviewConfig, Field(discriminator="actions")]
     metrics: MetricConfig

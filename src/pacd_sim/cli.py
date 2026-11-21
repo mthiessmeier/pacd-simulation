@@ -15,6 +15,8 @@ from pacd_sim.defenders.baselines.static import (
     STATIC_REVIEW_VERSION,
     propose_review,
 )
+from pacd_sim.defenders.observations import BaselineObservation
+from pacd_sim.defenders.pacd import corroboration
 from pacd_sim.harness.run import ConfigurationError, run_diagnostic
 from pacd_sim.reproducibility.canonical import canonical_sha256
 from pacd_sim.reproducibility.doctor import run_doctor
@@ -115,7 +117,7 @@ def _parser() -> argparse.ArgumentParser:
     diagnostic.add_argument(
         "--baseline",
         type=Path,
-        help="defender YAML (use static_review.yaml for prospective review)",
+        help="defender YAML, e.g. static_review.yaml or pacd_corroborated_review.yaml",
     )
     diagnostic.add_argument("--metrics", type=Path)
     diagnostic.add_argument("--output-root", type=Path)
@@ -134,11 +136,13 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help="include the ordered synthetic source events and their digest after verification",
     )
-    baseline = subparsers.add_parser(
-        "baseline", help="replay the static human-review rule on verified observations"
-    )
-    baseline.add_argument("run_dir", type=Path)
-    baseline.add_argument("--workspace-root", type=Path)
+    for name, description in (
+        ("baseline", "replay the static human-review rule on verified observations"),
+        ("defender-trace", "trace the PACD planner's review proposals on verified observations"),
+    ):
+        replay = subparsers.add_parser(name, help=description)
+        replay.add_argument("run_dir", type=Path)
+        replay.add_argument("--workspace-root", type=Path)
     return parser
 
 
@@ -186,7 +190,48 @@ def _verify_command(arguments: argparse.Namespace) -> int:
     return 0 if result.valid else 1
 
 
-def _baseline_command(arguments: argparse.Namespace) -> int:
+def _static_report(observations: tuple[BaselineObservation, ...]) -> dict[str, object]:
+    decisions = []
+    proposal_count = 0
+    for observation in observations:
+        proposal = propose_review(observation)
+        if proposal is not None:
+            proposal_count += 1
+        decisions.append(
+            {
+                "observation": observation.model_dump(mode="json"),
+                "proposal": proposal.model_dump(mode="json") if proposal is not None else None,
+            }
+        )
+    return {
+        "policy": STATIC_REVIEW_VERSION,
+        "mode": "retrospective_proposals",
+        "minimum_signal": MINIMUM_REVIEW_SIGNAL,
+        "observation_sha256": canonical_sha256(observations),
+        "observation_count": len(decisions),
+        "proposal_count": proposal_count,
+        "decisions": decisions,
+    }
+
+
+def _defender_trace(observations: tuple[BaselineObservation, ...]) -> dict[str, object]:
+    planner = corroboration.CorroboratedReviewPlanner()
+    steps = [planner.observe(reading) for reading in observations]
+    trace: dict[str, object] = {
+        "policy": corroboration.POLICY,
+        "mode": "retrospective_proposals",
+        "minimum_signal": corroboration.MINIMUM_SIGNAL,
+        "max_gap_ticks": corroboration.MAX_GAP_TICKS,
+        "observation_count": len(steps),
+        "proposal_count": sum(step.proposal is not None for step in steps),
+        "observation_sha256": canonical_sha256(observations),
+        "decisions": [step.model_dump(mode="json") for step in steps],
+    }
+    trace["trace_sha256"] = canonical_sha256(trace)
+    return trace
+
+
+def _observation_command(arguments: argparse.Namespace) -> int:
     repository = _default_repo_root().resolve(strict=True)
     workspace = _resolve_diagnostic_workspace(repository, arguments.workspace_root)
     verification, material = verify_run_with_summary(
@@ -198,28 +243,11 @@ def _baseline_command(arguments: argparse.Namespace) -> int:
         _emit_json(payload)
         return 1
 
-    decisions = []
-    proposal_count = 0
-    for observation in material.observations:
-        proposal = propose_review(observation)
-        if proposal is not None:
-            proposal_count += 1
-        decisions.append(
-            {
-                "observation": observation.model_dump(mode="json"),
-                "proposal": proposal.model_dump(mode="json") if proposal is not None else None,
-            }
-        )
     payload["status"] = "VERIFIED"
-    payload["baseline"] = {
-        "policy": STATIC_REVIEW_VERSION,
-        "mode": "retrospective_proposals",
-        "minimum_signal": MINIMUM_REVIEW_SIGNAL,
-        "observation_sha256": canonical_sha256(material.observations),
-        "observation_count": len(decisions),
-        "proposal_count": proposal_count,
-        "decisions": decisions,
-    }
+    if arguments.command == "defender-trace":
+        payload["defender_trace"] = _defender_trace(material.observations)
+    else:
+        payload["baseline"] = _static_report(material.observations)
     _emit_json(payload)
     return 0
 
@@ -235,8 +263,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _diagnostic_command(arguments)
         if arguments.command == "verify":
             return _verify_command(arguments)
-        if arguments.command == "baseline":
-            return _baseline_command(arguments)
+        if arguments.command in ("baseline", "defender-trace"):
+            return _observation_command(arguments)
     except ReportableModeDenied as error:
         _emit_json(
             _failure_payload(

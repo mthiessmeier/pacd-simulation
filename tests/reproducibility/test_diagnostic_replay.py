@@ -21,7 +21,7 @@ from conftest import (
 )
 
 from pacd_sim.audit.writer import EVENT_SCHEMA
-from pacd_sim.harness.run import RunResult, load_yaml_config
+from pacd_sim.harness.run import RunResult, _run_diagnostic_in_process, load_yaml_config
 from pacd_sim.reproducibility import evidence_validation
 from pacd_sim.reproducibility import verify as verify_module
 from pacd_sim.reproducibility.canonical import canonical_json_bytes, canonical_sha256
@@ -32,6 +32,45 @@ from pacd_sim.reproducibility.manifest import (
 )
 from pacd_sim.reproducibility.paths import is_symlink_or_reparse
 from pacd_sim.reproducibility.verify import verify_run
+
+
+@pytest.mark.reproducibility
+@pytest.mark.parametrize(
+    ("key", "forged"),
+    [("previous_elevated_tick", 2), ("candidate_action_id", "action-pacd-review-3")],
+)
+def test_replay_rejects_rehashed_planner_decision(
+    isolated_workspace: IsolatedWorkspace, key: str, forged: int | str
+) -> None:
+    ws = isolated_workspace
+    _, policy, seeds, _, metrics = controlled_config_files(ws.config_root)
+    run = _run_diagnostic_in_process(
+        ws.config_root / "scenarios/diagnostic_repeated_readings.yaml",
+        policy,
+        seeds,
+        ws.output_root,
+        repo_root=ws.repo_root,
+        workspace_root=ws.root,
+        metric_path=metrics,
+        baseline_path=ws.config_root / "defenders/pacd_corroborated_review.yaml",
+    )
+    copy = ws.root / "var/tmp/altered" / run.run_dir.name
+    shutil.copytree(run.run_dir, copy)
+    rows = pq.read_table(copy / "raw/events.parquet").to_pylist()
+    (decision,) = [
+        row
+        for row in rows
+        if row["event_type"] == "defender_decision" and row["outcome"] == "proposed"
+    ]
+    payload = json.loads(decision["payload_json"])
+    assert payload[key] != forged
+    payload[key] = forged
+    decision["payload_json"] = canonical_json_bytes(payload).decode()
+    _rewrite_raw_events_with_refreshed_closure(copy, rows)
+    result = verify_run(copy, workspace_root=ws.root, repo_root=ws.repo_root)
+    assert not result.valid and not result.semantic_content_valid
+    assert any("payload does not match reconstructed event semantics" in e for e in result.errors)
+    assert not any("checksum mismatch" in e.lower() for e in result.errors)
 
 
 def _run_mission_fixture(workspace: IsolatedWorkspace, redundant: bool = False) -> RunResult:

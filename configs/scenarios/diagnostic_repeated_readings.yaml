@@ -1,0 +1,61 @@
+evidence_label: NON_REPORTABLE_DIAGNOSTIC
+schema_version: "1.0"
+protocol_version: BOOTSTRAP_DRAFT_v1
+name: diagnostic_identity_smoke
+synthetic: true
+default_seed: 424242
+telemetry:
+  noise_standard_deviation: 0.05
+  delay_ticks: 1
+identities:
+  - id: identity-synthetic-admin
+    role: synthetic_administrator
+  - id: identity-synthetic-user
+    role: synthetic_user
+sessions:
+  - id: session-synthetic-001
+    identity_id: identity-synthetic-user
+    service_id: service-synthetic-saas
+services:
+  - id: service-synthetic-saas
+    mission_id: mission-synthetic-core
+missions:
+  - id: mission-synthetic-core
+    criticality: 0.8
+events:
+  - id: event-benign-admin
+    tick: 1
+    kind: benign_administrative
+    identity_id: identity-synthetic-admin
+  - id: event-simulated-adversary
+    tick: 2
+    kind: simulated_adversary
+    identity_id: identity-synthetic-user
+  - id: event-synthetic-corroboration-tie
+    tick: 2
+    kind: simulated_adversary
+    identity_id: identity-synthetic-user
+  - id: event-synthetic-corroboration-next
+    tick: 3
+    kind: simulated_adversary
+    identity_id: identity-synthetic-user
+  - id: event-synthetic-corroboration-followup
+    tick: 4
+    kind: simulated_adversary
+    identity_id: identity-synthetic-user
+actions:
+  - id: action-allowed
+    action_type: isolate_session
+    target_id: session-synthetic-001
+    reversible: true
+    requested_authority: automatic
+  - id: action-escalated
+    action_type: require_human_review
+    target_id: identity-synthetic-user
+    reversible: true
+    requested_authority: human
+  - id: action-prohibited
+    action_type: external_network_scan
+    target_id: synthetic-denied-target
+    reversible: false
+    requested_authority: prohibited

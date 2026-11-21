@@ -16,6 +16,7 @@ from typing import cast
 from pacd_sim.configuration import EventConfig, ScenarioConfig
 from pacd_sim.constants import EVIDENCE_LABEL
 from pacd_sim.defenders.base import BaselineObservation
+from pacd_sim.defenders.pacd import corroboration
 from pacd_sim.metrics.summarize import EpisodeRecord, summary_from_raw_table
 from pacd_sim.reproducibility.canonical import canonical_sha256
 from pacd_sim.reproducibility.evidence_validation import (
@@ -731,9 +732,15 @@ def _verify_run_impl(
     if raw_parquet is not None and raw_table is not None:
         try:
             event_types = [str(row.get("event_type")) for row in raw_rows]
-            is_static = (
+            review_only = (
                 isinstance(baseline_definition, Mapping)
                 and baseline_definition.get("actions") == "require_human_review"
+            )
+            decision_event = (
+                "defender_decision"
+                if isinstance(baseline_definition, Mapping)
+                and baseline_definition.get("name") == corroboration.POLICY
+                else "baseline_decision"
             )
             required_chain = (
                 "observation",
@@ -741,8 +748,8 @@ def _verify_run_impl(
                 "state_update",
                 "hypothesis",
             ) + (
-                ("baseline_decision", "manifest")
-                if is_static
+                (decision_event, "manifest")
+                if review_only
                 else (
                     "candidate_action",
                     "safety_decision",
@@ -760,7 +767,7 @@ def _verify_run_impl(
                 if row.get("event_type") == "safety_decision"
                 and row.get("disposition") == "PROHIBIT"
             }
-            if not is_static and not prohibited:
+            if not review_only and not prohibited:
                 errors.append("No prohibited safety decision is retained")
             retained_dispositions = {
                 row.get("disposition")
@@ -768,9 +775,9 @@ def _verify_run_impl(
                 if row.get("event_type") == "safety_decision"
             }
             known_dispositions = {"APPROVE", "ESCALATE", "PROHIBIT"}
-            if is_static and "APPROVE" in retained_dispositions:
-                errors.append("Static human-review proposal received APPROVE")
-            if not is_static and not known_dispositions.issubset(retained_dispositions):
+            if review_only and "APPROVE" in retained_dispositions:
+                errors.append("Human-review proposal received APPROVE")
+            if not review_only and not known_dispositions.issubset(retained_dispositions):
                 errors.append("Raw audit does not retain APPROVE, ESCALATE, and PROHIBIT decisions")
             unknown_dispositions = retained_dispositions - known_dispositions
             if unknown_dispositions:
@@ -802,8 +809,8 @@ def _verify_run_impl(
                 is_execution = row.get("event_type") == "simulated_execution"
                 declares_executed = isinstance(payload, dict) and payload.get("executed") is True
                 if is_execution or declares_executed:
-                    if is_static:
-                        errors.append("Static human-review proposal reached execution")
+                    if review_only:
+                        errors.append("Human-review proposal reached execution")
                     action_id = row.get("action_id")
                     if decision_by_action.get(action_id) != "APPROVE":
                         errors.append(
