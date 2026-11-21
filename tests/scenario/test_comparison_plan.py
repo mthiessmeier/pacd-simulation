@@ -165,3 +165,50 @@ def test_plan_schema_and_order(isolated_workspace: IsolatedWorkspace) -> None:
         path.write_bytes(data)
         with pytest.raises(ValueError):
             registered_metrics(path, ws.root, ws.repo_root, None, planned=True)
+
+
+@pytest.mark.reproducibility
+def test_distinct_controlled_cells_on_the_same_script(
+    isolated_workspace: IsolatedWorkspace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ws = isolated_workspace
+    monkeypatch.setattr(harness, "__file__", str(ws.repo_root / "src/pacd_sim/harness/run.py"))
+    doc = example(ws)
+    doc["attempts"] = doc["attempts"][:2]
+    scenario, policy, seeds, _, metrics = controlled_config_files(ws.config_root)
+    defenders = [
+        ws.config_root / "defenders" / filename
+        for filename in ("static_review.yaml", "pacd_corroborated_review.yaml")
+    ]
+    for attempt, defender in zip(doc["attempts"], defenders, strict=True):
+        hashes = harness.validate_diagnostic_configuration_files(
+            ws.repo_root, scenario_file=scenario.name, defender_file=defender.name
+        )
+        attempt["cell_id"] = defender.stem
+        attempt["expected"]["condition"] = harness.load_yaml_config(defender)["name"]
+        attempt["expected"]["config_sha256"] = hashes["config_hash"]
+    path = ws.root / "plan.json"
+    path.write_bytes(canonical_json_bytes(doc))
+    plan, pin = load_register(path, ws.root, ComparisonPlan, canonical_sha256(doc))
+    for attempt, defender in zip(plan.attempts, defenders, strict=True):
+        harness._run_diagnostic_in_process(
+            scenario,
+            policy,
+            seeds,
+            ws.output_root,
+            seed=attempt.seed,
+            workspace_root=ws.root,
+            repo_root=ws.repo_root,
+            baseline_path=defender,
+            metric_path=metrics,
+            invocation_id=attempt.invocation_id,
+            plan=plan,
+        )
+    report: Any = registered_metrics(path, ws.root, ws.repo_root, pin, planned=True)
+    first, second = report["attempts"]
+    assert first["status"] == second["status"] == "COMPLETED"
+    assert first["observed"]["events_sha256"] == second["observed"]["events_sha256"]
+    assert first["observed"]["config_sha256"] != second["observed"]["config_sha256"]
+    assert [r["observed"] for r in report["attempts"]] == [
+        a.expected.model_dump() for a in plan.attempts
+    ]

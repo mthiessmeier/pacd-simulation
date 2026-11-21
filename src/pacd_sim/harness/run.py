@@ -561,12 +561,20 @@ def _validate_loaded_configuration_bundle(
 
 def validate_diagnostic_configuration_files(
     repo_root: Path | str,
+    *,
+    scenario_file: str = DEFAULT_SCENARIO_FILE,
+    defender_file: str = DEFAULT_BASELINE_FILE,
 ) -> dict[str, str]:
-    """Validate the shipped scenario/defender pairs and return the default bundle's hashes."""
+    """Validate the shipped pairs and return canonical hashes for the selected pair."""
     repository = Path(repo_root).resolve(strict=True)
+    if (
+        scenario_file not in DIAGNOSTIC_SCENARIO_FILES
+        or defender_file not in DIAGNOSTIC_BASELINE_FILES
+    ):
+        raise ConfigurationError("Select a governed diagnostic scenario and defender filename")
     scenario = load_yaml_config(
         _assert_controlled_config(
-            repository / "configs" / "scenarios" / DEFAULT_SCENARIO_FILE,
+            repository / "configs" / "scenarios" / scenario_file,
             repository,
         )
     )
@@ -584,7 +592,7 @@ def validate_diagnostic_configuration_files(
     )
     baseline_definition = load_yaml_config(
         _assert_controlled_config(
-            repository / "configs" / "defenders" / DEFAULT_BASELINE_FILE,
+            repository / "configs" / "defenders" / defender_file,
             repository,
         )
     )
@@ -601,13 +609,13 @@ def validate_diagnostic_configuration_files(
         baseline_definition,
         metric_definition,
     )
-    for defender_file in DIAGNOSTIC_BASELINE_FILES:
-        defender_path = repository / "configs" / "defenders" / defender_file
+    for other_defender in DIAGNOSTIC_BASELINE_FILES:
+        defender_path = repository / "configs" / "defenders" / other_defender
         definition = load_yaml_config(_assert_controlled_config(defender_path, repository))
-        for scenario_file in DIAGNOSTIC_SCENARIO_FILES:
-            if (scenario_file, defender_file) == (DEFAULT_SCENARIO_FILE, DEFAULT_BASELINE_FILE):
+        for other_scenario in DIAGNOSTIC_SCENARIO_FILES:
+            if (other_scenario, other_defender) == (scenario_file, defender_file):
                 continue  # Already validated above for the returned hashes.
-            scenario_path = repository / "configs" / "scenarios" / scenario_file
+            scenario_path = repository / "configs" / "scenarios" / other_scenario
             _validate_loaded_configuration_bundle(
                 load_yaml_config(_assert_controlled_config(scenario_path, repository)),
                 policy_config,

@@ -35,15 +35,32 @@ from pacd_sim.reproducibility.reportable import git_commit
 repo = Path.cwd()
 hashes = validate_diagnostic_configuration_files(repo)
 scenario = load_yaml_config(repo / "configs/scenarios" / DEFAULT_SCENARIO_FILE)
-expected = dict(scenario=scenario["name"], condition="null_diagnostic_baseline",
-                code_commit=git_commit(repo), config_sha256=hashes["config_hash"],
-                seed_registry_sha256=hashes["seed_registry_hash"],
-                events_sha256=canonical_sha256(scenario["events"]))
-attempts = [dict(cell_id="identity-default", attempt_id=label, invocation_id=uuid4().hex,
-                 seed=424242, comparison_mode="controlled", expected=expected)
-            for label in ("first", "reserved-retry")]
-plan = ComparisonPlan.model_validate(dict(format="pacd-development-comparison-plan-v1",
-    evidence_label="NON_REPORTABLE_DIAGNOSTIC", attempts=attempts))
+expected = dict(
+    scenario=scenario["name"],
+    condition="null_diagnostic_baseline",
+    code_commit=git_commit(repo),
+    config_sha256=hashes["config_hash"],
+    seed_registry_sha256=hashes["seed_registry_hash"],
+    events_sha256=canonical_sha256(scenario["events"]),
+)
+attempts = [
+    dict(
+        cell_id="identity-default",
+        attempt_id=label,
+        invocation_id=uuid4().hex,
+        seed=424242,
+        comparison_mode="controlled",
+        expected=expected,
+    )
+    for label in ("first", "reserved-retry")
+]
+plan = ComparisonPlan.model_validate(
+    dict(
+        format="pacd-development-comparison-plan-v1",
+        evidence_label="NON_REPORTABLE_DIAGNOSTIC",
+        attempts=attempts,
+    )
+)
 path = repo.parent.parent / "var/tmp" / f"plan-{attempts[0]['invocation_id']}.json"
 with path.open("x", encoding="utf-8") as out:
     json.dump(plan.model_dump(mode="json"), out, indent=2)
@@ -58,7 +75,7 @@ pacd-sim diagnostic --plan $plan --plan-sha256 $pin --invocation-id $invocation 
 pacd-sim metrics --plan $plan --plan-sha256 $pin
 ```
 
-The verifier compares the manifest with the clean checkout used to read the evidence. Use one revision per batch to release every matching completion in one read. The initial read can display the canonical digest without a supplied pin. Launch requires the pin and the declared invocation. The harness resolves the usual scenario/policy/seeds/baseline/metrics options, validates actual governed files and checks seed and clean executing checkout before claiming ownership. It checks the worker's loaded bundle again. Marker version 1.1 adds the batch digest, which the existing completion receipt binds through the marker hash. A v1 unplanned launch keeps marker version 1.0. No action or defender receives the plan.
+The verifier compares the manifest with the clean checkout used to read the evidence. Use one revision per batch to release every matching completion in one read. For another shipped pair, call `validate_diagnostic_configuration_files(repo, scenario_file=..., defender_file=...)` with the two governed filenames, read their YAML names and the selected scenario’s events, and give the pair its own cell ID. Pass the same files with `--scenario` and `--baseline` at launch. The initial read can display the canonical digest without a supplied pin. Launch requires the pin and the declared invocation. The harness resolves the usual scenario/policy/seeds/baseline/metrics options, validates actual governed files and checks seed and clean executing checkout before claiming ownership. It checks the worker's loaded bundle again. Marker version 1.1 adds the batch digest, which the existing completion receipt binds through the marker hash. A v1 unplanned launch keeps marker version 1.0. No action or defender receives the plan.
 
 ### Measurement and acceptance
 
