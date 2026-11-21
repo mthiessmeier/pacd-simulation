@@ -33,9 +33,10 @@ class _ElevatedSubject:
 class CorroboratedReviewPlanner:
     """Issue one review request per sustained episode of elevated same-subject readings."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, suppress_repeats: bool = True) -> None:
         self._subjects: dict[str, _ElevatedSubject] = {}
         self._last_tick = -1
+        self._suppress_repeats = suppress_repeats
 
     def observe(self, reading: BaselineObservation) -> ReviewStep:
         if reading.tick < self._last_tick:
@@ -60,7 +61,7 @@ class CorroboratedReviewPlanner:
         else:
             if prior is None or (not prior.referred and prior.tick == reading.tick):
                 outcome = "awaiting_corroboration"
-            elif prior.referred:
+            elif prior.referred and self._suppress_repeats:
                 outcome = "already_referred"
             else:
                 outcome = "proposed"

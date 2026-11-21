@@ -33,6 +33,7 @@ EventType = Literal[
     "defender_decision",
     "candidate_action",
     "safety_decision",
+    "guarded_review",
     "simulated_execution",
     "verification",
     "mission_effect",

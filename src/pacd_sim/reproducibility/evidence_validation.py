@@ -21,6 +21,7 @@ import pyarrow.parquet as pq
 
 from pacd_sim.actions.models import DefensiveAction
 from pacd_sim.audit.writer import EVENT_SCHEMA, EVENT_TYPES
+from pacd_sim.configuration import ScenarioConfig
 from pacd_sim.constants import (
     DIAGNOSTIC_BASELINE_FILES,
     DIAGNOSTIC_SCENARIO_FILES,
@@ -34,6 +35,7 @@ from pacd_sim.defenders.pacd.diagnostic import DiagnosticPACDDefender
 from pacd_sim.engine.scheduler import DeterministicScheduler
 from pacd_sim.environment.availability import continuity_transition, evaluate_availability
 from pacd_sim.evidence.normalize import EvidenceItem, normalize_observation
+from pacd_sim.execution.verification import expected_isolation
 from pacd_sim.governance.governor import GovernanceContext, SafetyGovernor
 from pacd_sim.harness.run import (
     ConfigurationError,
@@ -46,10 +48,17 @@ from pacd_sim.harness.run import (
     _validate_loaded_configuration_bundle,
     load_yaml_config,
 )
-from pacd_sim.harness.static_review import review_action, sensor_reading, static_review_candidate
+from pacd_sim.harness.static_review import (
+    ReviewEpisodeGate,
+    review_action,
+    review_detector_options,
+    sensor_reading,
+    static_review_candidate,
+)
 from pacd_sim.hypotheses.update import BeliefState, update_beliefs
 from pacd_sim.metrics.summarize import SUMMARY_SCHEMA
 from pacd_sim.reproducibility.canonical import canonical_json_bytes, canonical_sha256
+from pacd_sim.reproducibility.guarded_review import ExpectedReviewQueue
 from pacd_sim.reproducibility.manifest import (
     sha256_file,
     validate_retained_json_text_depth,
@@ -83,6 +92,7 @@ _ACTION_EVENT_TYPES = frozenset(
     {
         "candidate_action",
         "safety_decision",
+        "guarded_review",
         "simulated_execution",
         "verification",
         "mission_effect",
@@ -545,8 +555,10 @@ def _expected_event_rows(
     scenario = cast(dict[str, object], canonical_config["scenario"])
     baseline_definition = cast(dict[str, object], canonical_config["baseline_definition"])
     review_only = baseline_definition["actions"] == "require_human_review"
+    guarded = ScenarioConfig.model_validate(scenario).guarded_review
+    gate = ReviewEpisodeGate() if guarded is not None else None
     planner = (
-        corroboration.CorroboratedReviewPlanner()
+        corroboration.CorroboratedReviewPlanner(suppress_repeats=guarded is None)
         if baseline_definition["name"] == corroboration.POLICY
         else None
     )
@@ -569,6 +581,7 @@ def _expected_event_rows(
         DetectorProfile(
             id="detector-profile-diagnostic",
             configuration_version=protocol_version,
+            **review_detector_options(guarded),
             noise_standard_deviation=cast(
                 float,
                 cast(dict[str, object], scenario["telemetry"])["noise_standard_deviation"],
@@ -608,6 +621,11 @@ def _expected_event_rows(
             "scheduler": "simpy",
             "state_graph": "networkx_detached_view",
             "synthetic_only": True,
+            **(
+                {"initial_availability": evaluate_availability(environment).audit_summary()}
+                if guarded is not None
+                else {}
+            ),
         },
     )
     evidence_items: list[EvidenceItem] = []
@@ -615,8 +633,11 @@ def _expected_event_rows(
     state = environment
     actions_processed = False
     governor = SafetyGovernor(_build_policy(policy_config))
+    queue = ExpectedReviewQueue(guarded, governor, rows) if guarded is not None else None
     defender = DiagnosticPACDDefender(compromise_threshold=0.5)
     for ordinal, observation in enumerate(observations, start=1):
+        if queue is not None:
+            state = queue.advance(observation.tick, state)
         emit(
             "observation",
             tick=observation.tick,
@@ -699,6 +720,15 @@ def _expected_event_rows(
                 decision_event = "defender_decision"
                 outcome = step.outcome
                 decision_payload = {"previous_elevated_tick": step.previous_elevated_tick}
+            if gate is not None:
+                suppressed = gate.suppress(projected, candidate)
+                decision_payload.update(
+                    raw_candidate_action_id=candidate.id if candidate is not None else None,
+                    duplicate_suppressed=suppressed,
+                )
+                if suppressed:
+                    candidate = None
+                    outcome = "duplicate_suppressed"
             decision_payload.update(
                 observation_id=observation.id,
                 observation_sha256=canonical_sha256(projected),
@@ -796,8 +826,8 @@ def _expected_event_rows(
                     )
                 before_state = state
                 before_digest = canonical_sha256(before_state)
-                state = state.at_tick(max(state.tick, action.tick, decision.tick)).isolate_session(
-                    action.target_id
+                state = expected_isolation(
+                    state, action.target_id, max(state.tick, action.tick, decision.tick)
                 )
                 after_digest = canonical_sha256(state)
                 execution_id = f"execution-{action.id}"
@@ -884,8 +914,14 @@ def _expected_event_rows(
                 outcome="recorded",
                 payload={"candidate_and_decision_retained": True},
             )
+            if queue is not None:
+                queue.submit(action, decision, evidence, state)
+                state = queue.advance(observation.tick, state)
         actions_processed = True
     final_tick = float(max((observation.tick for observation in observations), default=0))
+    if guarded is not None and queue is not None:
+        final_tick = float(guarded.end_tick)
+        queue.advance(guarded.end_tick, state)
     emit(
         "manifest",
         tick=final_tick,

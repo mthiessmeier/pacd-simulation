@@ -12,8 +12,13 @@ DIAGNOSTIC_BASELINE_FILES: Final = (
     "static_review.yaml",
     "pacd_corroborated_review.yaml",
 )
+GUARDED_SCENARIO_FILES: Final = (
+    "diagnostic_guarded_benign.yaml",
+    "diagnostic_guarded_adverse.yaml",
+)
 DIAGNOSTIC_SCENARIO_FILES: Final = (
     DEFAULT_SCENARIO_FILE,
     "diagnostic_maintenance_window.yaml",
     "diagnostic_repeated_readings.yaml",
+    *GUARDED_SCENARIO_FILES,
 )

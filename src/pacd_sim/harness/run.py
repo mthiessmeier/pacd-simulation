@@ -34,6 +34,7 @@ from pacd_sim.constants import (
     DIAGNOSTIC_BASELINE_FILES,
     DIAGNOSTIC_SCENARIO_FILES,
     EVIDENCE_LABEL,
+    GUARDED_SCENARIO_FILES,
     SCHEMA_VERSION,
 )
 from pacd_sim.defenders.base import DefenderContext
@@ -54,9 +55,17 @@ from pacd_sim.evidence.normalize import EvidenceItem, normalize_observation
 from pacd_sim.execution.broker import SimulatedExecutionBroker
 from pacd_sim.execution.verification import verify_execution
 from pacd_sim.governance.governor import GovernanceContext, SafetyGovernor, SafetyPolicy
-from pacd_sim.harness.static_review import review_action, sensor_reading, static_review_candidate
+from pacd_sim.harness.static_review import (
+    ReviewEpisodeGate,
+    review_action,
+    review_detector_options,
+    review_queue,
+    sensor_reading,
+    static_review_candidate,
+)
 from pacd_sim.hypotheses.update import BeliefState, update_beliefs
 from pacd_sim.metrics.summarize import summarize_raw_events
+from pacd_sim.oversight.guarded import ReviewStep
 from pacd_sim.reproducibility.canonical import canonical_json_bytes, canonical_sha256
 from pacd_sim.reproducibility.manifest import (
     build_manifest,
@@ -421,7 +430,10 @@ def _build_events(
             )
         )
     kinds = {event.kind for event in events}
-    if not {"benign_administrative", "simulated_adversary"}.issubset(kinds):
+    if "guarded_review" in scenario:
+        if kinds not in ({"benign_administrative"}, {"simulated_adversary"}):
+            raise ConfigurationError("A matched guarded fixture must use a single scripted truth")
+    elif not {"benign_administrative", "simulated_adversary"}.issubset(kinds):
         raise ConfigurationError("Diagnostic requires benign and simulated-adversary events")
     return tuple(events)
 
@@ -528,6 +540,10 @@ def _validate_loaded_configuration_bundle(
     environment = _build_environment(inputs.scenario, protocol_version)
     events = _build_events(scenario, protocol_version)
     policy = _build_policy(policy_config)
+    if inputs.scenario.guarded_review is not None:
+        if inputs.baseline.actions != "require_human_review":
+            raise ConfigurationError("Guarded review requires a review-proposing baseline")
+        return protocol_version, registered_seeds
     action_tick = max(event.tick for event in events)
     actions = _build_actions(scenario, protocol_version, action_tick)
     governor = SafetyGovernor(policy)
@@ -615,6 +631,8 @@ def validate_diagnostic_configuration_files(
         for other_scenario in DIAGNOSTIC_SCENARIO_FILES:
             if (other_scenario, other_defender) == (scenario_file, defender_file):
                 continue  # Already validated above for the returned hashes.
+            if other_scenario in GUARDED_SCENARIO_FILES and other_defender == DEFAULT_BASELINE_FILE:
+                continue  # The scripted-probe baseline cannot propose reviewed actions.
             scenario_path = repository / "configs" / "scenarios" / other_scenario
             _validate_loaded_configuration_bundle(
                 load_yaml_config(_assert_controlled_config(scenario_path, repository)),
@@ -1177,6 +1195,23 @@ class RunResult:
         return value
 
 
+def _record_guarded_review(step: ReviewStep, audit: AuditWriter) -> EnvironmentState:
+    for row in step.events:
+        audit.emit(
+            "guarded_review",
+            tick=row.tick,
+            entity_id=row.entity_id,
+            action_id=row.action_id,
+            outcome=row.outcome,
+            payload=row.payload,
+        )
+    if failed := step.failed_outcomes:
+        # The existing parent failure path retains the raw evidence, including recovery,
+        # and withholds a successful execution receipt and completed outcome measures.
+        raise RuntimeError(f"Guarded review failed: {', '.join(failed)}")
+    return step.state
+
+
 def _run_diagnostic_worker(
     scenario_path: Path | str,
     policy_path: Path | str,
@@ -1278,6 +1313,7 @@ def _run_diagnostic_worker(
         )
 
     environment = _build_environment(scenario, protocol_version)
+    guarded = ScenarioConfig.model_validate(scenario).guarded_review
     scheduled_events = _build_events(scenario, protocol_version)
     safety_policy = _build_policy(policy_config)
     scheduler = DeterministicScheduler(scheduled_events)
@@ -1292,6 +1328,7 @@ def _run_diagnostic_worker(
         id="detector-profile-diagnostic",
         configuration_version=protocol_version,
         noise_standard_deviation=noise_value,
+        **review_detector_options(guarded),
     )
     sensor = Sensor(
         id="sensor-synthetic-diagnostic",
@@ -1345,25 +1382,32 @@ def _run_diagnostic_worker(
             selected_seed,
             workspace_root=workspace,
         )
+        start_payload: dict[str, object] = {
+            "scheduler": "simpy",
+            "state_graph": "networkx_detached_view",
+            "synthetic_only": True,
+        }
+        if guarded is not None:
+            start_payload["initial_availability"] = evaluate_availability(
+                environment
+            ).audit_summary()
         audit.emit(
             "run_started",
             tick=0,
             outcome="started",
-            payload={
-                "scheduler": "simpy",
-                "state_graph": "networkx_detached_view",
-                "synthetic_only": True,
-            },
+            payload=start_payload,
         )
 
         governor = SafetyGovernor(safety_policy)
         broker = SimulatedExecutionBroker(governor)
         prospective = baseline_definition["actions"] == "require_human_review"
         planner = (
-            corroboration.CorroboratedReviewPlanner()
+            corroboration.CorroboratedReviewPlanner(suppress_repeats=guarded is None)
             if baseline_definition["name"] == corroboration.POLICY
             else None
         )
+        queue = review_queue(guarded) if guarded is not None else None
+        episode_gate = ReviewEpisodeGate() if queue is not None else None
         defender = DiagnosticPACDDefender(compromise_threshold=0.5)
         evidence_items: list[EvidenceItem] = []
         belief_state = BeliefState(configuration_version=protocol_version)
@@ -1377,6 +1421,10 @@ def _run_diagnostic_worker(
             if observation is None:
                 raise RuntimeError(
                     "Full-coverage diagnostic telemetry unexpectedly omitted an event"
+                )
+            if queue is not None:
+                state = _record_guarded_review(
+                    queue.advance(observation.tick, state, broker), audit
                 )
             audit.emit(
                 "observation",
@@ -1470,6 +1518,13 @@ def _run_diagnostic_worker(
                     decision_type = "defender_decision"
                     outcome = step.outcome
                     detail["previous_elevated_tick"] = step.previous_elevated_tick
+                if episode_gate is not None:
+                    suppressed = episode_gate.suppress(reading, candidate)
+                    detail["raw_candidate_action_id"] = candidate.id if candidate else None
+                    detail["duplicate_suppressed"] = suppressed
+                    if suppressed:
+                        candidate = None
+                        outcome = "duplicate_suppressed"
                 audit.emit(
                     decision_type,
                     tick=reading.tick,
@@ -1669,6 +1724,11 @@ def _run_diagnostic_worker(
                     outcome="recorded",
                     payload={"candidate_and_decision_retained": True},
                 )
+                if queue is not None:
+                    state = _record_guarded_review(
+                        queue.submit(action, decision, evidence, state, broker), audit
+                    )
+                    state = _record_guarded_review(queue.advance(action.tick, state, broker), audit)
             required_dispositions = {
                 PolicyDisposition.APPROVE,
                 PolicyDisposition.ESCALATE,
@@ -1682,6 +1742,8 @@ def _run_diagnostic_worker(
 
         if not prospective and not actions_processed:
             raise RuntimeError("Diagnostic adversary event did not exercise candidate actions")
+        if queue is not None and guarded is not None:
+            state = _record_guarded_review(queue.advance(guarded.end_tick, state, broker), audit)
         final_tick = float(state.tick)
         audit.emit(
             "manifest",

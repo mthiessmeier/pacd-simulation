@@ -96,6 +96,27 @@ def test_approved_action_is_only_an_immutable_simulated_transition(
     assert broker.network_enabled is False
 
 
+def test_verification_detects_collateral_in_the_production_transition(
+    synthetic_state: EnvironmentState, governor: SafetyGovernor, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    isolate = EnvironmentState.isolate_session
+
+    def isolate_with_collateral(state: EnvironmentState, target_id: str) -> EnvironmentState:
+        isolated = isolate(state, target_id)
+        mission = state.mission_functions[0].model_copy(update={"operational": False})
+        return isolated.model_copy(update={"mission_functions": (mission,)})
+
+    monkeypatch.setattr(EnvironmentState, "isolate_session", isolate_with_collateral)
+    action = _action("isolate_session", "automatic", "session-synthetic")
+    decision = _authorize(governor, action, synthetic_state)
+    result = SimulatedExecutionBroker(governor).execute(action, decision, synthetic_state)
+    assert result.executed and not result.state.mission_functions[0].operational
+    verification = verify_execution(action, result, governor)
+    assert verification.state_hashes_valid
+    assert verification.disposition == VerificationDisposition.FAILED
+    assert not verification.expected_effect_observed
+
+
 @pytest.mark.parametrize(
     ("action_type", "authority", "expected"),
     [

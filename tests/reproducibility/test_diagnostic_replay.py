@@ -7,6 +7,7 @@ import hashlib
 import json
 import re
 import shutil
+import subprocess
 from pathlib import Path
 
 import pyarrow as pa
@@ -21,7 +22,10 @@ from conftest import (
 )
 
 from pacd_sim.audit.writer import EVENT_SCHEMA
+from pacd_sim.execution.broker import SimulatedExecutionBroker
 from pacd_sim.harness.run import RunResult, _run_diagnostic_in_process, load_yaml_config
+from pacd_sim.metrics.summarize import write_episode_summary
+from pacd_sim.oversight.guarded import GuardedReviewQueue
 from pacd_sim.reproducibility import evidence_validation
 from pacd_sim.reproducibility import verify as verify_module
 from pacd_sim.reproducibility.canonical import canonical_json_bytes, canonical_sha256
@@ -32,6 +36,97 @@ from pacd_sim.reproducibility.manifest import (
 )
 from pacd_sim.reproducibility.paths import is_symlink_or_reparse
 from pacd_sim.reproducibility.verify import verify_run
+
+
+@pytest.mark.reproducibility
+def test_guarded_replay_without_dispatch_rejects_rehashed_lifecycle(
+    isolated_workspace: IsolatedWorkspace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ws = isolated_workspace
+    _, policy, seeds, _, metrics = controlled_config_files(ws.config_root)
+    scenario = ws.config_root / "scenarios/diagnostic_guarded_benign.yaml"
+    scenario.write_text(
+        scenario.read_text(encoding="utf-8").replace("rollback: false", "rollback: true"),
+        encoding="utf-8",
+    )
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=PACD Test",
+            "-c",
+            "user.email=pacd-test@example.invalid",
+            "commit",
+            "-qm",
+            "exercise guarded rollback replay",
+            "--",
+            str(scenario.relative_to(ws.repo_root)),
+        ],
+        cwd=ws.repo_root,
+        check=True,
+    )
+    run = _run_diagnostic_in_process(
+        scenario,
+        policy,
+        seeds,
+        ws.output_root,
+        repo_root=ws.repo_root,
+        workspace_root=ws.root,
+        baseline_path=ws.config_root / "defenders/static_review.yaml",
+        metric_path=metrics,
+    )
+
+    def forbidden(*args: object, **kwargs: object) -> None:
+        pytest.fail("Read-only verification attempted a live simulated dispatch or queue advance")
+
+    monkeypatch.setattr(SimulatedExecutionBroker, "execute", forbidden)
+    monkeypatch.setattr(GuardedReviewQueue, "advance", forbidden)
+    result, summary = verify_module.verify_run_with_summary(
+        run.run_dir, ws.root, repo_root=ws.repo_root
+    )
+    assert result.valid and summary is not None and summary.guarded_review is not None
+    expected_hashes = {
+        "episode_summary.csv": summary.csv_sha256,
+        "episode_summary.parquet": summary.parquet_sha256,
+    }
+    assert (
+        write_episode_summary(
+            summary.episode,
+            ws.root / "var/tmp/regenerated",
+            workspace_root=ws.root,
+            expected_hashes=expected_hashes,
+        )
+        == expected_hashes
+    )
+    for outcome, key, value in [
+        ("pending", "binding", {}),
+        ("approved", "request_digest", "f" * 64),
+        ("executed", "policy_decision", {}),
+        ("executed", "state_after_digest", "f" * 64),
+        ("executed", "network_enabled", True),
+        ("verified", "dispatch_prestate_matches", False),
+        ("mission_effect", "mission_continuity", {}),
+        ("rolled_back", "exact_prestate_restored", False),
+    ]:
+        altered = ws.root / "var/tmp" / key / run.run_dir.name
+        shutil.copytree(run.run_dir, altered)
+        rows = pq.read_table(altered / "raw/events.parquet").to_pylist()
+        event = next(
+            r for r in rows if r["event_type"] == "guarded_review" and r["outcome"] == outcome
+        )
+        payload = json.loads(event["payload_json"])
+        assert payload[key] != value
+        payload[key] = value
+        event["payload_json"] = canonical_json_bytes(payload).decode()
+        _rewrite_raw_events_with_refreshed_closure(altered, rows)
+        result, summary = verify_module.verify_run_with_summary(
+            altered, ws.root, repo_root=ws.repo_root
+        )
+        assert not result.semantic_content_valid and summary is None
+        assert any(
+            "payload does not match reconstructed event semantics" in e for e in result.errors
+        )
+        assert not any("checksum mismatch" in e.lower() for e in result.errors)
 
 
 @pytest.mark.reproducibility
