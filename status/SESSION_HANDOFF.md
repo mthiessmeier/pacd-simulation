@@ -1,4 +1,4 @@
-# PACD session handoff Â· guarded synthetic review
+# PACD session handoff Ã‚Â· guarded synthetic review
 
 **Evidence class** `NON_REPORTABLE_DIAGNOSTIC`. The owner approved merging PR #12 at `d70510d8abb27d6d9729c402f06b0e69bc33c9f3` and requested the WP05/WP06 diagnostic slice on a fresh branch. The next PR remains under independent review pending a separate merge decision.
 
@@ -17,13 +17,17 @@
 
 A detached clean checkout of the merge passed `python -m pytest -p no:cacheprovider -q` with 392 passed and one skipped. Windows lacked the privilege needed to create a directory symlink for one interlock test. The log and environment record are under `review/wp05-06-guarded-review` in the dedicated workspace.
 
-[Draft PR #14](https://github.com/mthiessmeier/pacd-simulation/pull/14) was opened with implementation commit `320d3c9683cab60c4b9ee1e627f46b3a98146ab6`. This handoff follows in an additive documentation commit. The PR records the resulting Git identity, exact-head evidence and independent disposition without a self-referential hash.
+[Draft PR #14](https://github.com/mthiessmeier/pacd-simulation/pull/14) was opened with implementation commit `320d3c9683cab60c4b9ee1e627f46b3a98146ab6`. The first review candidate was `697e19c518208ffaa24bc82f36a850a2de05404a`. Its clean diagnostic clone stays available. Additive corrections were prepared in a second clean checkout on the same feature branch, `repo/wp05-06-reviewed-candidate`, to preserve the running gates' revision. The PR records the resulting Git identity, evidence and review disposition.
+
+Two separate review-only sessions challenged that first candidate. They reproduced loss of lifecycle rows on unexpected handler exceptions, a canonically different collateral change passing Python equality, and producer/replay coupling in mission reporting, referral suppression and evidence binding. The fault-injection packets are under `t/ig14` and `t/ie14`. The evidence reviewer independently matched all 18 legacy scenario/condition/seed cells across the merge and candidate. The first candidate's full-project mypy also flagged a test's report typing. A new additive commit addresses these findings and the previously undetected underlying-observation replay. It requires its own gate and reviewer results before acceptance.
+
+The corrected writer delivers each observed lifecycle stage to the existing audit as it occurs. A normal exception at authorization, execution, verification or rollback records the failed stage and enters failed-attempt accounting. A subsequent measurement exception retains the stages already observed. New evidence IDs cannot reuse consumed observations. Verification checks the independently expected canonical state. Read-only replay checks the concrete binding, episode suppression and mission projections from governed inputs independently of the write path.
 
 ## Changes under review
 
 The [work order](../docs/work_orders/GUARDED_REVIEW_ISOLATION_v1.0.md) gives the governed configuration, lifecycle contract, failure accounting, clock, measures, CLI and deterministic fixture checks. The previously merged [558-row reconciliation](REMAINING_SCOPE_RECONCILIATION.csv) and [remaining plan](../docs/REMAINING_IMPLEMENTATION_PLAN.md) identify the wider obligations. The [previous handoff](https://github.com/mthiessmeier/pacd-simulation/blob/d70510d8abb27d6d9729c402f06b0e69bc33c9f3/status/SESSION_HANDOFF.md) preserves the WP00/WP01 implementation and acceptance history.
 
-Initial checks passed 63 domain/governor/broker tests, 49 existing governed-configuration and prospective-policy tests, seven matched and variant integration cases, and five failed-attempt/rejection cases. Fault injection is confined to hermetic tests. The exact candidate, complete suite, coverage, security checks, public CLI plan and independent review disposition are recorded against the branch head on the pull request. Private raw evidence and exact commands remain under the dedicated workspaceâ€™s `review` tree, with gate drivers under `var/tmp/wp05-06-guarded-review`.
+Initial checks passed 63 domain/governor/broker tests, 49 existing governed-configuration and prospective-policy tests, seven matched and variant integration cases, and five failed-attempt/rejection cases. Fault injection is confined to hermetic tests. The exact candidate, complete suite, coverage, security checks, public CLI plan and independent review disposition are recorded against the branch head on the pull request. Private raw evidence and exact commands remain under the dedicated workspaceÃ¢â‚¬â„¢s `review` tree, with gate drivers and exact plan builders under `var/tmp/wp05-06-guarded-review`.
 
 ## Next action and limitations
 

@@ -117,6 +117,29 @@ def test_verification_detects_collateral_in_the_production_transition(
     assert not verification.expected_effect_observed
 
 
+def test_canonical_type_change_is_collateral_even_when_models_compare_equal(
+    synthetic_state: EnvironmentState, governor: SafetyGovernor
+) -> None:
+    action = _action("isolate_session", "automatic", "session-synthetic")
+    decision = _authorize(governor, action, synthetic_state)
+    result = SimulatedExecutionBroker(governor).execute(action, decision, synthetic_state)
+    malformed = result.state.identities[0].model_copy(update={"enabled": 1})
+    after = result.state.model_copy(update={"identities": (malformed,)})
+    assert after == result.state
+    with pytest.warns(UserWarning, match="Pydantic serializer warnings"):
+        digest = canonical_sha256(after)
+        assert digest != result.record.state_after_digest
+        record = result.record.model_copy(
+            update={"state_after": after, "state_after_digest": digest}
+        )
+        forged = result.model_copy(update={"record": record, "state": after})
+        verification = verify_execution(action, forged, governor)
+        recovery = rollback_execution(action, forged, governor)
+    assert verification.state_hashes_valid and not verification.expected_effect_observed
+    assert verification.disposition == VerificationDisposition.FAILED
+    assert recovery.record.disposition == RollbackDisposition.NOT_ROLLED_BACK
+
+
 @pytest.mark.parametrize(
     ("action_type", "authority", "expected"),
     [

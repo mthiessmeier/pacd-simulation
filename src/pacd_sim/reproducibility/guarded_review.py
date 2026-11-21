@@ -4,14 +4,57 @@ from dataclasses import dataclass
 
 from pacd_sim.actions.models import DefensiveAction
 from pacd_sim.configuration import GuardedReviewConfig
+from pacd_sim.defenders.observations import BaselineObservation
+from pacd_sim.environment.availability import (
+    AvailabilityReport,
+    evaluate_availability,
+)
 from pacd_sim.environment.model import EnvironmentState
 from pacd_sim.evidence.normalize import EvidenceItem
 from pacd_sim.execution.verification import RollbackRecord, VerificationRecord, expected_isolation
 from pacd_sim.governance.governor import PolicyDecision, SafetyGovernor
-from pacd_sim.oversight.guarded import mission_effect, review_binding, reviewed_isolation
 from pacd_sim.reproducibility.canonical import canonical_sha256
 from pacd_sim.schema import PolicyDisposition, RollbackDisposition, VerificationDisposition
 from pacd_sim.state.snapshot import create_snapshot
+
+
+def expected_availability(report: AvailabilityReport) -> dict[str, int | str]:
+    """Check the wire counts against the canonical state-derived entity memberships."""
+    return {
+        "entity_count": len(report.available_entity_ids) + len(report.unavailable_entity_ids),
+        "available_entity_count": len(report.available_entity_ids),
+        "service_count": len(report.service_ids),
+        "available_service_count": len(report.available_service_ids),
+        "mission_count": len(report.mission_ids),
+        "operational_mission_count": len(report.operational_mission_ids),
+        "availability_digest": canonical_sha256(report),
+    }
+
+
+def _expected_mission_effect(
+    before: EnvironmentState, after: EnvironmentState
+) -> dict[str, object]:
+    previous = evaluate_availability(before)
+    current = evaluate_availability(after)
+    was_up = set(previous.operational_mission_ids)
+    now_up = set(current.operational_mission_ids)
+    groups = {
+        "continued": was_up & now_up,
+        "interrupted": was_up - now_up,
+        "restored": now_up - was_up,
+        "unavailable_throughout": set(previous.mission_ids) - was_up - now_up,
+    }
+    continuity = {mission: label for label, missions in groups.items() for mission in missions}
+    return {
+        "state_before_digest": canonical_sha256(before),
+        "state_after_digest": canonical_sha256(after),
+        "availability_before": expected_availability(previous),
+        "availability_after": expected_availability(current),
+        "mission_continuity": {
+            **{f"{label}_mission_count": len(missions) for label, missions in groups.items()},
+            "continuity_digest": canonical_sha256(continuity),
+        },
+    }
 
 
 @dataclass(frozen=True)
@@ -35,6 +78,24 @@ class ExpectedReviewQueue:
         self.governor = governor
         self.rows = rows
         self.pending: list[_ExpectedRequest] = []
+        self.history: list[tuple[BaselineObservation, bool]] = []
+
+    def suppresses(self, reading: BaselineObservation, proposed: bool) -> bool:
+        """Look for an admitted proposal in this subject's contiguous elevated readings."""
+        suppressed = False
+        if proposed and reading.subject_id is not None and reading.signal >= 0.75:
+            next_tick = reading.tick
+            for earlier, admitted in reversed(self.history):
+                if earlier.subject_id != reading.subject_id:
+                    continue
+                if earlier.signal < 0.75 or next_tick - earlier.tick > 3:
+                    break
+                if admitted:
+                    suppressed = True
+                    break
+                next_tick = earlier.tick
+        self.history.append((reading, proposed and not suppressed))
+        return suppressed
 
     def _emit(self, referral: DefensiveAction, tick: int, outcome: str, **payload: object) -> None:
         self.rows.append(
@@ -71,7 +132,10 @@ class ExpectedReviewQueue:
             or evidence.tick != state.tick
             or referral.tick != state.tick
             or decision.disposition != PolicyDisposition.ESCALATE
-            or decision != self.governor.evaluate(referral, mission_state=create_snapshot(state))
+            or canonical_sha256(decision)
+            != canonical_sha256(
+                self.governor.evaluate(referral, mission_state=create_snapshot(state))
+            )
         ):
             reason = "referral, evidence, state or governing decision mismatch"
         elif len(sessions) != 1:
@@ -92,8 +156,38 @@ class ExpectedReviewQueue:
             return
         due = state.tick + self.config.delay_ticks
         expiry = state.tick + self.config.validity_ticks
-        action = reviewed_isolation(referral, sessions[0].id, due)
-        binding = review_binding(referral, decision, evidence, state, action, expiry)
+        referral_digest = canonical_sha256(referral)
+        action = DefensiveAction(
+            id=f"reviewed-isolation-{referral_digest}",
+            tick=due,
+            schema_version=state.schema_version,
+            configuration_version=state.configuration_version,
+            action_type="isolate_session",
+            target_id=sessions[0].id,
+            requested_authority="automatic",
+            reversible=True,
+            preconditions=("unique active unisolated session for the observed subject",),
+            expected_effect="make exactly the reviewed synthetic session inactive and isolated",
+            verification=(
+                "compare the complete state with the independently reconstructed transition"
+            ),
+            rollback="restore the exact immutable dispatch pre-state",
+        )
+        binding = {
+            "contract": "guarded-review-isolation-v1",
+            "referral_digest": referral_digest,
+            "referral_decision_digest": canonical_sha256(decision),
+            "subject_id": evidence.subject_id,
+            "evidence_id": evidence.id,
+            "evidence_digest": canonical_sha256(evidence),
+            "policy_digest": canonical_sha256(self.governor.policy),
+            "state_digest": canonical_sha256(state),
+            "action": action.model_dump(mode="json"),
+            "action_digest": canonical_sha256(action),
+            "submitted_tick": state.tick,
+            "due_tick": due,
+            "expires_tick": expiry,
+        }
         digest = canonical_sha256(binding)
         wake = expiry + 1 if self.config.response == "no_response" else min(due, expiry + 1)
         self.pending.append(
@@ -123,7 +217,9 @@ class ExpectedReviewQueue:
         action = req.action
         decision = self.governor.evaluate(action, mission_state=create_snapshot(before))
         policy = decision.model_dump(mode="json")
-        unchanged = req.submitted_state.at_tick(before.tick) == before
+        unchanged = canonical_sha256(req.submitted_state.at_tick(before.tick)) == canonical_sha256(
+            before
+        )
         timely = action.tick == before.tick
         if not (
             unchanged
@@ -176,7 +272,7 @@ class ExpectedReviewQueue:
             verification=verification.model_dump(mode="json"),
             dispatch_prestate_matches=True,
         )
-        record("mission_effect", stage="execution", **mission_effect(before, after))
+        record("mission_effect", stage="execution", **_expected_mission_effect(before, after))
         if not self.config.rollback:
             return after
         rollback = RollbackRecord.model_validate(
@@ -191,5 +287,5 @@ class ExpectedReviewQueue:
         record(
             "rolled_back", rollback=rollback.model_dump(mode="json"), exact_prestate_restored=True
         )
-        record("mission_effect", stage="rollback", **mission_effect(after, before))
+        record("mission_effect", stage="rollback", **_expected_mission_effect(after, before))
         return before

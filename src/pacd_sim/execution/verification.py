@@ -72,7 +72,7 @@ def _binding_error(
         return "execution record configuration does not match the candidate action"
     if canonical_sha256(decision) != record.policy_decision_digest:
         return "retained policy decision digest is invalid"
-    if decision != expected_decision:
+    if record.policy_decision_digest != canonical_sha256(expected_decision):
         return "retained policy decision is not a fresh trusted-governor authorization"
     if decision.id != record.policy_decision_id:
         return "execution record policy decision ID is invalid"
@@ -152,11 +152,8 @@ def verify_execution(
         effect_observed = False
         reason = "execution before/after state hashes did not validate"
     elif not record.executed:
-        unchanged = (
-            record.state_before == record.state_after
-            and result.state == record.state_after
-            and record.state_before_digest == record.state_after_digest
-        )
+        # Both retained states and the returned state already matched their canonical digests.
+        unchanged = record.state_before_digest == record.state_after_digest
         if unchanged:
             disposition = VerificationDisposition.NOT_APPLICABLE
             effect_observed = False
@@ -171,9 +168,7 @@ def verify_execution(
         except ValueError:
             effect_observed = False
         else:
-            effect_observed = (
-                record.state_after == expected_after and result.state == expected_after
-            )
+            effect_observed = record.state_after_digest == canonical_sha256(expected_after)
         disposition = (
             VerificationDisposition.VERIFIED
             if hashes_valid and effect_observed

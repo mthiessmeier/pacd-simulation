@@ -7,18 +7,23 @@ import pytest
 from conftest import IsolatedWorkspace, controlled_config_files
 
 from pacd_sim.comparison import ComparisonInputs, ComparisonPlan, PlannedAttempt, RegisteredAttempt
+from pacd_sim.environment.model import EnvironmentState
+from pacd_sim.execution.broker import SimulatedExecutionBroker
 from pacd_sim.harness import run as harness
 from pacd_sim.metrics.registered import AttemptRegister, registered_metrics
 from pacd_sim.oversight import guarded
 from pacd_sim.reproducibility.canonical import canonical_json_bytes, canonical_sha256
 from pacd_sim.reproducibility.receipts import receipt_path_for
 from pacd_sim.reproducibility.reportable import git_commit
+from pacd_sim.state.snapshot import StateSnapshot, create_snapshot
 
 
 @pytest.mark.negative
 @pytest.mark.parametrize(
     ("fault", "outcomes"),
     [
+        ("authorization_exception", ["pending", "approved", "authorization_failed"]),
+        ("measurement_exception", ["pending", "approved", "executed", "verified"]),
         ("broker_refusal", ["pending", "approved", "execution_failed"]),
         ("broker_exception", ["pending", "approved", "execution_failed"]),
         (
@@ -67,18 +72,29 @@ def test_guarded_fault_retains_partial_ledger_and_withholds_measurements(
     monkeypatch.setattr(harness, "__file__", str(ws.repo_root / "src/pacd_sim/harness/run.py"))
 
     def raise_fault(*_args: object) -> None:
-        raise RuntimeError("injected simulated operation failure")
+        raise TypeError("injected simulated operation failure")
 
-    if fault == "broker_refusal":
-        monkeypatch.setattr(harness.SimulatedExecutionBroker, "supported_action_types", frozenset())
+    if fault == "authorization_exception":
+
+        def fault_at_dispatch(state: EnvironmentState) -> StateSnapshot:
+            if state.tick == 4:
+                raise TypeError("injected simulated operation failure")
+            return create_snapshot(state)
+
+        monkeypatch.setattr(guarded, "create_snapshot", fault_at_dispatch)
+    elif fault == "measurement_exception":
+        monkeypatch.setattr(guarded, "mission_effect", raise_fault)
+    elif fault == "broker_refusal":
+        monkeypatch.setattr(SimulatedExecutionBroker, "supported_action_types", frozenset())
     elif fault == "broker_exception":
-        monkeypatch.setattr(harness.SimulatedExecutionBroker, "execute", raise_fault)
+        monkeypatch.setattr(SimulatedExecutionBroker, "execute", raise_fault)
     else:
         monkeypatch.setattr(guarded, "verify_execution", raise_fault)
         if fault == "recovery_exception":
             monkeypatch.setattr(guarded, "rollback_execution", raise_fault)
 
-    with pytest.raises(RuntimeError, match="Guarded review failed"):
+    expected_error = TypeError if fault == "measurement_exception" else RuntimeError
+    with pytest.raises(expected_error, match="injected|Guarded review failed"):
         harness._run_diagnostic_in_process(
             scenario,
             policy,
@@ -108,8 +124,12 @@ def test_guarded_fault_retains_partial_ledger_and_withholds_measurements(
         assert last["state_after_digest"] is None
     elif fault == "broker_refusal":
         assert last["state_after_digest"] == last["state_before_digest"]
-    else:
+    elif fault in {"verifier_exception", "recovery_exception"}:
         assert last["exact_prestate_restored"] is (fault == "verifier_exception")
+    if fault not in {"broker_refusal", "measurement_exception"}:
+        assert any(
+            json.loads(row["payload_json"]).get("error_type") == "TypeError" for row in ledger
+        )
     assert rows[-1] == ledger[-1]
 
     register = AttemptRegister(format="pacd-attempt-register-v1", attempts=(attempt,))
@@ -119,11 +139,15 @@ def test_guarded_fault_retains_partial_ledger_and_withholds_measurements(
         report = registered_metrics(
             path, ws.root, ws.repo_root, canonical_sha256(definition), planned=name == "plan"
         )
-        assert report["status_counts"]["FAILED"] == 1
-        assert report["completion_fraction"]["denominator"] == 1
-        assert report["completion_fraction"]["numerator"] == 0
+        statuses = report["status_counts"]
+        fraction = report["completion_fraction"]
+        attempts = report["attempts"]
+        assert isinstance(statuses, dict) and statuses["FAILED"] == 1
+        assert isinstance(fraction, dict) and isinstance(attempts, list) and len(attempts) == 1
+        assert fraction["denominator"] == 1
+        assert fraction["numerator"] == 0
         assert report["observed_counts"] is None
-        (observed,) = report["attempts"]
+        (observed,) = attempts
         assert observed["metrics"] is None and observed["metrics_sha256"] is None
         if name == "plan":
             assert observed["observed_plan_sha256"] == canonical_sha256(plan)

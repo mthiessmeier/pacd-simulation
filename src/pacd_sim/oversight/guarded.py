@@ -1,5 +1,6 @@
 """Episode-local simulated review of a single reversible session isolation contract."""
 
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from pacd_sim.actions.models import DefensiveAction
@@ -36,7 +37,13 @@ class ReviewStep:
         return tuple(
             event.outcome
             for event in self.events
-            if event.outcome in {"execution_failed", "verification_failed", "rollback_failed"}
+            if event.outcome
+            in {
+                "authorization_failed",
+                "execution_failed",
+                "verification_failed",
+                "rollback_failed",
+            }
         )
 
 
@@ -95,14 +102,17 @@ class _Pending:
     digest: str
     expires_tick: int
     wake_tick: int
+    record: Callable[[ReviewEvent], ReviewEvent]
 
     def event(self, tick: int, outcome: str, **payload: object) -> ReviewEvent:
-        return ReviewEvent(
-            tick,
-            self.referral.target_id,
-            self.referral.id,
-            outcome,
-            {"request_digest": self.digest, **payload},
+        return self.record(
+            ReviewEvent(
+                tick,
+                self.referral.target_id,
+                self.referral.id,
+                outcome,
+                {"request_digest": self.digest, **payload},
+            )
         )
 
 
@@ -130,6 +140,7 @@ class GuardedReviewQueue:
         ttl_ticks: int,
         approve: bool | None,
         rollback: bool,
+        observe: Callable[[ReviewEvent], None] | None = None,
     ) -> None:
         for limit in (capacity, delay_ticks, ttl_ticks):
             if type(limit) is not int or limit < 0:
@@ -140,12 +151,20 @@ class GuardedReviewQueue:
         self._delay = delay_ticks
         self._ttl = ttl_ticks
         self._approve = approve
+        self._observe = observe
         self._rollback = rollback
         self._now = 0
         self._seen_referrals: set[str] = set()
         self._seen_evidence: set[str] = set()
+        self._seen_observations: set[str] = set()
         self._pending: dict[str, _Pending] = {}
         self._quarantined = False
+
+    def _record(self, event: ReviewEvent) -> ReviewEvent:
+        # Deliver each observed stage before calling the next fallible component.
+        if self._observe is not None:
+            self._observe(event)
+        return event
 
     def submit(
         self,
@@ -175,14 +194,17 @@ class GuardedReviewQueue:
                     "state_digest": canonical_sha256(state),
                 },
             )
-            return ReviewStep(state, (event,))
+            return ReviewStep(state, (self._record(event),))
 
         if referral.id in self._seen_referrals:
             return reject("refused", "referral ID already consumed")
         self._seen_referrals.add(referral.id)
         if evidence.id in self._seen_evidence:
             return reject("refused", "evidence ID already consumed")
+        if self._seen_observations.intersection(evidence.observation_ids):
+            return reject("refused", "underlying observation already consumed")
         self._seen_evidence.add(evidence.id)
+        self._seen_observations.update(evidence.observation_ids)
         if self._quarantined:
             return reject("refused", "episode guarded dispatch is suspended")
         if (
@@ -196,7 +218,10 @@ class GuardedReviewQueue:
             or evidence.configuration_version != state.configuration_version
             or evidence.schema_version != state.schema_version
             or decision.disposition is not PolicyDisposition.ESCALATE
-            or decision != broker.governor.evaluate(referral, mission_state=create_snapshot(state))
+            or canonical_sha256(decision)
+            != canonical_sha256(
+                broker.governor.evaluate(referral, mission_state=create_snapshot(state))
+            )
         ):
             return reject("refused", "referral, evidence, state or governing decision mismatch")
         eligible = [
@@ -217,7 +242,14 @@ class GuardedReviewQueue:
         binding = review_binding(referral, decision, evidence, state, action, expiry)
         wake = expiry + 1 if self._approve is None else min(due_tick, expiry + 1)
         request = _Pending(
-            referral, action, state, decision.policy_digest, canonical_sha256(binding), expiry, wake
+            referral,
+            action,
+            state,
+            decision.policy_digest,
+            canonical_sha256(binding),
+            expiry,
+            wake,
+            self._record,
         )
         self._pending[referral.id] = request
         return ReviewStep(state, (request.event(state.tick, "pending", binding=binding),))
@@ -265,9 +297,13 @@ class GuardedReviewQueue:
 
         events = [req.event(tick, "approved")]
         governor = broker.governor
-        decision = governor.evaluate(req.action, mission_state=create_snapshot(state))
+        try:
+            decision = governor.evaluate(req.action, mission_state=create_snapshot(state))
+        except Exception as exc:
+            events.append(req.event(tick, "authorization_failed", error_type=type(exc).__name__))
+            return ReviewStep(state, tuple(events))
         timely = tick == req.action.tick
-        unchanged = req.state.at_tick(tick) == state
+        unchanged = canonical_sha256(req.state.at_tick(tick)) == canonical_sha256(state)
         if (
             self._quarantined
             or not timely
@@ -289,7 +325,7 @@ class GuardedReviewQueue:
 
         try:
             result = broker.execute(req.action, decision, state)
-        except (RuntimeError, ValueError, KeyError) as exc:
+        except Exception as exc:
             events.append(
                 req.event(
                     tick,
@@ -321,7 +357,7 @@ class GuardedReviewQueue:
         )
         try:
             verification = verify_execution(req.action, result, governor)
-        except (RuntimeError, ValueError, KeyError) as exc:
+        except Exception as exc:
             events.append(
                 req.event(
                     tick,
@@ -331,23 +367,24 @@ class GuardedReviewQueue:
                 )
             )
             return self._recover(req, state, result, broker, events, verified=False)
+        prestate_matches = canonical_sha256(record.state_before) == canonical_sha256(state)
         verified = (
             verification.disposition is VerificationDisposition.VERIFIED
-            and record.state_before == state
-            and record.policy_decision == decision
+            and prestate_matches
+            and canonical_sha256(record.policy_decision) == canonical_sha256(decision)
         )
         if (
             not result.executed
             and verification.disposition is VerificationDisposition.NOT_APPLICABLE
         ):
-            if result.state == state and record.state_before == state:
+            if canonical_sha256(result.state) == canonical_sha256(state) and prestate_matches:
                 return ReviewStep(state, tuple(events))
         events.append(
             req.event(
                 tick,
                 "verified" if verified else "verification_failed",
                 verification=verification.model_dump(mode="json"),
-                dispatch_prestate_matches=record.state_before == state,
+                dispatch_prestate_matches=prestate_matches,
             )
         )
         if verified:
@@ -374,7 +411,7 @@ class GuardedReviewQueue:
         tick = state.tick
         try:
             recovery = rollback_execution(req.action, result, broker.governor)
-        except (RuntimeError, ValueError, KeyError) as exc:
+        except Exception as exc:
             events.append(
                 req.event(
                     tick,
@@ -390,7 +427,7 @@ class GuardedReviewQueue:
             and recovery.record.execution_id == result.record.id
             and recovery.record.action_id == req.action.id
             and recovery.record.tick == tick
-            and recovery.state == state
+            and canonical_sha256(recovery.state) == canonical_sha256(state)
             and recovery.record.restored_state_digest == canonical_sha256(state)
         )
         events.append(

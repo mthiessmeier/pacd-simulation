@@ -49,7 +49,6 @@ from pacd_sim.harness.run import (
     load_yaml_config,
 )
 from pacd_sim.harness.static_review import (
-    ReviewEpisodeGate,
     review_action,
     review_detector_options,
     sensor_reading,
@@ -58,7 +57,7 @@ from pacd_sim.harness.static_review import (
 from pacd_sim.hypotheses.update import BeliefState, update_beliefs
 from pacd_sim.metrics.summarize import SUMMARY_SCHEMA
 from pacd_sim.reproducibility.canonical import canonical_json_bytes, canonical_sha256
-from pacd_sim.reproducibility.guarded_review import ExpectedReviewQueue
+from pacd_sim.reproducibility.guarded_review import ExpectedReviewQueue, expected_availability
 from pacd_sim.reproducibility.manifest import (
     sha256_file,
     validate_retained_json_text_depth,
@@ -556,7 +555,6 @@ def _expected_event_rows(
     baseline_definition = cast(dict[str, object], canonical_config["baseline_definition"])
     review_only = baseline_definition["actions"] == "require_human_review"
     guarded = ScenarioConfig.model_validate(scenario).guarded_review
-    gate = ReviewEpisodeGate() if guarded is not None else None
     planner = (
         corroboration.CorroboratedReviewPlanner(suppress_repeats=guarded is None)
         if baseline_definition["name"] == corroboration.POLICY
@@ -622,7 +620,7 @@ def _expected_event_rows(
             "state_graph": "networkx_detached_view",
             "synthetic_only": True,
             **(
-                {"initial_availability": evaluate_availability(environment).audit_summary()}
+                {"initial_availability": expected_availability(evaluate_availability(environment))}
                 if guarded is not None
                 else {}
             ),
@@ -676,7 +674,12 @@ def _expected_event_rows(
             "snapshot_digest": snapshot.environment_digest,
         }
         if evaluate_missions:
-            state_payload["availability"] = evaluate_availability(state).audit_summary()
+            availability = evaluate_availability(state)
+            state_payload["availability"] = (
+                expected_availability(availability)
+                if guarded is not None
+                else availability.audit_summary()
+            )
         emit(
             "state_update",
             tick=state.tick,
@@ -720,8 +723,8 @@ def _expected_event_rows(
                 decision_event = "defender_decision"
                 outcome = step.outcome
                 decision_payload = {"previous_elevated_tick": step.previous_elevated_tick}
-            if gate is not None:
-                suppressed = gate.suppress(projected, candidate)
+            if queue is not None:
+                suppressed = queue.suppresses(projected, candidate is not None)
                 decision_payload.update(
                     raw_candidate_action_id=candidate.id if candidate is not None else None,
                     duplicate_suppressed=suppressed,

@@ -1,12 +1,13 @@
 """Adapt delivered sensor observations and human-review proposals to the governed harness."""
 
+from collections.abc import Callable
 from typing import Final, TypedDict
 
 from pacd_sim.actions.models import DefensiveAction
 from pacd_sim.configuration import GuardedReviewConfig
 from pacd_sim.defenders.baselines.static import propose_review
 from pacd_sim.defenders.observations import BaselineObservation, ReviewProposal
-from pacd_sim.oversight.guarded import GuardedReviewQueue
+from pacd_sim.oversight.guarded import GuardedReviewQueue, ReviewEvent
 from pacd_sim.telemetry.generator import Observation
 
 # These evaluator settings define the same referral episode in every guarded condition.
@@ -50,13 +51,16 @@ def review_detector_options(config: GuardedReviewConfig | None) -> _DetectorOpti
     }
 
 
-def review_queue(config: GuardedReviewConfig) -> GuardedReviewQueue:
+def review_queue(
+    config: GuardedReviewConfig, observe: Callable[[ReviewEvent], None]
+) -> GuardedReviewQueue:
     return GuardedReviewQueue(
         capacity=config.capacity,
         delay_ticks=config.delay_ticks,
         ttl_ticks=config.validity_ticks,
         approve={"approve": True, "deny": False, "no_response": None}[config.response],
         rollback=config.rollback,
+        observe=observe,
     )
 
 

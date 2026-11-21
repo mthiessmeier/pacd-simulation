@@ -181,6 +181,10 @@ def test_capacity_then_replay_with_referral_or_evidence_alias(
     other_referral, other_decision, _ = inputs(state, broker, "new")
     alias = review.submit(other_referral, other_decision, original[2], state, broker)
     assert "evidence ID already consumed" == alias.events[0].payload["reason"]
+    new_referral, new_decision, new_evidence = inputs(state, broker, "relabel")
+    new_evidence = new_evidence.model_copy(update={"observation_ids": original[2].observation_ids})
+    replay = review.submit(new_referral, new_decision, new_evidence, state, broker)
+    assert replay.events[0].payload["reason"] == "underlying observation already consumed"
     assert review.advance(1, state, broker).events == ()
 
 

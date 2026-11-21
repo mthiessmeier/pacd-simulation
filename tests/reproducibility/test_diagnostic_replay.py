@@ -9,6 +9,7 @@ import re
 import shutil
 import subprocess
 from pathlib import Path
+from typing import Any
 
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -22,11 +23,15 @@ from conftest import (
 )
 
 from pacd_sim.audit.writer import EVENT_SCHEMA
+from pacd_sim.evidence.normalize import EvidenceItem
 from pacd_sim.execution.broker import SimulatedExecutionBroker
 from pacd_sim.harness.run import RunResult, _run_diagnostic_in_process, load_yaml_config
+from pacd_sim.harness.static_review import ReviewEpisodeGate
 from pacd_sim.metrics.summarize import write_episode_summary
+from pacd_sim.oversight import guarded
 from pacd_sim.oversight.guarded import GuardedReviewQueue
 from pacd_sim.reproducibility import evidence_validation
+from pacd_sim.reproducibility import guarded_review as replay
 from pacd_sim.reproducibility import verify as verify_module
 from pacd_sim.reproducibility.canonical import canonical_json_bytes, canonical_sha256
 from pacd_sim.reproducibility.manifest import (
@@ -35,7 +40,60 @@ from pacd_sim.reproducibility.manifest import (
     sha256_file,
 )
 from pacd_sim.reproducibility.paths import is_symlink_or_reparse
+from pacd_sim.reproducibility.receipts import verify_execution_receipt
 from pacd_sim.reproducibility.verify import verify_run
+
+
+@pytest.mark.reproducibility
+@pytest.mark.parametrize(
+    "fault", ["suppress", "reviewed_isolation", "review_binding", "evidence_hash", "mission_effect"]
+)
+def test_guarded_replay_rejects_incorrect_live_output_with_an_authentic_receipt(
+    isolated_workspace: IsolatedWorkspace, monkeypatch: pytest.MonkeyPatch, fault: str
+) -> None:
+    ws = isolated_workspace
+    owner = ReviewEpisodeGate if fault == "suppress" else guarded
+    name = "canonical_sha256" if fault == "evidence_hash" else fault
+    original = getattr(owner, name)
+
+    def incorrect(*args: Any, **kwargs: Any) -> Any:
+        value = original(*args, **kwargs)
+        if fault == "evidence_hash":
+            return "0" * 64 if isinstance(args[0], EvidenceItem) else value
+        if fault == "suppress":
+            return True
+        if fault == "reviewed_isolation":
+            return value.model_copy(update={"requested_authority": "human"})
+        if fault == "review_binding":
+            return {**value, "evidence_digest": "0" * 64}
+        # Keep the row internally coherent while falsely claiming no availability change.
+        return {**value, "availability_after": value["availability_before"]}
+
+    monkeypatch.setattr(owner, name, incorrect)
+    # A direct import preserves the same faulty producer function across both consumers.
+    if getattr(replay, fault, None) is original:
+        monkeypatch.setattr(replay, fault, incorrect)
+    _, policy, seeds, _, metrics = controlled_config_files(ws.config_root)
+    run = _run_diagnostic_in_process(
+        ws.config_root / "scenarios/diagnostic_guarded_benign.yaml",
+        policy,
+        seeds,
+        ws.output_root,
+        repo_root=ws.repo_root,
+        workspace_root=ws.root,
+        baseline_path=ws.config_root / "defenders/static_review.yaml",
+        metric_path=metrics,
+    )
+    result, material = verify_module.verify_run_with_summary(
+        run.run_dir, ws.root, repo_root=ws.repo_root
+    )
+    assert verify_execution_receipt(
+        workspace_root=ws.root, run_dir=run.run_dir, manifest=_manifest(run.run_dir)
+    ).identity_assured
+    assert not result.semantic_content_valid and material is None
+    assert any(
+        "row count is not exactly" in error or "reconstructed" in error for error in result.errors
+    ), result.errors
 
 
 @pytest.mark.reproducibility

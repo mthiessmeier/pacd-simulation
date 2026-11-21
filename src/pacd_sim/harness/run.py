@@ -14,6 +14,7 @@ import time
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass, replace
 from datetime import UTC, datetime
+from functools import partial
 from multiprocessing.connection import Connection
 from pathlib import Path
 from typing import Any, TextIO, cast
@@ -65,7 +66,7 @@ from pacd_sim.harness.static_review import (
 )
 from pacd_sim.hypotheses.update import BeliefState, update_beliefs
 from pacd_sim.metrics.summarize import summarize_raw_events
-from pacd_sim.oversight.guarded import ReviewStep
+from pacd_sim.oversight.guarded import ReviewEvent, ReviewStep
 from pacd_sim.reproducibility.canonical import canonical_json_bytes, canonical_sha256
 from pacd_sim.reproducibility.manifest import (
     build_manifest,
@@ -1195,16 +1196,18 @@ class RunResult:
         return value
 
 
-def _record_guarded_review(step: ReviewStep, audit: AuditWriter) -> EnvironmentState:
-    for row in step.events:
-        audit.emit(
-            "guarded_review",
-            tick=row.tick,
-            entity_id=row.entity_id,
-            action_id=row.action_id,
-            outcome=row.outcome,
-            payload=row.payload,
-        )
+def _emit_guarded_event(audit: AuditWriter, row: ReviewEvent) -> None:
+    audit.emit(
+        "guarded_review",
+        tick=row.tick,
+        entity_id=row.entity_id,
+        action_id=row.action_id,
+        outcome=row.outcome,
+        payload=row.payload,
+    )
+
+
+def _checked_review_state(step: ReviewStep) -> EnvironmentState:
     if failed := step.failed_outcomes:
         # The existing parent failure path retains the raw evidence, including recovery,
         # and withholds a successful execution receipt and completed outcome measures.
@@ -1406,7 +1409,11 @@ def _run_diagnostic_worker(
             if baseline_definition["name"] == corroboration.POLICY
             else None
         )
-        queue = review_queue(guarded) if guarded is not None else None
+        queue = (
+            review_queue(guarded, partial(_emit_guarded_event, audit))
+            if guarded is not None
+            else None
+        )
         episode_gate = ReviewEpisodeGate() if queue is not None else None
         defender = DiagnosticPACDDefender(compromise_threshold=0.5)
         evidence_items: list[EvidenceItem] = []
@@ -1423,9 +1430,7 @@ def _run_diagnostic_worker(
                     "Full-coverage diagnostic telemetry unexpectedly omitted an event"
                 )
             if queue is not None:
-                state = _record_guarded_review(
-                    queue.advance(observation.tick, state, broker), audit
-                )
+                state = _checked_review_state(queue.advance(observation.tick, state, broker))
             audit.emit(
                 "observation",
                 tick=observation.tick,
@@ -1725,10 +1730,10 @@ def _run_diagnostic_worker(
                     payload={"candidate_and_decision_retained": True},
                 )
                 if queue is not None:
-                    state = _record_guarded_review(
-                        queue.submit(action, decision, evidence, state, broker), audit
+                    state = _checked_review_state(
+                        queue.submit(action, decision, evidence, state, broker)
                     )
-                    state = _record_guarded_review(queue.advance(action.tick, state, broker), audit)
+                    state = _checked_review_state(queue.advance(action.tick, state, broker))
             required_dispositions = {
                 PolicyDisposition.APPROVE,
                 PolicyDisposition.ESCALATE,
@@ -1743,7 +1748,7 @@ def _run_diagnostic_worker(
         if not prospective and not actions_processed:
             raise RuntimeError("Diagnostic adversary event did not exercise candidate actions")
         if queue is not None and guarded is not None:
-            state = _record_guarded_review(queue.advance(guarded.end_tick, state, broker), audit)
+            state = _checked_review_state(queue.advance(guarded.end_tick, state, broker))
         final_tick = float(state.tick)
         audit.emit(
             "manifest",
