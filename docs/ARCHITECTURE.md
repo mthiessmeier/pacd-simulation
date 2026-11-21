@@ -25,3 +25,22 @@ socket, shell, credential, cloud, endpoint, or network capability.
 Run artifacts are written under the bounded workspace and never committed. Metrics accept only
 completed raw artifact paths. Each manifest binds code, configuration, seed, interpreter,
 lockfile, raw records, derived records, and hashes.
+
+## Increment 1 traceability
+
+The accepted architecture's sections 4 and 7 supply the layer and object names below.
+The first six rows describe existing typed domain records. The last two cover the new
+v1 evidence contracts and the input boundary. Each remains in the module that owns it.
+
+| Architecture responsibility | Typed records and code path |
+|---|---|
+| Telemetry and evidence | `telemetry/generator.py` defines sensor, detector profile and observation. `evidence/normalize.py` defines EvidenceItem. |
+| Enterprise and mission state | `environment/model.py` defines Asset, Identity, Session, Credential, Service, MissionFunction and Dependency. `state/snapshot.py` binds a snapshot to its canonical digest. |
+| Threat hypotheses and belief | `hypotheses/update.py` defines ThreatHypothesis, AdversaryState and BeliefState. |
+| Candidate action, polymorphism and orchestration | `actions/models.py`, `polymorphism/operators.py` and `orchestration/coordinator.py` retain the existing proposal types and coordinator. Integrated polymorphism remains future work. |
+| Governance and oversight | `governance/governor.py` defines Constraint and PolicyDecision. `oversight/approval.py` defines ApprovalRecord. |
+| Execution and verification | `execution/broker.py` defines ExecutionRecord. `execution/verification.py` defines VerificationRecord and RollbackRecord. |
+| Audit, metrics and analysis | AuditEvent enters the raw audit writer. MetricRecord supplies the existing counts on EpisodeRecord. RunManifest binds code and inputs to the raw and derived files. See `audit/writer.py`, `metrics/summarize.py` and `reproducibility/manifest.py`. |
+| Evaluation harness outside the eleven layers | `configuration.py` types the scenario, policy, baseline, metric selection and seed registry. The shared gate in `harness/run.py` validates the bundle before diagnostic allocation. |
+
+See the [wire contracts](../schemas/README.md) and [reproduction guide](application_demo/README.md).

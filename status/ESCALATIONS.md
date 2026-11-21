@@ -22,3 +22,7 @@
 
 - E-002: OAuth device flow completed for the expected personal account. GitHub CLI reports secure keyring storage; boolean inspection found no plaintext token field. The prompt to configure Git credentials was declined; no persistent Git credential helper was added.
 - E-001: gh attestation verify --repo astral-sh/uv --format json passed for SHA-256 4c4d49d8738847d9b71ba319e49a5688c93eac0fe6204b1df24e98528dddf39a with SLSA provenance. Full verification is retained privately. uv remained unexecuted until this resolution was recorded.
+
+## 2026-11-21 · Frozen dependency audit
+
+The unchanged accepted lock reports 83 advisory entries across six distributions in a fresh audit. The builder retained all IDs and fix-version lists, including repeats, in the local reviewer packet. Dependency updates fall outside the continuation's locked-toolchain scope. Before merge, the owner and reviewer must disposition the findings under the project dependency policy. A separate reviewed lock change can be built and tested inside a new environment. The existing environment can be retained throughout. No host software change, paid resource or cleanup is required.

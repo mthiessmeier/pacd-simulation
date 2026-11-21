@@ -1,20 +1,32 @@
 """Shared strict schema primitives for the bounded PACD simulator."""
 
 from enum import StrEnum
-from typing import Annotated, Literal
+from typing import Annotated, Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 from pacd_sim.constants import DEFAULT_PROTOCOL_VERSION, SCHEMA_VERSION
 
+STABLE_ID_MAX_LENGTH: Final = 256
+
 type StableId = Annotated[
     str,
-    StringConstraints(min_length=1, max_length=256),
+    StringConstraints(min_length=1, max_length=STABLE_ID_MAX_LENGTH),
 ]
 type NonNegativeTick = Annotated[int, Field(ge=0)]
+type NonemptyText = Annotated[str, Field(min_length=1)]
 type Probability = Annotated[float, Field(ge=0.0, le=1.0)]
 type NonNegativeFloat = Annotated[float, Field(ge=0.0)]
 type SyntheticSource = Literal["synthetic"]
+type Sha256Digest = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$", max_length=64)]
+type Signed64Count = Annotated[int, Field(ge=0, lt=2**63)]
+
+
+def validate_audit_text(value: str) -> str:
+    """Apply the raw audit row's UTF-8 bound to a scalar field."""
+    if len(value.encode("utf-8")) > 500:
+        raise ValueError("Audit identifiers and outcomes are limited to 500 UTF-8 bytes")
+    return value
 
 
 class StrictFrozenModel(BaseModel):
@@ -25,7 +37,15 @@ class StrictFrozenModel(BaseModel):
         frozen=True,
         strict=True,
         validate_default=True,
+        allow_inf_nan=False,
     )
+
+
+class DiagnosticRecord(StrictFrozenModel):
+    """Provenance shared by the existing v1 diagnostic wire records."""
+
+    evidence_label: Literal["NON_REPORTABLE_DIAGNOSTIC"]
+    schema_version: Literal["1.0"]
 
 
 class SyntheticRecord(StrictFrozenModel):

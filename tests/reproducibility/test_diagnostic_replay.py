@@ -33,6 +33,19 @@ def _manifest(run_dir: Path) -> dict[str, object]:
     return {str(key): item for key, item in value.items()}
 
 
+@pytest.mark.reproducibility
+def test_v1_schema_migration_preserves_accepted_diagnostic(diagnostic_runs: DiagnosticRuns) -> None:
+    """Golden semantic digests from the tagged bootstrap's registered 424242 scenario."""
+    run = diagnostic_runs.same_seed_a
+    assert run.config_hash == "54e7a429b27bf94deeefe22f79ba22fff7ce36ae35dc6647b02784008ef10364"
+    assert run.raw_semantic_hash == (
+        "6657cb73aa85b7c6ff9ecb8e5284f9999fff727cb6330b46fcad715b04cdf4bf"
+    )
+    assert run.summary_semantic_hash == (
+        "9616e1edf0401f353625e3b35e714b14dc517b55bbe7d4c5db76c2b3565ecd76"
+    )
+
+
 def _copy_run(diagnostic_runs: DiagnosticRuns, case_name: str) -> Path:
     """Copy a run beneath a unique parent while preserving its bound run ID."""
 

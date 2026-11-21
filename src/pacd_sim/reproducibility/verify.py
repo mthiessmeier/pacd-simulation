@@ -13,7 +13,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from pacd_sim.constants import EVIDENCE_LABEL
-from pacd_sim.metrics.summarize import summary_from_raw_table
+from pacd_sim.metrics.summarize import EpisodeRecord, summary_from_raw_table
 from pacd_sim.reproducibility.canonical import canonical_sha256
 from pacd_sim.reproducibility.evidence_validation import (
     strict_json_loads,
@@ -112,6 +112,15 @@ class VerificationResult:
         value["run_dir"] = str(self.run_dir)
         value["receipt_path"] = str(self.receipt_path) if self.receipt_path is not None else None
         return value
+
+
+@dataclass(frozen=True)
+class VerifiedSummary:
+    """A summary recomputed from bounded raw evidence and its verified output digests."""
+
+    episode: EpisodeRecord
+    csv_sha256: str
+    parquet_sha256: str
 
 
 @dataclass(frozen=True)
@@ -307,7 +316,7 @@ def _verify_run_impl(
     workspace_root: Path | str | None = None,
     *,
     repo_root: Path | str | None = None,
-) -> VerificationResult:
+) -> tuple[VerificationResult, VerifiedSummary | None]:
     """Implement complete verification behind the public defensive boundary."""
     errors: list[str] = []
     checked: list[str] = []
@@ -323,7 +332,7 @@ def _verify_run_impl(
             checked_files=(),
             raw_semantic_hash=None,
             summary_semantic_hash=None,
-        )
+        ), None
     try:
         root = assert_existing_run_directory(run_dir, workspace)
     except PathBoundaryError as error:
@@ -334,7 +343,7 @@ def _verify_run_impl(
             checked_files=(),
             raw_semantic_hash=None,
             summary_semantic_hash=None,
-        )
+        ), None
 
     aggregate_size, inventory_files = _aggregate_run_size(root, errors)
     if aggregate_size > MAX_RUN_OUTPUT_BYTES:
@@ -348,7 +357,7 @@ def _verify_run_impl(
             checked_files=(),
             raw_semantic_hash=None,
             summary_semantic_hash=None,
-        )
+        ), None
     expected_inventory = set(_REQUIRED_ARTIFACTS)
     for unexpected in sorted(inventory_files - expected_inventory):
         errors.append(f"Unexpected run artifact is prohibited: {unexpected}")
@@ -399,7 +408,7 @@ def _verify_run_impl(
             checked_files=tuple(sorted(checked)),
             raw_semantic_hash=None,
             summary_semantic_hash=None,
-        )
+        ), None
     if errors:
         return VerificationResult(
             run_dir=root,
@@ -408,7 +417,7 @@ def _verify_run_impl(
             checked_files=tuple(sorted(checked)),
             raw_semantic_hash=None,
             summary_semantic_hash=None,
-        )
+        ), None
     retained_validation = None
     retained_validation = validate_retained_evidence(
         root,
@@ -425,7 +434,7 @@ def _verify_run_impl(
             checked_files=tuple(sorted(checked)),
             raw_semantic_hash=None,
             summary_semantic_hash=None,
-        )
+        ), None
 
     artifact_snapshots: dict[str, _ArtifactSnapshot] = {}
     snapshot_errors: list[str] = []
@@ -473,7 +482,7 @@ def _verify_run_impl(
             checked_files=tuple(sorted(checked)),
             raw_semantic_hash=None,
             summary_semantic_hash=None,
-        )
+        ), None
 
     def artifact_sha256(relative_name: str, artifact: Path) -> str:
         snapshot = artifact_snapshots.get(relative_name)
@@ -674,6 +683,7 @@ def _verify_run_impl(
         except (OSError, ValueError, json.JSONDecodeError) as error:
             errors.append(f"Raw semantic verification failed: {error}")
 
+    expected_summary: dict[str, object] | None = None
     if summary_parquet is not None and summary_table is not None:
         try:
             if len(summary_rows) != 1:
@@ -808,9 +818,11 @@ def _verify_run_impl(
         manifest=manifest,
     )
     errors.extend(_revalidate_artifact_snapshots(artifact_snapshots))
+    if expected_summary is None and not errors:
+        errors.append("Verified raw-derived summary is unavailable")
     semantic_content_valid = not errors
     errors.extend(receipt.errors)
-    return VerificationResult(
+    result = VerificationResult(
         run_dir=root,
         valid=semantic_content_valid and receipt.identity_assured,
         errors=tuple(errors),
@@ -826,15 +838,22 @@ def _verify_run_impl(
         reportable=receipt.reportable,
         receipt_path=receipt.receipt_path,
     )
+    if result.valid and not result.errors and expected_summary is not None:
+        return result, VerifiedSummary(
+            episode=EpisodeRecord.model_validate(expected_summary),
+            csv_sha256=artifact_snapshots["derived/episode_summary.csv"].sha256,
+            parquet_sha256=artifact_snapshots["derived/episode_summary.parquet"].sha256,
+        )
+    return result, None
 
 
-def verify_run(
+def verify_run_with_summary(
     run_dir: Path | str,
     workspace_root: Path | str | None = None,
     *,
     repo_root: Path | str | None = None,
-) -> VerificationResult:
-    """Validate one run and always structure a retained-data recursion failure."""
+) -> tuple[VerificationResult, VerifiedSummary | None]:
+    """Verify one run and release its raw-derived summary only with full local assurance."""
 
     try:
         return _verify_run_impl(
@@ -856,4 +875,15 @@ def verify_run(
             semantic_content_valid=False,
             execution_identity_assured=False,
             reportable=False,
-        )
+        ), None
+
+
+def verify_run(
+    run_dir: Path | str,
+    workspace_root: Path | str | None = None,
+    *,
+    repo_root: Path | str | None = None,
+) -> VerificationResult:
+    """Return the public verification report without the optional regeneration material."""
+    result, _ = verify_run_with_summary(run_dir, workspace_root=workspace_root, repo_root=repo_root)
+    return result
