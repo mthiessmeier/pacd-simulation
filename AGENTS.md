@@ -217,6 +217,7 @@ Maintain, in the repository:
 - `status/ESCALATIONS.md`
 - `status/VALIDATION_REPORT.md`
 - `status/FINAL_REPORT.md`
+- `status/SESSION_HANDOFF.md` (current verified cross-session continuation record)
 - `status/INSTALLED_COMPONENTS.json`
 - `status/SOURCE_AND_DOWNLOAD_HASHES.txt`
 
@@ -225,3 +226,20 @@ Sanitize hostnames, usernames, tokens, serial numbers, and unrelated software de
 ## 14. Completion rule
 
 Do not claim completion merely because software starts. Completion requires every applicable acceptance test to pass, a clean branch, retained hashes and logs, an opened pull request, no merge, and an explicit list of remaining issues. Any unexecuted test must be labeled unexecuted.
+
+## 15. Context-window continuity and session handoff
+
+Maintain `status/SESSION_HANDOFF.md` as the canonical **continuation record**, not as an independent authority or substitute for Git, the project decisions, or accepted reviews. Update it after every substantial implementation milestone, when pausing an increment or PR review, and **before the current agent's context window becomes exhausted** (preferably when roughly 80–90% full, if that information is available). Do not rely on chat history or automatic compaction alone. Keep a single current handoff file; preserve earlier versions through additive Git history.
+
+A handoff must contain, at minimum:
+
+1. **Exact identity and status:** UTC checkpoint time; repository; current branch, full HEAD and base/merge-base commit SHAs; PR number/URL, state, head and target; latest **author-accepted** increment and its acceptance/merge evidence. Identify any divergence between the working tree, the remote branch, and a PR head.
+2. **Persistence and worktree:** whether the worktree is clean; the paths and purpose of committed changes; any uncommitted, untracked or unsaved work; which commits and remote pushes were actually verified. Never describe pending local work as committed, pushed, reviewed or merged.
+3. **Completed and remaining work:** behavior actually implemented versus interfaces, fixtures, proposals and plans; relevant modules and docs; precise next authorized increment or smallest coherent task; dependencies, unresolved defects, blocked decisions and stop conditions.
+4. **Validation and evidence:** exact commands and observed pass/fail/skip/**unexecuted** outcomes; accepted versus builder-reported versus independently reproduced tests; retained run IDs, scenario/configuration and development-seed identifiers, semantic hashes and reproduction paths when relevant. Distinguish diagnostic mechanisms from empirical results. Record failures and negative outcomes, not only successful cases.
+5. **Governance and review:** governing AGENTS.md and author decisions, changed traceability/limitations records, review findings, approvals outstanding, security/research-integrity constraints and the current `NON_REPORTABLE_DIAGNOSTIC` classification unless a separately documented author-approved change applies. A handoff does **not** grant experimental reportability, independent PASS, hypothesis validation or merge authority.
+6. **Restart instructions:** a self-contained, copyable prompt telling the next agent which exact branch/commit and documents to inspect, how to reproduce the current state, which task to execute first and what constitutes completion; link to the PR and review record without relying on inaccessible chat context.
+
+Before ending a constrained-context session, save the handoff on the **current authorized feature branch**, use additive commits, and verify the resulting Git and PR state. Do not commit directly to `main`, silently merge, force-push, or change repository safety controls to make a handoff succeed. If saving or pushing is blocked, report the exact unsaved items and blocker; do not claim the handoff is persisted.
+
+**Every new Codex session must first independently verify** `git status`, HEAD SHA, branch, applicable PR state, the current `AGENTS.md`, governing decisions and latest accepted increment. Reconcile discrepancies against actual source, commits and acceptance records **before** editing or executing the next work item. A handoff is a navigation aid; repository evidence and author-approved controls remain authoritative. Preserve all host-safety, simulation-only, independent-review and reportable-mode interlocks across session boundaries.
