@@ -397,3 +397,35 @@ def test_runtime_faults_retain_observed_stages(
             "rollback_failed",
         ]
         assert result.state == state.at_tick(2).isolate_session("session")
+
+
+@pytest.mark.parametrize("fail_stage", ["execution", "rollback"])
+def test_measurement_failure_preserves_requested_recovery(
+    state: EnvironmentState,
+    broker: SimulatedExecutionBroker,
+    monkeypatch: pytest.MonkeyPatch,
+    fail_stage: str,
+) -> None:
+    review = queue(delay=0, rollback=True)
+    review.submit(*inputs(state, broker), state, broker)
+    measure = guarded.mission_effect
+
+    def fail_one_measurement(
+        before: EnvironmentState, after: EnvironmentState
+    ) -> dict[str, object]:
+        target = after.get_session("session")
+        assert target is not None
+        stage = "execution" if target.isolated else "rollback"
+        if stage == fail_stage:
+            raise TypeError("injected measurement failure")
+        return measure(before, after)
+
+    monkeypatch.setattr(guarded, "mission_effect", fail_one_measurement)
+    resolved = review.advance(state.tick, state, broker)
+    assert resolved.state == state
+    assert "rolled_back" in outcomes(resolved)
+    assert resolved.failed_outcomes == ("mission_measurement_failed",)
+    failure = next(
+        event for event in resolved.events if event.outcome == "mission_measurement_failed"
+    )
+    assert failure.payload["stage"] == fail_stage and failure.payload["error_type"] == "TypeError"

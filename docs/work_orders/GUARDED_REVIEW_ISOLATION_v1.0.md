@@ -1,6 +1,6 @@
 # Guarded review of a synthetic session isolation
 
-**WP05/WP06 development increment Â· NON_REPORTABLE_DIAGNOSTIC**
+**WP05/WP06 development increment - NON_REPORTABLE_DIAGNOSTIC**
 
 The owner authorized this slice after approving [PR #12](https://github.com/mthiessmeier/pacd-simulation/pull/12) at `d70510d8abb27d6d9729c402f06b0e69bc33c9f3`. Its merge into main at `f881f6553e9210d84e8f009a9700c0ce65eceabd` is the implementation base. The decision applies to one reversible in-memory handler and a simulated reviewer. The independent-review candidate has its own commit and PR.
 

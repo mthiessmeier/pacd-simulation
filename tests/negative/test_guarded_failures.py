@@ -23,7 +23,18 @@ from pacd_sim.state.snapshot import StateSnapshot, create_snapshot
     ("fault", "outcomes"),
     [
         ("authorization_exception", ["pending", "approved", "authorization_failed"]),
-        ("measurement_exception", ["pending", "approved", "executed", "verified"]),
+        (
+            "measurement_exception",
+            [
+                "pending",
+                "approved",
+                "executed",
+                "verified",
+                "mission_measurement_failed",
+                "rolled_back",
+                "mission_measurement_failed",
+            ],
+        ),
         ("broker_refusal", ["pending", "approved", "execution_failed"]),
         ("broker_exception", ["pending", "approved", "execution_failed"]),
         (
@@ -93,8 +104,7 @@ def test_guarded_fault_retains_partial_ledger_and_withholds_measurements(
         if fault == "recovery_exception":
             monkeypatch.setattr(guarded, "rollback_execution", raise_fault)
 
-    expected_error = TypeError if fault == "measurement_exception" else RuntimeError
-    with pytest.raises(expected_error, match="injected|Guarded review failed"):
+    with pytest.raises(RuntimeError, match="Guarded review failed"):
         harness._run_diagnostic_in_process(
             scenario,
             policy,
@@ -126,7 +136,7 @@ def test_guarded_fault_retains_partial_ledger_and_withholds_measurements(
         assert last["state_after_digest"] == last["state_before_digest"]
     elif fault in {"verifier_exception", "recovery_exception"}:
         assert last["exact_prestate_restored"] is (fault == "verifier_exception")
-    if fault not in {"broker_refusal", "measurement_exception"}:
+    if fault != "broker_refusal":
         assert any(
             json.loads(row["payload_json"]).get("error_type") == "TypeError" for row in ledger
         )

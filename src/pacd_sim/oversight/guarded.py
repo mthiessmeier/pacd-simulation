@@ -42,6 +42,7 @@ class ReviewStep:
                 "authorization_failed",
                 "execution_failed",
                 "verification_failed",
+                "mission_measurement_failed",
                 "rollback_failed",
             }
         )
@@ -114,6 +115,21 @@ class _Pending:
                 {"request_digest": self.digest, **payload},
             )
         )
+
+    def measure(self, stage: str, before: EnvironmentState, after: EnvironmentState) -> ReviewEvent:
+        """Keep an unavailable measurement separate from the observed state and recovery."""
+        try:
+            effect = mission_effect(before, after)
+        except Exception as exc:
+            return self.event(
+                after.tick,
+                "mission_measurement_failed",
+                stage=stage,
+                state_before_digest=canonical_sha256(before),
+                state_after_digest=canonical_sha256(after),
+                error_type=type(exc).__name__,
+            )
+        return self.event(after.tick, "mission_effect", stage=stage, **effect)
 
 
 def mission_effect(before: EnvironmentState, after: EnvironmentState) -> dict[str, object]:
@@ -388,13 +404,10 @@ class GuardedReviewQueue:
             )
         )
         if verified:
-            events.append(
-                req.event(
-                    tick, "mission_effect", stage="execution", **mission_effect(state, result.state)
-                )
-            )
-        if verified and not self._rollback:
-            return ReviewStep(result.state, tuple(events))
+            measured = req.measure("execution", state, result.state)
+            events.append(measured)
+            if measured.outcome == "mission_effect" and not self._rollback:
+                return ReviewStep(result.state, tuple(events))
 
         return self._recover(req, state, result, broker, events, verified=verified)
 
@@ -439,12 +452,5 @@ class GuardedReviewQueue:
             )
         )
         if restored and verified:
-            events.append(
-                req.event(
-                    tick,
-                    "mission_effect",
-                    stage="rollback",
-                    **mission_effect(result.state, recovery.state),
-                )
-            )
+            events.append(req.measure("rollback", result.state, recovery.state))
         return ReviewStep(recovery.state, tuple(events))
