@@ -38,6 +38,58 @@ if ($first.raw_semantic_hash -ne $replay.raw_semantic_hash -or
     $first.summary_semantic_hash -ne $replay.summary_semantic_hash) { throw 'Replay differs' }
 ```
 
+## Inspect the scripted event sequence
+
+In the same checkout that produced the run, ask the verifier to release the
+source events in the order their observations were recorded.
+
+```powershell
+$verified = & $uv run --frozen --no-sync pacd-sim verify $first.run_dir --workspace-root $w --show-event-sequence | ConvertFrom-Json
+if ($LASTEXITCODE) { throw 'Verification failed' }
+$verified.event_sequence.events | Format-Table tick, id, kind, identity_id
+$verified.event_sequence.sha256
+```
+
+The table uses source ticks. The shipped sensor records each observation one
+tick later. The digest binds the format identifier `pacd-scripted-events-v1`
+and the ordered list of event IDs, source ticks, kinds and nullable identity
+IDs. It excludes the seed, sensor signal, actions and outcomes, so two verified
+runs can share a script while their raw evidence differs. The verifier checks
+the full retained evidence and the local execution receipt before returning
+this view. The existing fixture gives its diagnostic classifier the event kind.
+This demonstration makes no blinded comparison.
+
+## Replay the maintenance-window fixture
+
+The second governed scenario brackets a synthetic indicator on the user session
+with two benign events on the administrator identity. The sessions share a service.
+With the two-tick sensor delay, source ticks 3, 6 and 9 appear in the audit at
+ticks 5, 8 and 11. The maintenance control checks the administrator's classification
+and session state on both sides of the user's isolation.
+
+```powershell
+$scenario = 'configs/scenarios/diagnostic_maintenance_window.yaml'
+$pair = foreach ($i in 1..2) {
+    $run = & $uv run --frozen --no-sync pacd-sim diagnostic --workspace-root $w --scenario $scenario --seed 424242 | ConvertFrom-Json
+    if ($LASTEXITCODE) { throw 'Maintenance diagnostic failed' }
+    $check = & $uv run --frozen --no-sync pacd-sim verify $run.run_dir --workspace-root $w --show-event-sequence | ConvertFrom-Json
+    if ($LASTEXITCODE -or !$check.valid) { throw 'Maintenance verification failed' }
+    $check
+}
+$pair[0].event_sequence.events | Format-Table tick, id, kind, identity_id
+if ($pair[0].event_sequence.sha256 -ne $pair[1].event_sequence.sha256 -or
+    $pair[0].raw_semantic_hash -ne $pair[1].raw_semantic_hash -or
+    $pair[0].summary_semantic_hash -ne $pair[1].summary_semantic_hash) { throw 'Replay differs' }
+& $uv run --frozen --no-sync python docs/application_demo/regenerate.py $pair[0].run_dir
+if ($LASTEXITCODE) { throw 'Maintenance summary regeneration failed' }
+```
+
+The verifier finds the governed scenario by matching the manifest's scenario
+digest to a checked-in file. It also checks the entire retained configuration,
+the reconstructed event rows and the local receipt. The same `verify` command
+works for both fixtures. Event kinds are scripted labels visible to this
+diagnostic's classifier. The benign control shows what happened in this episode.
+
 ## Rebuild the summary from retained raw records
 
 This command derives one summary from the raw Parquet table held by the bounded verifier. After verification succeeds, it serializes that row, checks both output hashes against the verified artifact digests and writes fresh CSV and Parquet under `var/tmp`.

@@ -912,6 +912,38 @@ def test_verifier_requires_a_clean_controlled_checkout(
 
 
 @pytest.mark.reproducibility
+@pytest.mark.parametrize("selection", ["other_fixture", "path_as_digest", "unknown_digest"])
+def test_manifest_cannot_substitute_the_selected_script(
+    diagnostic_runs: DiagnosticRuns, selection: str
+) -> None:
+    destination = _copy_run(diagnostic_runs, selection)
+    manifest = _manifest(destination)
+    hashes = manifest["configuration_hashes"]
+    assert isinstance(hashes, dict)
+    if selection == "other_fixture":
+        path = (
+            diagnostic_runs.workspace.config_root / "scenarios/diagnostic_maintenance_window.yaml"
+        )
+        hashes["scenario"] = canonical_sha256(load_yaml_config(path))
+        expected_error = "retained canonical configuration does not match"
+    elif selection == "path_as_digest":
+        hashes["scenario"] = "../scenarios/diagnostic_maintenance_window.yaml"
+        expected_error = "valid scenario digest"
+    else:
+        hashes["scenario"] = canonical_sha256({"name": "unregistered"})
+        expected_error = "does not match any fixture"
+    _write_canonical_json(destination / "manifest.json", manifest)
+    _refresh_integrity_closure(destination, ())
+
+    verified = verify_run(
+        destination, workspace_root=diagnostic_runs.workspace.root, include_event_sequence=True
+    )
+    assert not verified.valid and not verified.semantic_content_valid
+    assert "event_sequence" not in verified.to_dict()
+    assert any(expected_error in error.lower() for error in verified.errors), verified.errors
+
+
+@pytest.mark.reproducibility
 def test_verifier_rejects_fully_refreshed_controlled_configuration_substitution(
     diagnostic_runs: DiagnosticRuns,
 ) -> None:

@@ -1,0 +1,56 @@
+evidence_label: NON_REPORTABLE_DIAGNOSTIC
+schema_version: "1.0"
+protocol_version: BOOTSTRAP_DRAFT_v1
+name: diagnostic_maintenance_window
+synthetic: true
+default_seed: 424242
+telemetry:
+  noise_standard_deviation: 0.05
+  delay_ticks: 2
+identities:
+  - id: identity-maint-admin
+    role: synthetic_administrator
+  - id: identity-maint-user
+    role: synthetic_user
+sessions:
+  - id: session-maint-admin
+    identity_id: identity-maint-admin
+    service_id: service-maint-console
+  - id: session-maint-user
+    identity_id: identity-maint-user
+    service_id: service-maint-console
+services:
+  - id: service-maint-console
+    mission_id: mission-maint-core
+missions:
+  - id: mission-maint-core
+    criticality: 0.8
+events:
+  - id: event-maintenance-start
+    tick: 3
+    kind: benign_administrative
+    identity_id: identity-maint-admin
+  - id: event-maintenance-indicator
+    tick: 6
+    kind: simulated_adversary
+    identity_id: identity-maint-user
+  - id: event-maintenance-finish
+    tick: 9
+    kind: benign_administrative
+    identity_id: identity-maint-admin
+actions:
+  - id: action-maint-isolate
+    action_type: isolate_session
+    target_id: session-maint-user
+    reversible: true
+    requested_authority: automatic
+  - id: action-maint-review
+    action_type: require_human_review
+    target_id: identity-maint-user
+    reversible: true
+    requested_authority: human
+  - id: action-maint-prohibited
+    action_type: external_network_scan
+    target_id: synthetic-denied-target
+    reversible: false
+    requested_authority: prohibited
