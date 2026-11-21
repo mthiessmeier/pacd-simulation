@@ -1267,21 +1267,33 @@ def _validate_raw_events(
     if jsonl_path.stat().st_size > _MAX_RAW_ARTIFACT_BYTES:
         errors.append("Raw evidence exceeds the 64 MiB bounded-read cap")
         return
-    jsonl_rows: list[dict[str, object]] = []
+    line_number = 0
     with jsonl_path.open("r", encoding="utf-8") as handle:
         for line_number, line in enumerate(handle, start=1):
-            if len(line.encode("utf-8")) > _MAX_RAW_LINE_BYTES:
+            if line_number > len(parquet_rows):
+                errors.append("Raw JSONL contains more rows than its Parquet peer")
+                return
+            encoded_line = line.encode("utf-8")
+            if len(encoded_line) > _MAX_RAW_LINE_BYTES:
                 errors.append(f"Raw JSONL line {line_number} exceeds the 128 KiB cap")
                 return
+            # The typed Parquet peer supplies each row's exact canonical wire representation.
+            # Matching rows receive the payload and semantic checks below on that same peer.
+            wire_row = encoded_line.rstrip(b"\r\n")
+            if wire_row == canonical_json_bytes(parquet_rows[line_number - 1]):
+                continue
+            errors.append(
+                f"JSONL and Parquet raw-event rows are not exactly identical at row {line_number}"
+            )
             if not line.strip():
                 errors.append(f"Raw JSONL contains a blank line at {line_number}")
-                continue
+                return
             value = strict_json_loads(line, source=f"raw/events.jsonl:{line_number}")
             if not isinstance(value, dict):
                 errors.append(f"Raw JSONL row {line_number} is not an object")
-                continue
+                return
             row = {str(key): item for key, item in value.items()}
-            if line.rstrip("\r\n").encode("utf-8") != canonical_json_bytes(row):
+            if wire_row != canonical_json_bytes(row):
                 errors.append(f"Raw JSONL row {line_number} is not canonical JSON")
             payload_text = row.get("payload_json")
             if not isinstance(payload_text, str):
@@ -1297,11 +1309,10 @@ def _validate_raw_events(
                     errors.append(f"Raw JSONL row {line_number} payload is not an object")
                 elif payload_text.encode("utf-8") != canonical_json_bytes(payload):
                     errors.append(f"Raw JSONL row {line_number} payload_json is not canonical JSON")
-            jsonl_rows.append(row)
+            return
+    if line_number != len(parquet_rows):
+        errors.append("Raw JSONL contains fewer rows than its Parquet peer")
     if errors:
-        return
-    if tuple(jsonl_rows) != parquet_rows:
-        errors.append("JSONL and Parquet raw-event rows are not exactly identical")
         return
 
     run_id = manifest.get("run_id")

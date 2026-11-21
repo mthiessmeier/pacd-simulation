@@ -24,7 +24,7 @@ from pacd_sim.audit.writer import EVENT_SCHEMA
 from pacd_sim.harness.run import RunResult, load_yaml_config
 from pacd_sim.reproducibility import evidence_validation
 from pacd_sim.reproducibility import verify as verify_module
-from pacd_sim.reproducibility.canonical import canonical_sha256
+from pacd_sim.reproducibility.canonical import canonical_json_bytes, canonical_sha256
 from pacd_sim.reproducibility.manifest import (
     semantic_events_hash,
     semantic_summary_hash,
@@ -135,6 +135,28 @@ def test_verifier_rejects_incorrect_post_execution_availability(
     assert not verified.valid and not verified.semantic_content_valid
     assert any("payload does not match reconstructed event semantics" in e for e in verified.errors)
     assert not any("checksum mismatch" in e.lower() for e in verified.errors)
+
+
+@pytest.mark.reproducibility
+def test_mission_effect_wire_types_match_across_raw_formats(
+    isolated_workspace: IsolatedWorkspace,
+) -> None:
+    result = _run_mission_fixture(isolated_workspace)
+    mirror = isolated_workspace.root / "var" / "tmp" / "mirror" / result.run_dir.name
+    shutil.copytree(result.run_dir, mirror)
+    jsonl = mirror / "raw" / "events.jsonl"
+    rows = [json.loads(line) for line in jsonl.read_text(encoding="utf-8").splitlines()]
+    (effect,) = [row for row in rows if row["event_type"] == "mission_effect"]
+    assert type(effect["tick"]) is float and effect["tick"].is_integer()
+    effect["tick"] = int(effect["tick"])
+    jsonl.write_bytes(b"".join(canonical_json_bytes(row) + b"\n" for row in rows))
+    _refresh_integrity_closure(mirror, ("raw/events.jsonl",))
+
+    verification = verify_run(
+        mirror, workspace_root=isolated_workspace.root, repo_root=isolated_workspace.repo_root
+    )
+    assert not verification.semantic_content_valid
+    assert any("JSONL and Parquet raw-event rows" in error for error in verification.errors)
 
 
 def _manifest(run_dir: Path) -> dict[str, object]:
