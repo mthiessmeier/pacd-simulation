@@ -19,6 +19,8 @@ from pacd_sim.schema import (
     validate_audit_text,
 )
 
+_MAX_INTEGER_WEIGHT = int(float_info.max)
+
 
 def _freeze_array(value: object) -> object:
     """JSON and YAML arrays become immutable tuples without coercing their elements."""
@@ -77,7 +79,17 @@ class DependencyConfig(StrictFrozenModel):
     upstream_id: StableId
     downstream_id: StableId
     # Keep integer wire values intact for the configuration digest. State uses finite floats.
-    weight: Annotated[int, Field(ge=0, le=int(float_info.max))] | NonNegativeFloat
+    weight: Annotated[int, Field(ge=0, le=_MAX_INTEGER_WEIGHT)] | NonNegativeFloat
+
+    @field_validator("weight", mode="before")
+    @classmethod
+    def _require_exact_integer_weight(cls, value: object) -> object:
+        # Test the source integer before the union can round it through its float branch.
+        if isinstance(value, int) and not (
+            0 <= value <= _MAX_INTEGER_WEIGHT and float(value) == value
+        ):
+            raise ValueError("integer weight must be exactly representable as a nonnegative float")
+        return value
 
 
 type DependencyRows = Annotated[

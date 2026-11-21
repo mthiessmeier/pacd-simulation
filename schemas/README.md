@@ -30,8 +30,10 @@ establish that a bundle is executable.
 ### Optional dependencies in the synthetic scenario
 
 The scenario can declare up to 100 directed dependencies. Each row has a unique
-ID, two existing entity IDs and a finite, nonnegative numeric weight. Direction
-runs from `upstream_id` to `downstream_id`. The two dependencies below
+ID, two existing entity IDs and a finite, nonnegative numeric weight. The state
+stores weights as binary64 floats. An integer weight must be exactly representable
+in that format so the snapshot retains its value. Direction runs from
+`upstream_id` to `downstream_id`. The two dependencies below
 share the endpoints of the fixture's existing service-to-mission relationship.
 
 ```yaml

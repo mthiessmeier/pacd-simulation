@@ -2,6 +2,7 @@
 
 import json
 import subprocess
+from sys import float_info
 
 import pytest
 import yaml
@@ -59,7 +60,7 @@ def _run(workspace: IsolatedWorkspace, *, in_process: bool = False) -> RunResult
     )
 
 
-def _expected_state() -> EnvironmentState:
+def _expected_state(weight: int | float = 2.5) -> EnvironmentState:
     return EnvironmentState(
         identities=(
             Identity(id="identity-synthetic-admin", role="synthetic_administrator"),
@@ -69,17 +70,23 @@ def _expected_state() -> EnvironmentState:
         services=(Service(id=SERVICE, mission_id=MISSION),),
         mission_functions=(MissionFunction(id=MISSION, criticality=0.8),),
         dependencies=(
-            Dependency(id="dependency-z", upstream_id=SERVICE, downstream_id=MISSION, weight=2.5),
+            Dependency(
+                id="dependency-z", upstream_id=SERVICE, downstream_id=MISSION, weight=weight
+            ),
             Dependency(id="dependency-a", upstream_id=SERVICE, downstream_id=MISSION, weight=0.0),
         ),
     )
 
 
 @pytest.mark.scenario
+@pytest.mark.parametrize("weight", [2.5, 2**53 + 2], ids=["fractional", "exact-large-integer"])
 def test_parallel_dependencies_reach_verified_state_updates(
     isolated_workspace: IsolatedWorkspace,
+    weight: int | float,
 ) -> None:
-    _write_dependencies(isolated_workspace, [{**EDGE, "id": "dependency-z", "weight": 2.5}, EDGE])
+    _write_dependencies(
+        isolated_workspace, [{**EDGE, "id": "dependency-z", "weight": weight}, EDGE]
+    )
     # Verification binds the retained configuration to a clean, committed fixture.
     subprocess.run(
         [
@@ -108,7 +115,11 @@ def test_parallel_dependencies_reach_verified_state_updates(
     assert verified.semantic_content_valid and verified.execution_identity_assured
     assert verified.raw_semantic_hash == result.raw_semantic_hash
 
-    state = _expected_state()
+    retained = json.loads((result.run_dir / "canonical_config.json").read_text(encoding="utf-8"))
+    wire_weight = retained["scenario"]["dependencies"][0]["weight"]
+    assert canonical_sha256(wire_weight) == canonical_sha256(weight)
+    state = _expected_state(weight)
+    assert state.dependencies[1].weight == weight
     events = (result.run_dir / "raw" / "events.jsonl").read_text(encoding="utf-8").splitlines()
     updates = [row for line in events if (row := json.loads(line))["event_type"] == "state_update"]
     assert len(updates) == 2
@@ -191,6 +202,8 @@ def test_optional_edges_preserve_scenario_wire_hash_and_schema() -> None:
         [{**EDGE, "weight": float("inf")}],
         [{**EDGE, "weight": float("nan")}],
         [{**EDGE, "weight": 10**400}],
+        [{**EDGE, "weight": int(float_info.max) + 1}],
+        [{**EDGE, "weight": 2**53 + 1}],
         [{k: v for k, v in EDGE.items() if k != "weight"}],
         [{**EDGE, "undeclared": True}],
         [{**EDGE, "id": f"dependency-{i}"} for i in range(101)],
@@ -207,6 +220,8 @@ def test_optional_edges_preserve_scenario_wire_hash_and_schema() -> None:
         "infinite-weight",
         "nan-weight",
         "weight-overflow",
+        "just-above-maximum-float",
+        "integer-rounding",
         "missing-weight",
         "unknown-field",
         "too-many-edges",
