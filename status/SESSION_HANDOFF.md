@@ -1,0 +1,5 @@
+# PACD continuation checkpoint
+
+Branch `codex/wp00-reconciliation-wp01-order` began from a clean private clone at `df33295469094a5ed9aa26fcc4b1fa1d019d3e5c`. Merge base with origin/main was identical (0 ahead, 0 behind). The pre-existing bootstrap checkout was clean at `d3d63bc213c386a7839bb7a2f05cfdafa3ca5eb3`. No existing checkout was switched. The accepted implementation is `d5a29699e14409bfd54d30c51117c81077639ee6`. Only README.md differs on the verified base.
+
+WP00 reconciliation and the WP01 candidate are under construction. PR #9 and #11 are separate unmerged drafts at `148b2cdb92a2046574b56201cfa9ee9510589a49` and `2191b41304aa3c079641d76caf92d7d209d72476`. No newer PR was present at preflight. DEC-038 and Michael’s continuation instruction cover development of the named local comparison control. Acceptance, merge, human studies and reportable work have separate authority. Evidence classification is `NON_REPORTABLE_DIAGNOSTIC`. The current candidate has no independent acceptance.
