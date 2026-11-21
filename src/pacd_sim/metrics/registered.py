@@ -6,13 +6,20 @@ import os
 import re
 import stat
 from collections import Counter
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Annotated, Literal, Self
+from typing import Literal, Self
 
-from pydantic import Field, model_validator
+from pydantic import model_validator
 
+from pacd_sim.comparison import (
+    ComparisonInputs,
+    ComparisonPlan,
+    PlannedAttempt,
+    RegisteredAttempt,
+    validate_attempt_ids,
+)
 from pacd_sim.configuration import BoundedArray
 from pacd_sim.constants import EVIDENCE_LABEL, SCHEMA_VERSION
 from pacd_sim.metrics.dispositions import EpisodeDispositions, episode_dispositions, fraction
@@ -30,13 +37,7 @@ from pacd_sim.reproducibility.receipts import (
     receipt_path_for,
 )
 from pacd_sim.reproducibility.verify import verify_run_with_summary
-from pacd_sim.schema import Signed64Count, StrictFrozenModel
-
-
-class RegisteredAttempt(StrictFrozenModel):
-    attempt_id: Annotated[str, Field(pattern=r"^[a-z][a-z0-9_-]{0,63}$")]
-    invocation_id: Annotated[str, Field(pattern=r"^[a-f0-9]{32}$")]
-    seed: Signed64Count
+from pacd_sim.schema import StrictFrozenModel
 
 
 class AttemptRegister(StrictFrozenModel):
@@ -45,10 +46,7 @@ class AttemptRegister(StrictFrozenModel):
 
     @model_validator(mode="after")
     def _unique_attempts(self) -> Self:
-        if len({a.attempt_id for a in self.attempts}) != len(self.attempts):
-            raise ValueError("Duplicate attempt ID in register")
-        if len({a.invocation_id for a in self.attempts}) != len(self.attempts):
-            raise ValueError("Duplicate invocation ID in register")
+        validate_attempt_ids(self.attempts)
         return self
 
 
@@ -58,6 +56,11 @@ class Outcome:
     reason: str
     run_id: str | None = None
     metrics: EpisodeDispositions | None = None
+    observed: ComparisonInputs | None = None
+    observed_seed: int | None = None
+    observed_invocation_id: str | None = None
+    observed_plan_sha256: str | None = None
+    retained_status: str | None = None
 
 
 def _direct_stat(path: Path) -> os.stat_result | None:
@@ -95,7 +98,6 @@ def _owned_run(attempt: RegisteredAttempt, workspace: Path, marker: dict[str, ob
         "final_run_path": str(final),
         "staging_path": str(staging),
         "schema_version": SCHEMA_VERSION,
-        "ownership_version": "1.0",
         "evidence_label": EVIDENCE_LABEL,
     }
     if type(marker["seed"]) is not int or any(marker[k] != v for k, v in expected.items()):
@@ -131,13 +133,19 @@ def _final_outcome(
     run: OwnedRun, attempt: RegisteredAttempt, receipt: bool, workspace: Path, repo: Path
 ) -> Outcome:
     if receipt:
-        verified, summary = verify_run_with_summary(run.final, workspace, repo_root=repo)
+        verified, summary = verify_run_with_summary(
+            run.final,
+            workspace,
+            repo_root=repo,
+            include_comparison_inputs=isinstance(attempt, PlannedAttempt),
+        )
         if verified.valid and summary is not None and summary.episode.seed == attempt.seed:
             return Outcome(
                 "COMPLETED",
                 "verified_completion",
                 run.run_id,
                 episode_dispositions(summary.episode),
+                observed=summary.comparison_inputs,
             )
         return Outcome("INVALID", "completion_verification_failed", run.run_id)
 
@@ -182,7 +190,9 @@ def _final_outcome(
     return Outcome(kind, error, run.run_id)
 
 
-def _observe(attempt: RegisteredAttempt, workspace: Path, repo: Path) -> Outcome:
+def _observe(
+    attempt: RegisteredAttempt, workspace: Path, repo: Path, plan_digest: str | None = None
+) -> Outcome:
     key = attempt.invocation_id
     marker_path = assert_exact_control_path(
         workspace / "var/invocations" / key / "ownership.json",
@@ -201,12 +211,18 @@ def _observe(attempt: RegisteredAttempt, workspace: Path, repo: Path) -> Outcome
         return Outcome("INCOMPLETE", "no_registered_invocation_observed")
 
     marker, digest = read_ownership_marker(workspace, key)
-    run = _owned_run(attempt, workspace, marker)
+    observed_attempt = attempt
+    if isinstance(attempt, PlannedAttempt):
+        marker_seed = marker.get("seed")
+        if type(marker_seed) is not int or not 0 <= marker_seed < 2**63:
+            raise ValueError("Invalid seed in planned ownership marker")
+        observed_attempt = attempt.model_copy(update={"seed": marker_seed})
+    run = _owned_run(observed_attempt, workspace, marker)
     try:
         final = _directory_present(run.final, run.identity)
         staging = _directory_present(run.staging, run.identity)
         if final and not staging:
-            outcome = _final_outcome(run, attempt, receipt, workspace, repo)
+            outcome = _final_outcome(run, observed_attempt, receipt, workspace, repo)
         elif receipt or final:
             outcome = Outcome("INVALID", "conflicting_run_locations", run.run_id)
         else:
@@ -219,48 +235,93 @@ def _observe(attempt: RegisteredAttempt, workspace: Path, repo: Path) -> Outcome
             or _directory_present(run.staging, run.identity) != staging
         ):
             return Outcome("INVALID", "evidence_changed_during_read", run.run_id)
+        if isinstance(attempt, PlannedAttempt):
+            observed_pin = marker.get("plan_sha256")
+            outcome = replace(
+                outcome,
+                observed_seed=observed_attempt.seed,
+                observed_invocation_id=key,
+                observed_plan_sha256=observed_pin if isinstance(observed_pin, str) else None,
+                retained_status=outcome.status,
+            )
+            if observed_pin != plan_digest:
+                return replace(
+                    outcome, status="INVALID", reason="plan_binding_mismatch", metrics=None
+                )
+            if observed_attempt.seed != attempt.seed or (
+                outcome.status == "COMPLETED" and outcome.observed != attempt.expected
+            ):
+                return replace(
+                    outcome, status="INVALID", reason="cell_inputs_mismatch", metrics=None
+                )
         return outcome
     except (OSError, ValueError, RecursionError):
         return Outcome("INVALID", "invalid_retained_evidence", run.run_id)
 
 
-def registered_metrics(
-    path: Path, workspace: Path, repo: Path, expected_digest: str | None
-) -> dict[str, object]:
-    """Account for each declared attempt once, releasing counts only for verified completions."""
+def load_register[T: (AttemptRegister, ComparisonPlan)](
+    path: Path, workspace: Path, model: type[T], expected_digest: str | None
+) -> tuple[T, str]:
     path = assert_direct_workspace_path(path, workspace)
     encoded = read_stable_bytes(path, max_bytes=65536)
-    register = AttemptRegister.model_validate(
-        strict_json_loads(encoded.decode("utf-8"), source="attempt register")
+    register = model.model_validate(
+        strict_json_loads(encoded.decode("utf-8"), source="attempt register or comparison plan")
     )
     digest = canonical_sha256(register)
     if expected_digest is not None and expected_digest != digest:
-        raise ValueError("Register does not match the pinned SHA-256")
+        raise ValueError("Register or plan does not match the pinned SHA-256")
+    return register, digest
+
+
+def registered_metrics(
+    path: Path, workspace: Path, repo: Path, expected_digest: str | None, *, planned: bool = False
+) -> dict[str, object]:
+    """Account for each declared attempt once, releasing counts only for verified completions."""
+    register: ComparisonPlan | AttemptRegister
+    if planned:
+        register, digest = load_register(path, workspace, ComparisonPlan, expected_digest)
+    else:
+        register, digest = load_register(path, workspace, AttemptRegister, expected_digest)
     status_counts = dict.fromkeys(("COMPLETED", "FAILED", "TIMED_OUT", "INCOMPLETE", "INVALID"), 0)
     counts: Counter[str] = Counter()
     rows = []
     for attempt in register.attempts:
         try:
-            outcome = _observe(attempt, workspace, repo)
+            outcome = _observe(attempt, workspace, repo, digest if planned else None)
         except (OSError, ValueError, RecursionError):
             outcome = Outcome("INVALID", "invalid_invocation_evidence")
         status_counts[outcome.status] += 1
         metric = outcome.metrics
         if metric is not None:
             counts.update(metric["counts"])
+        binding: dict[str, object] = {}
+        if isinstance(attempt, PlannedAttempt):
+            binding = {
+                "observed": outcome.observed.model_dump() if outcome.observed is not None else None,
+                "observed_seed": outcome.observed_seed,
+                "observed_invocation_id": outcome.observed_invocation_id,
+                "observed_plan_sha256": outcome.observed_plan_sha256,
+                "retained_status": outcome.retained_status,
+            }
         rows.append(
             {
                 **attempt.model_dump(),
-                **asdict(outcome),
+                "status": outcome.status,
+                "reason": outcome.reason,
+                "run_id": outcome.run_id,
+                "metrics": metric,
+                **binding,
                 "metrics_sha256": canonical_sha256(metric) if metric is not None else None,
             }
         )
     completed = status_counts["COMPLETED"]
     report = {
-        "format": "pacd-registered-metrics-v1",
+        "format": "pacd-development-comparison-metrics-v1"
+        if planned
+        else "pacd-registered-metrics-v1",
         "evidence_label": EVIDENCE_LABEL,
         "reportable": False,
-        "register_sha256": digest,
+        ("plan_sha256" if planned else "register_sha256"): digest,
         "attempts": rows,
         "status_counts": status_counts,
         "completion_fraction": fraction(completed, len(rows), "fraction_of_registered_attempts"),

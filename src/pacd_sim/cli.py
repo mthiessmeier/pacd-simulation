@@ -9,6 +9,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import TextIO
 
+from pacd_sim.comparison import ComparisonPlan
 from pacd_sim.constants import DEFAULT_SCENARIO_FILE, EVIDENCE_LABEL
 from pacd_sim.defenders.baselines.static import (
     MINIMUM_REVIEW_SIGNAL,
@@ -19,7 +20,7 @@ from pacd_sim.defenders.observations import BaselineObservation
 from pacd_sim.defenders.pacd import corroboration
 from pacd_sim.harness.run import ConfigurationError, run_diagnostic
 from pacd_sim.metrics.dispositions import episode_dispositions
-from pacd_sim.metrics.registered import registered_metrics
+from pacd_sim.metrics.registered import load_register, registered_metrics
 from pacd_sim.reproducibility.canonical import canonical_sha256
 from pacd_sim.reproducibility.doctor import run_doctor
 from pacd_sim.reproducibility.paths import (
@@ -124,6 +125,8 @@ def _parser() -> argparse.ArgumentParser:
     diagnostic.add_argument("--metrics", type=Path)
     diagnostic.add_argument("--output-root", type=Path)
     diagnostic.add_argument("--seed", type=int)
+    diagnostic.add_argument("--plan", type=Path, help="workspace-local development comparison plan")
+    diagnostic.add_argument("--plan-sha256", help="required canonical digest for planned launch")
     diagnostic.add_argument("--invocation-id", help="claim a fresh registered 32-hex invocation ID")
     diagnostic.add_argument(
         "--reportable",
@@ -150,6 +153,10 @@ def _parser() -> argparse.ArgumentParser:
     source = metrics.add_mutually_exclusive_group(required=True)
     source.add_argument("run_dir", nargs="?", type=Path)
     source.add_argument("--register", type=Path, help="workspace-local JSON register of attempts")
+    source.add_argument(
+        "--plan", type=Path, help="account for cells in a development comparison plan"
+    )
+    metrics.add_argument("--plan-sha256", help="require the canonical plan digest")
     metrics.add_argument("--register-sha256", help="require the canonical register digest")
     metrics.add_argument("--workspace-root", type=Path)
     return parser
@@ -168,6 +175,11 @@ def _diagnostic_command(arguments: argparse.Namespace) -> int:
     policy = arguments.policy or repository / "configs" / "policies" / "diagnostic_safety.yaml"
     seeds = arguments.seeds or repository / "configs" / "seeds" / "diagnostic_seeds.json"
     output_root = arguments.output_root or workspace / "var" / "runs"
+    plan = None
+    if (arguments.plan is None) != (arguments.plan_sha256 is None):
+        raise ValueError("Planned launch requires both --plan and --plan-sha256")
+    if arguments.plan is not None:
+        plan, _ = load_register(arguments.plan, workspace, ComparisonPlan, arguments.plan_sha256)
     result = run_diagnostic(
         scenario,
         policy,
@@ -180,6 +192,7 @@ def _diagnostic_command(arguments: argparse.Namespace) -> int:
         metric_path=arguments.metrics,
         reportable=arguments.reportable,
         invocation_id=arguments.invocation_id,
+        plan=plan,
     )
     _emit_json(result.to_dict())
     return 0
@@ -245,6 +258,17 @@ def _verified_report_command(arguments: argparse.Namespace) -> int:
     repository = _default_repo_root().resolve(strict=True)
     workspace = _resolve_diagnostic_workspace(repository, arguments.workspace_root)
     if arguments.command == "metrics":
+        if arguments.plan_sha256 is not None and arguments.plan is None:
+            raise ValueError("--plan-sha256 requires --plan")
+        if arguments.plan is not None:
+            if arguments.register_sha256 is not None:
+                raise ValueError("--register-sha256 requires --register")
+            _emit_json(
+                registered_metrics(
+                    arguments.plan, workspace, repository, arguments.plan_sha256, planned=True
+                )
+            )
+            return 0
         if arguments.register is not None:
             report = registered_metrics(
                 arguments.register, workspace, repository, arguments.register_sha256
