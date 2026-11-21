@@ -9,9 +9,11 @@ import os
 import re
 import stat
 from collections.abc import Mapping
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass, fields, replace
 from pathlib import Path
+from typing import cast
 
+from pacd_sim.configuration import EventConfig, ScenarioConfig
 from pacd_sim.constants import EVIDENCE_LABEL
 from pacd_sim.metrics.summarize import EpisodeRecord, summary_from_raw_table
 from pacd_sim.reproducibility.canonical import canonical_sha256
@@ -105,12 +107,28 @@ class VerificationResult:
     reportable: bool = False
     receipt_path: Path | None = None
     evidence_label: str = EVIDENCE_LABEL
+    event_sequence: tuple[EventConfig, ...] | None = None
 
     def to_dict(self) -> dict[str, object]:
         """Return a JSON-ready result with a string path."""
-        value = asdict(self)
+        value = {
+            field.name: getattr(self, field.name)
+            for field in fields(self)
+            if field.name != "event_sequence"
+        }
         value["run_dir"] = str(self.run_dir)
         value["receipt_path"] = str(self.receipt_path) if self.receipt_path is not None else None
+        if self.event_sequence is not None:
+            events = [
+                event.model_dump(mode="json", include={"id", "tick", "kind", "identity_id"})
+                for event in self.event_sequence
+            ]
+            sequence = {"format": "pacd-scripted-events-v1", "events": events}
+            value["event_sequence"] = {
+                **sequence,
+                "event_count": len(events),
+                "sha256": canonical_sha256(sequence),
+            }
         return value
 
 
@@ -316,6 +334,7 @@ def _verify_run_impl(
     workspace_root: Path | str | None = None,
     *,
     repo_root: Path | str | None = None,
+    include_event_sequence: bool = False,
 ) -> tuple[VerificationResult, VerifiedSummary | None]:
     """Implement complete verification behind the public defensive boundary."""
     errors: list[str] = []
@@ -839,6 +858,17 @@ def _verify_run_impl(
         receipt_path=receipt.receipt_path,
     )
     if result.valid and not result.errors and expected_summary is not None:
+        if include_event_sequence:
+            # The verifier has matched every full-coverage observation to the checked-out
+            # scenario and authenticated the retained documents and rows in this pass.
+            # Keep observed order, but take source tick and nullable subject from the script.
+            by_id = {event.id: event for event in ScenarioConfig.model_validate(scenario).events}
+            sequence = tuple(
+                by_id[json.loads(cast(str, row["payload_json"]))["event_id"]]
+                for row in raw_rows
+                if row["event_type"] == "observation"
+            )
+            result = replace(result, event_sequence=sequence)
         return result, VerifiedSummary(
             episode=EpisodeRecord.model_validate(expected_summary),
             csv_sha256=artifact_snapshots["derived/episode_summary.csv"].sha256,
@@ -852,6 +882,7 @@ def verify_run_with_summary(
     workspace_root: Path | str | None = None,
     *,
     repo_root: Path | str | None = None,
+    include_event_sequence: bool = False,
 ) -> tuple[VerificationResult, VerifiedSummary | None]:
     """Verify one run and release its raw-derived summary only with full local assurance."""
 
@@ -860,6 +891,7 @@ def verify_run_with_summary(
             run_dir,
             workspace_root=workspace_root,
             repo_root=repo_root,
+            include_event_sequence=include_event_sequence,
         )
     except RecursionError as error:
         return VerificationResult(
@@ -883,7 +915,13 @@ def verify_run(
     workspace_root: Path | str | None = None,
     *,
     repo_root: Path | str | None = None,
+    include_event_sequence: bool = False,
 ) -> VerificationResult:
     """Return the public verification report without the optional regeneration material."""
-    result, _ = verify_run_with_summary(run_dir, workspace_root=workspace_root, repo_root=repo_root)
+    result, _ = verify_run_with_summary(
+        run_dir,
+        workspace_root=workspace_root,
+        repo_root=repo_root,
+        include_event_sequence=include_event_sequence,
+    )
     return result

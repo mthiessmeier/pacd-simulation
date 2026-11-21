@@ -38,6 +38,27 @@ if ($first.raw_semantic_hash -ne $replay.raw_semantic_hash -or
     $first.summary_semantic_hash -ne $replay.summary_semantic_hash) { throw 'Replay differs' }
 ```
 
+## Inspect the scripted event sequence
+
+In the same checkout that produced the run, ask the verifier to release the
+source events in the order their observations were recorded.
+
+```powershell
+$verified = & $uv run --frozen --no-sync pacd-sim verify $first.run_dir --workspace-root $w --show-event-sequence | ConvertFrom-Json
+if ($LASTEXITCODE) { throw 'Verification failed' }
+$verified.event_sequence.events | Format-Table tick, id, kind, identity_id
+$verified.event_sequence.sha256
+```
+
+The table uses source ticks. The shipped sensor records each observation one
+tick later. The digest binds the format identifier `pacd-scripted-events-v1`
+and the ordered list of event IDs, source ticks, kinds and nullable identity
+IDs. It excludes the seed, sensor signal, actions and outcomes, so two verified
+runs can share a script while their raw evidence differs. The verifier checks
+the full retained evidence and the local execution receipt before returning
+this view. The existing fixture gives its diagnostic classifier the event kind.
+This demonstration makes no blinded comparison.
+
 ## Rebuild the summary from retained raw records
 
 This command derives one summary from the raw Parquet table held by the bounded verifier. After verification succeeds, it serializes that row, checks both output hashes against the verified artifact digests and writes fresh CSV and Parquet under `var/tmp`.

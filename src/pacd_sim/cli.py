@@ -117,6 +117,11 @@ def _parser() -> argparse.ArgumentParser:
     verify = subparsers.add_parser("verify", help="verify one retained diagnostic run")
     verify.add_argument("run_dir", type=Path)
     verify.add_argument("--workspace-root", type=Path)
+    verify.add_argument(
+        "--show-event-sequence",
+        action="store_true",
+        help="include the ordered synthetic source events and their digest after verification",
+    )
     return parser
 
 
@@ -159,6 +164,7 @@ def _verify_command(arguments: argparse.Namespace) -> int:
         arguments.run_dir,
         workspace_root=workspace,
         repo_root=repository,
+        include_event_sequence=arguments.show_event_sequence,
     )
     payload = result.to_dict()
     payload["status"] = "VERIFIED" if result.valid else "INVALID"
