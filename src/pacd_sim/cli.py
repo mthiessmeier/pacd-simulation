@@ -10,7 +10,13 @@ from pathlib import Path
 from typing import TextIO
 
 from pacd_sim.constants import DEFAULT_SCENARIO_FILE, EVIDENCE_LABEL
+from pacd_sim.defenders.baselines.static import (
+    MINIMUM_REVIEW_SIGNAL,
+    STATIC_REVIEW_VERSION,
+    propose_review,
+)
 from pacd_sim.harness.run import ConfigurationError, run_diagnostic
+from pacd_sim.reproducibility.canonical import canonical_sha256
 from pacd_sim.reproducibility.doctor import run_doctor
 from pacd_sim.reproducibility.paths import (
     PathBoundaryError,
@@ -23,7 +29,7 @@ from pacd_sim.reproducibility.receipts import (
     IDENTITY_ASSURANCE_SCOPE,
 )
 from pacd_sim.reproducibility.reportable import ReportableModeDenied
-from pacd_sim.reproducibility.verify import verify_run
+from pacd_sim.reproducibility.verify import verify_run, verify_run_with_summary
 
 
 def _default_repo_root() -> Path:
@@ -106,7 +112,11 @@ def _parser() -> argparse.ArgumentParser:
     )
     diagnostic.add_argument("--policy", type=Path)
     diagnostic.add_argument("--seeds", type=Path)
-    diagnostic.add_argument("--baseline", type=Path)
+    diagnostic.add_argument(
+        "--baseline",
+        type=Path,
+        help="defender YAML (use static_review.yaml for prospective review)",
+    )
     diagnostic.add_argument("--metrics", type=Path)
     diagnostic.add_argument("--output-root", type=Path)
     diagnostic.add_argument("--seed", type=int)
@@ -124,6 +134,11 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help="include the ordered synthetic source events and their digest after verification",
     )
+    baseline = subparsers.add_parser(
+        "baseline", help="replay the static human-review rule on verified observations"
+    )
+    baseline.add_argument("run_dir", type=Path)
+    baseline.add_argument("--workspace-root", type=Path)
     return parser
 
 
@@ -171,8 +186,46 @@ def _verify_command(arguments: argparse.Namespace) -> int:
     return 0 if result.valid else 1
 
 
+def _baseline_command(arguments: argparse.Namespace) -> int:
+    repository = _default_repo_root().resolve(strict=True)
+    workspace = _resolve_diagnostic_workspace(repository, arguments.workspace_root)
+    verification, material = verify_run_with_summary(
+        arguments.run_dir, workspace_root=workspace, repo_root=repository, include_observations=True
+    )
+    payload = verification.to_dict()
+    if not verification.valid or material is None:
+        payload["status"] = "INVALID"
+        _emit_json(payload)
+        return 1
+
+    decisions = []
+    proposal_count = 0
+    for observation in material.observations:
+        proposal = propose_review(observation)
+        if proposal is not None:
+            proposal_count += 1
+        decisions.append(
+            {
+                "observation": observation.model_dump(mode="json"),
+                "proposal": proposal.model_dump(mode="json") if proposal is not None else None,
+            }
+        )
+    payload["status"] = "VERIFIED"
+    payload["baseline"] = {
+        "policy": STATIC_REVIEW_VERSION,
+        "mode": "retrospective_proposals",
+        "minimum_signal": MINIMUM_REVIEW_SIGNAL,
+        "observation_sha256": canonical_sha256(material.observations),
+        "observation_count": len(decisions),
+        "proposal_count": proposal_count,
+        "decisions": decisions,
+    }
+    _emit_json(payload)
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
-    """Dispatch a doctor, diagnostic, or read-only verification command."""
+    """Dispatch environment checks, diagnostics, verification, or static baseline replay."""
     parser = _parser()
     arguments = parser.parse_args(argv)
     try:
@@ -182,6 +235,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _diagnostic_command(arguments)
         if arguments.command == "verify":
             return _verify_command(arguments)
+        if arguments.command == "baseline":
+            return _baseline_command(arguments)
     except ReportableModeDenied as error:
         _emit_json(
             _failure_payload(

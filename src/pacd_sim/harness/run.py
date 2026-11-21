@@ -28,12 +28,15 @@ from pacd_sim.actions.models import DefensiveAction, RequestedAuthority
 from pacd_sim.audit.writer import AuditWriter
 from pacd_sim.configuration import DiagnosticInputs, ScenarioConfig
 from pacd_sim.constants import (
+    DEFAULT_BASELINE_FILE,
     DEFAULT_SCENARIO_FILE,
+    DIAGNOSTIC_BASELINE_FILES,
     DIAGNOSTIC_SCENARIO_FILES,
     EVIDENCE_LABEL,
     SCHEMA_VERSION,
 )
 from pacd_sim.defenders.base import DefenderContext
+from pacd_sim.defenders.baselines.static import STATIC_REVIEW_VERSION
 from pacd_sim.defenders.pacd.diagnostic import DiagnosticPACDDefender
 from pacd_sim.engine.scheduler import DeterministicScheduler, ScheduledEvent
 from pacd_sim.environment.availability import continuity_transition, evaluate_availability
@@ -49,6 +52,7 @@ from pacd_sim.evidence.normalize import EvidenceItem, normalize_observation
 from pacd_sim.execution.broker import SimulatedExecutionBroker
 from pacd_sim.execution.verification import verify_execution
 from pacd_sim.governance.governor import GovernanceContext, SafetyGovernor, SafetyPolicy
+from pacd_sim.harness.static_review import static_review_candidate
 from pacd_sim.hypotheses.update import BeliefState, update_beliefs
 from pacd_sim.metrics.summarize import summarize_raw_events
 from pacd_sim.reproducibility.canonical import canonical_json_bytes, canonical_sha256
@@ -570,7 +574,7 @@ def _validate_loaded_configuration_bundle(
 def validate_diagnostic_configuration_files(
     repo_root: Path | str,
 ) -> dict[str, str]:
-    """Validate every shipped scenario and return the default bundle's diagnostic hashes."""
+    """Validate the shipped scenario/defender pairs and return the default bundle's hashes."""
     repository = Path(repo_root).resolve(strict=True)
     scenario = load_yaml_config(
         _assert_controlled_config(
@@ -592,7 +596,7 @@ def validate_diagnostic_configuration_files(
     )
     baseline_definition = load_yaml_config(
         _assert_controlled_config(
-            repository / "configs" / "defenders" / "diagnostic_baseline.yaml",
+            repository / "configs" / "defenders" / DEFAULT_BASELINE_FILE,
             repository,
         )
     )
@@ -609,17 +613,20 @@ def validate_diagnostic_configuration_files(
         baseline_definition,
         metric_definition,
     )
-    for filename in DIAGNOSTIC_SCENARIO_FILES[1:]:
-        path = _assert_controlled_config(
-            repository / "configs" / "scenarios" / filename, repository
-        )
-        _validate_loaded_configuration_bundle(
-            load_yaml_config(path),
-            policy_config,
-            seed_registry,
-            baseline_definition,
-            metric_definition,
-        )
+    for defender_file in DIAGNOSTIC_BASELINE_FILES:
+        defender_path = repository / "configs" / "defenders" / defender_file
+        definition = load_yaml_config(_assert_controlled_config(defender_path, repository))
+        for scenario_file in DIAGNOSTIC_SCENARIO_FILES:
+            if (scenario_file, defender_file) == (DEFAULT_SCENARIO_FILE, DEFAULT_BASELINE_FILE):
+                continue  # Already validated above for the returned hashes.
+            scenario_path = repository / "configs" / "scenarios" / scenario_file
+            _validate_loaded_configuration_bundle(
+                load_yaml_config(_assert_controlled_config(scenario_path, repository)),
+                policy_config,
+                seed_registry,
+                definition,
+                metric_definition,
+            )
     canonical_config: dict[str, object] = {
         "evidence_label": EVIDENCE_LABEL,
         "schema_version": SCHEMA_VERSION,
@@ -1203,7 +1210,7 @@ def _run_diagnostic_worker(
     policy_file = _assert_controlled_config(policy_path, repository)
     seed_file = _assert_controlled_config(seed_registry_path, repository)
     baseline_file = _assert_controlled_config(
-        baseline_path or repository / "configs" / "defenders" / "diagnostic_baseline.yaml",
+        baseline_path or repository / "configs" / "defenders" / DEFAULT_BASELINE_FILE,
         repository,
     )
     metric_file = _assert_controlled_config(
@@ -1285,11 +1292,7 @@ def _run_diagnostic_worker(
         detector_profile_id=profile.id,
         delay_ticks=delay,
     )
-    observations = SyntheticTelemetryGenerator(selected_seed, sensor, profile).generate_many(
-        delivered_events
-    )
-    if len(observations) != len(delivered_events):
-        raise RuntimeError("Full-coverage diagnostic telemetry unexpectedly omitted an event")
+    telemetry = SyntheticTelemetryGenerator(selected_seed, sensor, profile)
 
     authorized_output = assert_write_path(Path(output_root), workspace)
     if authorized_output != _ownership.final_run_dir.parent:
@@ -1348,13 +1351,21 @@ def _run_diagnostic_worker(
 
         governor = SafetyGovernor(safety_policy)
         broker = SimulatedExecutionBroker(governor)
+        prospective = baseline_definition["actions"] == "require_human_review"
         defender = DiagnosticPACDDefender(compromise_threshold=0.5)
         evidence_items: list[EvidenceItem] = []
         belief_state = BeliefState(configuration_version=protocol_version)
         state = environment
         actions_processed = False
 
-        for observation in observations:
+        # The single fixed-delay sensor preserves the scheduler's tick/ID order.
+        # Finish each decision before generating the next reading.
+        for ordinal, event in enumerate(delivered_events, start=1):
+            observation = telemetry.generate(event)
+            if observation is None:
+                raise RuntimeError(
+                    "Full-coverage diagnostic telemetry unexpectedly omitted an event"
+                )
             audit.emit(
                 "observation",
                 tick=observation.tick,
@@ -1425,37 +1436,57 @@ def _run_diagnostic_worker(
                 },
             )
 
-            context = DefenderContext(
-                id=f"defender-context-{observation.id}",
-                tick=observation.tick,
-                configuration_version=protocol_version,
-                evidence=tuple(evidence_items),
-                belief_state=belief_state,
-                environment=state,
-            )
-            defender_decision = defender.decide(context)
-            if observation.event_kind != "simulated_adversary" or actions_processed:
-                continue
-            if not defender_decision.proposed_actions:
-                raise RuntimeError(
-                    "Diagnostic defender did not propose the expected bounded action"
+            actions: tuple[DefensiveAction, ...]
+            proposed_actions: tuple[DefensiveAction, ...]
+            if prospective:
+                reading, candidate = static_review_candidate(observation, ordinal, protocol_version)
+                audit.emit(
+                    "baseline_decision",
+                    tick=reading.tick,
+                    entity_id=reading.subject_id or "synthetic-unknown",
+                    outcome="abstained" if candidate is None else "proposed",
+                    payload={
+                        "observation_id": observation.id,
+                        "observation_sha256": canonical_sha256(reading),
+                        "policy": STATIC_REVIEW_VERSION,
+                        "candidate_action_id": candidate.id if candidate else None,
+                    },
                 )
-
-            actions = _build_actions(scenario, protocol_version, observation.tick)
+                if candidate is None:
+                    continue
+                actions = proposed_actions = (candidate,)
+                defender_id = STATIC_REVIEW_VERSION
+            else:
+                context = DefenderContext(
+                    id=f"defender-context-{observation.id}",
+                    tick=observation.tick,
+                    configuration_version=protocol_version,
+                    evidence=tuple(evidence_items),
+                    belief_state=belief_state,
+                    environment=state,
+                )
+                defender_decision = defender.decide(context)
+                if observation.event_kind != "simulated_adversary" or actions_processed:
+                    continue
+                if not defender_decision.proposed_actions:
+                    raise RuntimeError(
+                        "Diagnostic defender did not propose the expected bounded action"
+                    )
+                proposed_actions = defender_decision.proposed_actions
+                actions = _build_actions(scenario, protocol_version, observation.tick)
+                defender_id = defender.defender_id
             observed_dispositions: set[PolicyDisposition] = set()
             for action in actions:
                 matching_proposal = next(
                     (
                         proposed
-                        for proposed in defender_decision.proposed_actions
+                        for proposed in proposed_actions
                         if _proposal_matches_candidate(proposed, action)
                     ),
                     None,
                 )
                 proposer = (
-                    defender.defender_id
-                    if matching_proposal is not None
-                    else "diagnostic-safety-probe"
+                    defender_id if matching_proposal is not None else "diagnostic-safety-probe"
                 )
                 audit.emit(
                     "candidate_action",
@@ -1504,6 +1535,8 @@ def _run_diagnostic_worker(
                     },
                 )
                 if decision.permits_execution:
+                    if prospective:
+                        raise RuntimeError("Human review requires a withheld execution")
                     if matching_proposal is None:
                         raise RuntimeError(
                             "Governor-approved diagnostic candidate was not proposed "
@@ -1577,6 +1610,17 @@ def _run_diagnostic_worker(
                             },
                         )
                 else:
+                    withheld = {"reason": "governor disposition did not permit execution"}
+                    if prospective:
+                        after_digest = canonical_sha256(state)
+                        if decision.state_digest != snapshot.environment_digest or (
+                            snapshot.environment_digest != after_digest
+                        ):
+                            raise RuntimeError("Withheld human review changed the governed state")
+                        withheld.update(
+                            state_before_digest=snapshot.environment_digest,
+                            state_after_digest=after_digest,
+                        )
                     audit.emit(
                         "verification",
                         tick=decision.tick,
@@ -1584,7 +1628,7 @@ def _run_diagnostic_worker(
                         action_id=action.id,
                         disposition=decision.disposition.value,
                         outcome="not_executed",
-                        payload={"reason": "governor disposition did not permit execution"},
+                        payload=withheld,
                     )
                 audit.emit(
                     "audit",
@@ -1600,15 +1644,15 @@ def _run_diagnostic_worker(
                 PolicyDisposition.ESCALATE,
                 PolicyDisposition.PROHIBIT,
             }
-            if not required_dispositions.issubset(observed_dispositions):
+            if not prospective and not required_dispositions.issubset(observed_dispositions):
                 raise RuntimeError(
                     "Diagnostic did not exercise allowed, escalated, and prohibited decisions"
                 )
             actions_processed = True
 
-        if not actions_processed:
+        if not prospective and not actions_processed:
             raise RuntimeError("Diagnostic adversary event did not exercise candidate actions")
-        final_tick = float(max((observation.tick for observation in observations), default=0))
+        final_tick = float(state.tick)
         audit.emit(
             "manifest",
             tick=final_tick,
@@ -1889,7 +1933,7 @@ def _selected_invocation_seed(
     seed_registry = _load_json_config(_assert_controlled_config(seed_registry_path, repository))
     baseline = load_yaml_config(
         _assert_controlled_config(
-            baseline_path or repository / "configs" / "defenders" / "diagnostic_baseline.yaml",
+            baseline_path or repository / "configs" / "defenders" / DEFAULT_BASELINE_FILE,
             repository,
         )
     )
@@ -1934,7 +1978,7 @@ def _deny_reportable_without_invocation(
     seed_registry = _load_json_config(_assert_controlled_config(seed_registry_path, repository))
     baseline_definition = load_yaml_config(
         _assert_controlled_config(
-            baseline_path or repository / "configs" / "defenders" / "diagnostic_baseline.yaml",
+            baseline_path or repository / "configs" / "defenders" / DEFAULT_BASELINE_FILE,
             repository,
         )
     )

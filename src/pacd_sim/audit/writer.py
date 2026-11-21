@@ -29,6 +29,7 @@ EventType = Literal[
     "evidence",
     "state_update",
     "hypothesis",
+    "baseline_decision",
     "candidate_action",
     "safety_decision",
     "simulated_execution",
