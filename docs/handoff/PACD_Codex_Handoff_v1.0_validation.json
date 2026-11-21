@@ -1,0 +1,32 @@
+{
+  "package": "PACD_Codex_Handoff_v1.0",
+  "checked_utc": "2026-11-21T21:37:23.066457+00:00",
+  "result": "PASS_DOCUMENTATION_PACKAGE_INTEGRITY",
+  "archive_bytes": 179920,
+  "archive_sha256": "6638f07a881856f528a1c1ec728fa040b9a42352c96547e0285671ae9a256126",
+  "archive_members": 31,
+  "payload_files": 29,
+  "source_units": 558,
+  "source_counts": {
+    "WO": 160,
+    "EC": 140,
+    "TM": 81,
+    "FM": 59,
+    "MD": 118
+  },
+  "original_fields_preserved": true,
+  "source_line_matches": 558,
+  "unique_metric_ids": 47,
+  "work_packages": 16,
+  "workstreams_covered_excluding_wp00": 18,
+  "start_dependency_graph_acyclic": true,
+  "explicit_final_completion_gates": true,
+  "relative_markdown_targets_checked": 32,
+  "original_source_export_byte_matches": 5,
+  "zip_crc": "PASS",
+  "manifest_hashes": "PASS",
+  "checksum_list": "PASS",
+  "safe_archive_member_paths": "PASS",
+  "runtime_tests": "UNEXECUTED: documentation-only handoff packaging",
+  "implementation_acceptance": "NOT_ISSUED"
+}

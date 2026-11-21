@@ -191,3 +191,9 @@ research-implementation requirements. See the [scope continuity crosswalk](docs/
 [preserved planning sources](docs/reference/phase2-original-2026-08-23/README.md).
 A proposed next-phase label or first integrated mechanism does not remove remaining work.
 
+
+## Codex continuation package
+
+[Download the complete PACD Codex handoff package v1.0](docs/handoff/PACD_Codex_Handoff_v1.0.zip), or read [Start Here](docs/handoff/PACD_Codex_Handoff_v1.0/00_START_HERE.md). The package includes the full continuation prompt, a sixteen-package remaining-work register, the immediate reconciliation and comparison-plan work order, independent-review and session-handoff prompts, the five original sources, and a 558-unit reconciliation template.
+
+The package preserves all eighteen original workstreams and refreshes live repository state before continuation. Its proposed delivery sequence does not create implementation, merge or reportable-run approval. [Package integrity receipt](docs/handoff/PACD_Codex_Handoff_v1.0_validation.json).

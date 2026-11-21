@@ -1,0 +1,259 @@
+{
+  "package": "PACD_Codex_Handoff_v1.0",
+  "version": "1.0",
+  "created_utc": "2026-11-21T21:37:23.028766+00:00",
+  "repository": "mthiessmeier/pacd-simulation",
+  "repository_checkpoint": {
+    "package_version": "1.0",
+    "verified_at_utc": "2026-11-21 21:21:50 UTC",
+    "repository": "mthiessmeier/pacd-simulation",
+    "repository_url": "https://github.com/mthiessmeier/pacd-simulation",
+    "repository_visibility": "private",
+    "observed_main_sha": "df33295469094a5ed9aa26fcc4b1fa1d019d3e5c",
+    "accepted_phase2_implementation_sha": "d5a29699e14409bfd54d30c51117c81077639ee6",
+    "phase2_acceptance_url": "https://github.com/mthiessmeier/pacd-simulation/pull/8#issuecomment-7068565861",
+    "scope_preservation_source_sha": "c4e200595377cf64c6129dec61712d04412d1ec2",
+    "evidence_classification": "NON_REPORTABLE_DIAGNOSTIC",
+    "source_unit_count": 558,
+    "workstream_count": 18,
+    "metric_count": 47,
+    "defender_condition_count": 8,
+    "draft_ablation_count": 10,
+    "fairness_dimension_count": 16,
+    "main_agents_blob": "92678b83f5cf21342811b1cbaaa84846b7a4b66e",
+    "prs": [
+      {
+        "number": 11,
+        "url": "https://github.com/mthiessmeier/pacd-simulation/pull/11",
+        "state": "open",
+        "merged": false,
+        "draft": true,
+        "head_sha": "c4e200595377cf64c6129dec61712d04412d1ec2",
+        "base_sha": "df33295469094a5ed9aa26fcc4b1fa1d019d3e5c",
+        "title": "docs: preserve full original Phase 2 scope across future increments"
+      },
+      {
+        "number": 10,
+        "url": "https://github.com/mthiessmeier/pacd-simulation/pull/10",
+        "state": "closed",
+        "merged": true,
+        "draft": false,
+        "head_sha": "0a9ac71dff834ef3c781aceb267a73a58835db0a",
+        "base_sha": "d5a29699e14409bfd54d30c51117c81077639ee6",
+        "title": "Pin the evaluator README to the accepted Phase 2 merge"
+      },
+      {
+        "number": 9,
+        "url": "https://github.com/mthiessmeier/pacd-simulation/pull/9",
+        "state": "open",
+        "merged": false,
+        "draft": true,
+        "head_sha": "148b2cdb92a2046574b56201cfa9ee9510589a49",
+        "base_sha": "9c9dfcec659870c41aa7cc95846d6760d9c31df7",
+        "title": "docs: add persistent Codex session handoff policy to AGENTS.md"
+      },
+      {
+        "number": 8,
+        "url": "https://github.com/mthiessmeier/pacd-simulation/pull/8",
+        "state": "closed",
+        "merged": true,
+        "draft": false,
+        "head_sha": "9f58a43021eb1efe159a55b4540e0e872b963349",
+        "base_sha": "9c9dfcec659870c41aa7cc95846d6760d9c31df7",
+        "title": "Account for registered diagnostic attempts in Increment 6 metrics"
+      }
+    ],
+    "refresh_rule": "Recheck live source, worktree, approvals and PR states; checkpoint SHAs do not authorize resetting a newer checkout.",
+    "implementation_authority": "This package records scope and prepares the next work order. Execute implementation only within the latest applicable author authorization; do not manufacture a Phase 3 approval.",
+    "test_evidence": "Acceptance-record results only. Simulator tests were not rerun while building this package."
+  },
+  "classification": "NON_REPORTABLE_DIAGNOSTIC",
+  "notice": "Package integrity checks identify these files; they do not authenticate author approval or establish empirical validity. Original exports retain their disclosed normalization and draft status.",
+  "coverage": {
+    "source_units": 558,
+    "workstreams": 18,
+    "work_packages": 16,
+    "metric_ids": 47,
+    "conditions": 8,
+    "draft_ablations": 10,
+    "fairness_dimensions": 16,
+    "polymorphism_classes": 6
+  },
+  "exclusions": "No simulator code, installer, run artifacts, approval record, final reportable seeds or operational execution adapter is included.",
+  "files": [
+    {
+      "path": "00_START_HERE.md",
+      "bytes": 4777,
+      "sha256": "9c1ba7e824dab6073c95fe78f999a68d9e520e70142f51e6654db57dc7b98868",
+      "provenance": "Prepared continuation instructions; proposed delivery sequence, not new author approval."
+    },
+    {
+      "path": "01_CODEX_START_PROMPT.txt",
+      "bytes": 7513,
+      "sha256": "d35521ad2435c790754c617792dae29e1d2e074ddcaea570a2f02715142fa7d0",
+      "provenance": "Prepared continuation instructions; proposed delivery sequence, not new author approval."
+    },
+    {
+      "path": "02_STATE_AND_SCOPE.md",
+      "bytes": 6111,
+      "sha256": "c8618a0f13ab2e2981134409b0fe94cf5b4afa13251470507113d21a2d78f1d3",
+      "provenance": "Prepared continuation instructions; proposed delivery sequence, not new author approval."
+    },
+    {
+      "path": "03_REMAINING_WORK.md",
+      "bytes": 25845,
+      "sha256": "730746db8f68af30f913bbb1fd77217a7aa54427f696d6c85b0c6ca43fc049a1",
+      "provenance": "Prepared continuation instructions; proposed delivery sequence, not new author approval."
+    },
+    {
+      "path": "04_IMMEDIATE_WORK_ORDER.md",
+      "bytes": 13549,
+      "sha256": "a4b1ad37b5abf2aa888a72c06ea355b016d72ef743b9aa25477ab558c34a42af",
+      "provenance": "Prepared continuation instructions; proposed delivery sequence, not new author approval."
+    },
+    {
+      "path": "05_INDEPENDENT_REVIEW_PROMPT.txt",
+      "bytes": 3038,
+      "sha256": "89d60e708235b37ca313b59f4bcbd691d633d81e8bd728d3f650422386e248b0",
+      "provenance": "Prepared continuation instructions; proposed delivery sequence, not new author approval."
+    },
+    {
+      "path": "06_SESSION_HANDOFF_TEMPLATE.md",
+      "bytes": 2374,
+      "sha256": "f5d93bb29d76b999c01d289a912a51700de98f85fd101d11c8f9bce850c36e69",
+      "provenance": "Prepared continuation instructions; proposed delivery sequence, not new author approval."
+    },
+    {
+      "path": "07_WORK_PACKAGE_REGISTER.json",
+      "bytes": 35238,
+      "sha256": "fbe60eeda8609a4696d153f4ba84e2842bba4c5203fb1b91808af0c0655d33dd",
+      "provenance": "Prepared continuation instructions; proposed delivery sequence, not new author approval."
+    },
+    {
+      "path": "08_SOURCE_UNIT_RECONCILIATION.csv",
+      "bytes": 336981,
+      "sha256": "259209d49e39ae3524fa8d2071a46f13182dcdc51965b12a39eebbaa4d03dd2f",
+      "provenance": "Working template: original 558 source units retained exactly, with empty classification/evidence/mapping fields for WP00."
+    },
+    {
+      "path": "09_STATE_SNAPSHOT.json",
+      "bytes": 2855,
+      "sha256": "e5d812cfa7899a6f126976b5aac7c75900871526bf7f7ff65e4fe215fc18848a",
+      "provenance": "Observed GitHub checkpoint; refresh before acting."
+    },
+    {
+      "path": "reference/AGENTS_MAIN_SNAPSHOT.md",
+      "bytes": 15353,
+      "sha256": "bc2cc6e953e9c4ff97c33e806f5f145583efd5f6952b9e61a438af2c9bf09c39",
+      "provenance": "Retained reference only; live AGENTS.md, decisions and current PR state govern. See 02_STATE_AND_SCOPE.md."
+    },
+    {
+      "path": "reference/PHASE2_ACCEPTANCE_PR8.md",
+      "bytes": 3117,
+      "sha256": "dc84aab3283f0c8a1f166bd2b5151be702f549638e8a99d3b26afa5771e611eb",
+      "provenance": "Retained reference only; live AGENTS.md, decisions and current PR state govern. See 02_STATE_AND_SCOPE.md."
+    },
+    {
+      "path": "reference/PR10_EVALUATOR_VERIFICATION.md",
+      "bytes": 1588,
+      "sha256": "832e05ee8964c4110b2e44f74a7c914f50ef8a74b258d58a4f92151b5b982274",
+      "provenance": "Retained reference only; live AGENTS.md, decisions and current PR state govern. See 02_STATE_AND_SCOPE.md."
+    },
+    {
+      "path": "reference/PR9_AGENTS_PROPOSAL.md",
+      "bytes": 19114,
+      "sha256": "18e227ae40706abcb0f2ae715485832624305b7fbb461a4a7da95daad4a964db",
+      "provenance": "Retained reference only; live AGENTS.md, decisions and current PR state govern. See 02_STATE_AND_SCOPE.md."
+    },
+    {
+      "path": "repository_snapshot/README.md",
+      "bytes": 11276,
+      "sha256": "afb6f56b3593fb4e264bc71c0a3d897b72c251f487765829b2721646a9360e74",
+      "provenance": "Repository scope-preservation snapshot at c4e200595377cf64c6129dec61712d04412d1ec2"
+    },
+    {
+      "path": "repository_snapshot/docs/ARCHITECTURE.md",
+      "bytes": 6091,
+      "sha256": "ec17e7210cd46b9a87c1b129395f4e8daa1b5cd151d471344046308032cd3024",
+      "provenance": "Repository snapshot at df33295469094a5ed9aa26fcc4b1fa1d019d3e5c"
+    },
+    {
+      "path": "repository_snapshot/docs/EXECUTION_IDENTITY_ASSURANCE.md",
+      "bytes": 4138,
+      "sha256": "6ede7786ee8f28202317bd00e7be3103d9ea6fc37be3fa7681d368972f250ff6",
+      "provenance": "Repository snapshot at df33295469094a5ed9aa26fcc4b1fa1d019d3e5c"
+    },
+    {
+      "path": "repository_snapshot/docs/PHASE2_ORIGINAL_SCOPE_INVENTORY.csv",
+      "bytes": 266259,
+      "sha256": "8507006f426ffe4cf1e1ae17b463f12c1d2b4b3045735566f817c63ee52b0485",
+      "provenance": "Repository scope-preservation snapshot at c4e200595377cf64c6129dec61712d04412d1ec2"
+    },
+    {
+      "path": "repository_snapshot/docs/PHASE2_SCOPE_CONTINUITY.md",
+      "bytes": 22220,
+      "sha256": "b25a011fe76ffd2c46377f3cfd8a141fd2b43a06e285152af5fdc08e38928a21",
+      "provenance": "Repository scope-preservation snapshot at c4e200595377cf64c6129dec61712d04412d1ec2"
+    },
+    {
+      "path": "repository_snapshot/docs/application_demo/README.md",
+      "bytes": 21671,
+      "sha256": "5527e45b8b90adb34d37b032e907ede616cc8c087311cc4734f6968f2b2114ae",
+      "provenance": "Repository snapshot at df33295469094a5ed9aa26fcc4b1fa1d019d3e5c"
+    },
+    {
+      "path": "repository_snapshot/docs/reference/phase2-original-2026-08-23/PACD_Baseline_Fairness_Matrix_v0.1.md",
+      "bytes": 6739,
+      "sha256": "8816588699c9774a09a17c8ffc609d908496fc167e06a3805b03469a501d822a",
+      "provenance": "Repository scope-preservation snapshot at c4e200595377cf64c6129dec61712d04412d1ec2"
+    },
+    {
+      "path": "repository_snapshot/docs/reference/phase2-original-2026-08-23/PACD_Metric_Dictionary_and_Data_Schema_v0.1.md",
+      "bytes": 12921,
+      "sha256": "50d98c1e1606183e9fd855ccd3a8d3d7a050ab93ea03a6485e7b3ade62f92385",
+      "provenance": "Repository scope-preservation snapshot at c4e200595377cf64c6129dec61712d04412d1ec2"
+    },
+    {
+      "path": "repository_snapshot/docs/reference/phase2-original-2026-08-23/PACD_Simulator_Phase2_Architecture_to_Code_Traceability_v0.1.md",
+      "bytes": 17147,
+      "sha256": "d74efa624a8a85829d73f20d37fdc21f702756ca26705932616371229e9de7f1",
+      "provenance": "Repository scope-preservation snapshot at c4e200595377cf64c6129dec61712d04412d1ec2"
+    },
+    {
+      "path": "repository_snapshot/docs/reference/phase2-original-2026-08-23/PACD_Simulator_Phase2_Work_Order_v1.0.md",
+      "bytes": 11572,
+      "sha256": "fb565680c4d7680a8a8b5e6f2e499f646be6c601646b9c01eba4353345e51c9b",
+      "provenance": "Repository scope-preservation snapshot at c4e200595377cf64c6129dec61712d04412d1ec2"
+    },
+    {
+      "path": "repository_snapshot/docs/reference/phase2-original-2026-08-23/PACD_Technical_Report_001_Experimental_Charter_Draft_v0.1.md",
+      "bytes": 10635,
+      "sha256": "cadf451d12594359d5aee816cb788a83f21c4a59dbcb15f408dfe5ed0a8b08dc",
+      "provenance": "Repository scope-preservation snapshot at c4e200595377cf64c6129dec61712d04412d1ec2"
+    },
+    {
+      "path": "repository_snapshot/docs/reference/phase2-original-2026-08-23/README.md",
+      "bytes": 4684,
+      "sha256": "398f1d02442a0026d4e6cd01e999560eec156ba7e6ed5ed83c15e8710ed2ab52",
+      "provenance": "Repository scope-preservation snapshot at c4e200595377cf64c6129dec61712d04412d1ec2"
+    },
+    {
+      "path": "repository_snapshot/schemas/README.md",
+      "bytes": 7371,
+      "sha256": "ba08831f0e298536e28d8d9196cc2214551afcdd077a8ab6f6a782edd490a778",
+      "provenance": "Repository snapshot at df33295469094a5ed9aa26fcc4b1fa1d019d3e5c"
+    },
+    {
+      "path": "repository_snapshot/status/PHASE2_INCREMENT1.md",
+      "bytes": 8852,
+      "sha256": "a4572212c76e02fa4b5be59fd99e3f103a1568bbac53eb588b67fe67427e29bc",
+      "provenance": "Repository snapshot at df33295469094a5ed9aa26fcc4b1fa1d019d3e5c"
+    },
+    {
+      "path": "repository_snapshot/status/SCOPE_PRESERVATION_2026-11-21.md",
+      "bytes": 2736,
+      "sha256": "3e3cf455108bd65ea74acfe79aa5f13d12915f5a1bcc3544e3794334574a569a",
+      "provenance": "Repository scope-preservation snapshot at c4e200595377cf64c6129dec61712d04412d1ec2"
+    }
+  ]
+}
