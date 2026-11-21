@@ -13,6 +13,7 @@ from dataclasses import dataclass, fields, replace
 from pathlib import Path
 from typing import cast
 
+from pacd_sim.comparison import ComparisonInputs
 from pacd_sim.configuration import EventConfig, ScenarioConfig
 from pacd_sim.constants import EVIDENCE_LABEL
 from pacd_sim.defenders.base import BaselineObservation
@@ -142,6 +143,7 @@ class VerifiedSummary:
     csv_sha256: str
     parquet_sha256: str
     observations: tuple[BaselineObservation, ...] = ()
+    comparison_inputs: ComparisonInputs | None = None
 
 
 @dataclass(frozen=True)
@@ -339,6 +341,7 @@ def _verify_run_impl(
     repo_root: Path | str | None = None,
     include_event_sequence: bool = False,
     include_observations: bool = False,
+    include_comparison_inputs: bool = False,
 ) -> tuple[VerificationResult, VerifiedSummary | None]:
     """Implement complete verification behind the public defensive boundary."""
     errors: list[str] = []
@@ -912,6 +915,11 @@ def _verify_run_impl(
             csv_sha256=artifact_snapshots["derived/episode_summary.csv"].sha256,
             parquet_sha256=artifact_snapshots["derived/episode_summary.parquet"].sha256,
             observations=observations,
+            comparison_inputs=ComparisonInputs.from_inputs(
+                canonical_config, seed_registry, cast(str, manifest["code_commit"])
+            )
+            if include_comparison_inputs
+            else None,
         )
     return result, None
 
@@ -923,6 +931,7 @@ def verify_run_with_summary(
     repo_root: Path | str | None = None,
     include_event_sequence: bool = False,
     include_observations: bool = False,
+    include_comparison_inputs: bool = False,
 ) -> tuple[VerificationResult, VerifiedSummary | None]:
     """Release the summary and requested sensor fields only after full local verification."""
 
@@ -933,6 +942,7 @@ def verify_run_with_summary(
             repo_root=repo_root,
             include_event_sequence=include_event_sequence,
             include_observations=include_observations,
+            include_comparison_inputs=include_comparison_inputs,
         )
     except RecursionError as error:
         return VerificationResult(

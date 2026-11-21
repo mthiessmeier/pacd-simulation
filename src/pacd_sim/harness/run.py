@@ -26,6 +26,7 @@ from yaml.nodes import MappingNode, Node, ScalarNode, SequenceNode
 
 from pacd_sim.actions.models import DefensiveAction, RequestedAuthority
 from pacd_sim.audit.writer import AuditWriter, EventType
+from pacd_sim.comparison import ComparisonInputs, ComparisonPlan, PlannedAttempt
 from pacd_sim.configuration import DiagnosticInputs, ScenarioConfig
 from pacd_sim.constants import (
     DEFAULT_BASELINE_FILE,
@@ -77,7 +78,11 @@ from pacd_sim.reproducibility.paths import (
     path_has_symlink_or_reparse,
     resolve_workspace_root,
 )
-from pacd_sim.reproducibility.receipts import create_execution_receipt, receipt_path_for
+from pacd_sim.reproducibility.receipts import (
+    create_execution_receipt,
+    receipt_path_for,
+    valid_ownership_shape,
+)
 from pacd_sim.reproducibility.reportable import (
     ReportableModeDenied,
     git_commit,
@@ -95,24 +100,6 @@ _MAX_DIAGNOSTIC_EVENTS = 100
 _MAX_DIAGNOSTIC_ACTIONS = 100
 _MAX_DIAGNOSTIC_SECONDS = 300.0
 _MAX_PARENT_MANIFEST_BYTES = 1024 * 1024
-_OWNERSHIP_VERSION = "1.0"
-_OWNERSHIP_KEYS = frozenset(
-    {
-        "capability_sha256",
-        "created_at",
-        "evidence_label",
-        "final_run_path",
-        "invocation_id",
-        "ownership_version",
-        "receipt_capability_sha256",
-        "run_id",
-        "schema_version",
-        "seed",
-        "staging_device",
-        "staging_inode",
-        "staging_path",
-    }
-)
 
 
 class ConfigurationError(ValueError):
@@ -574,12 +561,20 @@ def _validate_loaded_configuration_bundle(
 
 def validate_diagnostic_configuration_files(
     repo_root: Path | str,
+    *,
+    scenario_file: str = DEFAULT_SCENARIO_FILE,
+    defender_file: str = DEFAULT_BASELINE_FILE,
 ) -> dict[str, str]:
-    """Validate the shipped scenario/defender pairs and return the default bundle's hashes."""
+    """Validate the shipped pairs and return canonical hashes for the selected pair."""
     repository = Path(repo_root).resolve(strict=True)
+    if (
+        scenario_file not in DIAGNOSTIC_SCENARIO_FILES
+        or defender_file not in DIAGNOSTIC_BASELINE_FILES
+    ):
+        raise ConfigurationError("Select a governed diagnostic scenario and defender filename")
     scenario = load_yaml_config(
         _assert_controlled_config(
-            repository / "configs" / "scenarios" / DEFAULT_SCENARIO_FILE,
+            repository / "configs" / "scenarios" / scenario_file,
             repository,
         )
     )
@@ -597,7 +592,7 @@ def validate_diagnostic_configuration_files(
     )
     baseline_definition = load_yaml_config(
         _assert_controlled_config(
-            repository / "configs" / "defenders" / DEFAULT_BASELINE_FILE,
+            repository / "configs" / "defenders" / defender_file,
             repository,
         )
     )
@@ -614,13 +609,13 @@ def validate_diagnostic_configuration_files(
         baseline_definition,
         metric_definition,
     )
-    for defender_file in DIAGNOSTIC_BASELINE_FILES:
-        defender_path = repository / "configs" / "defenders" / defender_file
+    for other_defender in DIAGNOSTIC_BASELINE_FILES:
+        defender_path = repository / "configs" / "defenders" / other_defender
         definition = load_yaml_config(_assert_controlled_config(defender_path, repository))
-        for scenario_file in DIAGNOSTIC_SCENARIO_FILES:
-            if (scenario_file, defender_file) == (DEFAULT_SCENARIO_FILE, DEFAULT_BASELINE_FILE):
+        for other_scenario in DIAGNOSTIC_SCENARIO_FILES:
+            if (other_scenario, other_defender) == (scenario_file, defender_file):
                 continue  # Already validated above for the returned hashes.
-            scenario_path = repository / "configs" / "scenarios" / scenario_file
+            scenario_path = repository / "configs" / "scenarios" / other_scenario
             _validate_loaded_configuration_bundle(
                 load_yaml_config(_assert_controlled_config(scenario_path, repository)),
                 policy_config,
@@ -628,15 +623,9 @@ def validate_diagnostic_configuration_files(
                 definition,
                 metric_definition,
             )
-    canonical_config: dict[str, object] = {
-        "evidence_label": EVIDENCE_LABEL,
-        "schema_version": SCHEMA_VERSION,
-        "protocol_version": protocol_version,
-        "scenario": scenario,
-        "safety_policy": policy_config,
-        "baseline_definition": baseline_definition,
-        "metric_definition": metric_definition,
-    }
+    canonical_config = _canonical_bundle(
+        protocol_version, scenario, policy_config, baseline_definition, metric_definition
+    )
     return {
         "protocol_version": protocol_version,
         "config_hash": canonical_sha256(canonical_config),
@@ -699,6 +688,8 @@ class _InvocationOwnership:
     marker_inode: int
     marker_size: int
     marker_mtime_ns: int
+    plan_sha256: str | None = None
+    planned_attempt: PlannedAttempt | None = None
 
 
 def _validate_invocation_id(invocation_id: str) -> None:
@@ -759,7 +750,7 @@ def _ownership_marker_value(
         "evidence_label": EVIDENCE_LABEL,
         "final_run_path": str(final_run_dir),
         "invocation_id": invocation_id,
-        "ownership_version": _OWNERSHIP_VERSION,
+        "ownership_version": "1.0",
         "receipt_capability_sha256": hashlib.sha256(bytes.fromhex(receipt_capability)).hexdigest(),
         "run_id": run_id,
         "schema_version": SCHEMA_VERSION,
@@ -776,11 +767,14 @@ def _create_invocation_ownership(
     seed: int,
     *,
     invocation_id: str | None = None,
+    plan: ComparisonPlan | None = None,
 ) -> _InvocationOwnership:
     """Exclusively establish exact staging ownership before a worker starts."""
 
     selected_invocation_id = uuid4().hex if invocation_id is None else invocation_id
     _validate_invocation_id(selected_invocation_id)
+    attempt = plan.select(invocation_id) if plan is not None else None
+    plan_digest = canonical_sha256(plan) if plan is not None else None
     if isinstance(seed, bool) or not isinstance(seed, int) or seed < 0:
         raise ValueError("Diagnostic invocation seed is invalid")
     workspace = resolve_workspace_root(workspace_root)
@@ -859,6 +853,8 @@ def _create_invocation_ownership(
         staging_device=staging_stat.st_dev,
         staging_inode=staging_stat.st_ino,
     )
+    if plan_digest is not None:
+        marker.update(ownership_version="1.1", plan_sha256=plan_digest)
     if _invocation_control_path(workspace, selected_invocation_id, marker=True) != marker_path:
         raise PathBoundaryError("Invocation marker lexical path changed before creation")
     with marker_path.open("xb") as handle:
@@ -889,6 +885,8 @@ def _create_invocation_ownership(
         marker_inode=marker_stat.st_ino,
         marker_size=marker_stat.st_size,
         marker_mtime_ns=marker_stat.st_mtime_ns,
+        plan_sha256=plan_digest,
+        planned_attempt=attempt,
     )
 
 
@@ -1023,14 +1021,14 @@ def _validate_invocation_ownership(
     ):
         raise RuntimeError("Invocation ownership marker changed during stable read")
     marker = json.loads(marker_bytes, object_pairs_hook=_unique_json_object)
-    if not isinstance(marker, dict) or frozenset(marker) != _OWNERSHIP_KEYS:
+    if not isinstance(marker, dict) or not valid_ownership_shape(marker):
         raise RuntimeError("Invocation ownership marker shape is invalid")
     expected_marker_values: dict[str, object] = {
         "created_at": ownership.started_at,
         "evidence_label": EVIDENCE_LABEL,
         "final_run_path": str(ownership.final_run_dir),
         "invocation_id": ownership.invocation_id,
-        "ownership_version": _OWNERSHIP_VERSION,
+        "ownership_version": "1.1" if ownership.plan_sha256 is not None else "1.0",
         "run_id": ownership.run_id,
         "schema_version": SCHEMA_VERSION,
         "seed": ownership.seed,
@@ -1038,6 +1036,8 @@ def _validate_invocation_ownership(
         "staging_inode": ownership.staging_inode,
         "staging_path": str(ownership.staging_dir),
     }
+    if ownership.plan_sha256 is not None:
+        expected_marker_values["plan_sha256"] = ownership.plan_sha256
     if canonical_json_bytes(marker) != marker_bytes or any(
         marker.get(key) != expected for key, expected in expected_marker_values.items()
     ):
@@ -1250,15 +1250,13 @@ def _run_diagnostic_worker(
     if selected_seed != _ownership.seed:
         raise ConfigurationError("Selected seed differs from parent invocation authority")
 
-    canonical_config: dict[str, object] = {
-        "evidence_label": EVIDENCE_LABEL,
-        "schema_version": SCHEMA_VERSION,
-        "protocol_version": protocol_version,
-        "scenario": scenario,
-        "safety_policy": policy_config,
-        "baseline_definition": baseline_definition,
-        "metric_definition": metric_definition,
-    }
+    canonical_config = _canonical_bundle(
+        protocol_version, scenario, policy_config, baseline_definition, metric_definition
+    )
+    if _ownership.planned_attempt is not None:
+        _check_planned_inputs(
+            _ownership.planned_attempt, repository, selected_seed, canonical_config, seed_registry
+        )
     config_hash = canonical_sha256(canonical_config)
     scenario_hash = canonical_sha256(scenario)
     safety_policy_hash = canonical_sha256(policy_config)
@@ -1948,6 +1946,38 @@ def _required_receipt_capability(ownership: _InvocationOwnership) -> str:
     return capability
 
 
+def _canonical_bundle(
+    protocol_version: str,
+    scenario: Mapping[str, object],
+    policy: Mapping[str, object],
+    baseline: Mapping[str, object],
+    metrics: Mapping[str, object],
+) -> dict[str, object]:
+    return {
+        "evidence_label": EVIDENCE_LABEL,
+        "schema_version": SCHEMA_VERSION,
+        "protocol_version": protocol_version,
+        "scenario": scenario,
+        "safety_policy": policy,
+        "baseline_definition": baseline,
+        "metric_definition": metrics,
+    }
+
+
+def _check_planned_inputs(
+    attempt: PlannedAttempt,
+    repository: Path,
+    seed: int,
+    canonical_config: Mapping[str, object],
+    seed_registry: Mapping[str, object],
+) -> None:
+    if Path(__file__).resolve().parents[3] != repository or git_is_dirty(repository):
+        raise ValueError("Planned execution requires the clean checkout running this harness")
+    observed = ComparisonInputs.from_inputs(canonical_config, seed_registry, git_commit(repository))
+    if attempt.seed != seed or attempt.expected != observed:
+        raise ValueError("Governed inputs, code revision or seed differ from planned attempt")
+
+
 def _selected_invocation_seed(
     scenario_path: Path | str,
     policy_path: Path | str,
@@ -1957,6 +1987,7 @@ def _selected_invocation_seed(
     *,
     baseline_path: Path | str | None,
     metric_path: Path | str | None,
+    planned_attempt: PlannedAttempt | None = None,
 ) -> int:
     """Fully validate controlled inputs in the parent before allocating ownership."""
 
@@ -1975,7 +2006,7 @@ def _selected_invocation_seed(
             repository,
         )
     )
-    _protocol_version, registered = _validate_loaded_configuration_bundle(
+    protocol_version, registered = _validate_loaded_configuration_bundle(
         scenario,
         policy,
         seed_registry,
@@ -1991,6 +2022,9 @@ def _selected_invocation_seed(
         raise ConfigurationError("Selected seed must be an integer")
     if selected not in registered:
         raise ConfigurationError("Selected seed is not present in the controlled seed registry")
+    if planned_attempt is not None:
+        config = _canonical_bundle(protocol_version, scenario, policy, baseline, metrics)
+        _check_planned_inputs(planned_attempt, repository, selected, config, seed_registry)
     return selected
 
 
@@ -2062,6 +2096,7 @@ def _run_diagnostic_in_process(
     metric_path: Path | str | None = None,
     reportable: bool = False,
     invocation_id: str | None = None,
+    plan: ComparisonPlan | None = None,
 ) -> RunResult:
     """Parent-style in-process helper for hermetic tests; no worker self-provisioning."""
 
@@ -2087,12 +2122,14 @@ def _run_diagnostic_in_process(
         seed,
         baseline_path=baseline_path,
         metric_path=metric_path,
+        planned_attempt=plan.select(invocation_id) if plan is not None else None,
     )
     ownership = _create_invocation_ownership(
         Path(output_root),
         workspace,
         selected_seed,
         invocation_id=invocation_id,
+        plan=plan,
     )
     try:
         staged_result = _run_diagnostic_worker(
@@ -2277,6 +2314,7 @@ def run_diagnostic(
     metric_path: Path | str | None = None,
     reportable: bool = False,
     invocation_id: str | None = None,
+    plan: ComparisonPlan | None = None,
 ) -> RunResult:
     """Run one diagnostic in a killable process bounded to five wall-clock minutes."""
     repository, workspace = _validate_public_workspace(
@@ -2301,12 +2339,14 @@ def run_diagnostic(
         seed,
         baseline_path=baseline_path,
         metric_path=metric_path,
+        planned_attempt=plan.select(invocation_id) if plan is not None else None,
     )
     ownership = _create_invocation_ownership(
         Path(output_root),
         workspace,
         selected_seed,
         invocation_id=invocation_id,
+        plan=plan,
     )
     request = _DiagnosticRequest(
         scenario_path=str(Path(scenario_path)),

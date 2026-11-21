@@ -254,6 +254,19 @@ def read_stable_bytes(path: Path, *, max_bytes: int) -> bytes:
     return payload
 
 
+def valid_ownership_shape(marker: dict[str, object]) -> bool:
+    """Unplanned markers retain the v1 contract; planned markers add exactly one digest."""
+    if marker.get("ownership_version") == "1.0":
+        return marker.keys() == _OWNERSHIP_KEYS
+    digest = marker.get("plan_sha256")
+    return (
+        marker.get("ownership_version") == "1.1"
+        and marker.keys() == _OWNERSHIP_KEYS | {"plan_sha256"}
+        and isinstance(digest, str)
+        and _SHA256.fullmatch(digest) is not None
+    )
+
+
 def read_ownership_marker(workspace: Path, invocation_id: str) -> tuple[dict[str, object], str]:
     """Read the exact canonical marker and its content digest for one invocation."""
     _validate_invocation_id(invocation_id)
@@ -262,7 +275,7 @@ def read_ownership_marker(workspace: Path, invocation_id: str) -> tuple[dict[str
     if _ownership_control_path(workspace, invocation_id, marker=True) != path:
         raise ValueError("Invocation ownership marker lexical path changed")
     marker = json.loads(encoded, object_pairs_hook=_unique_object)
-    if not isinstance(marker, dict) or frozenset(marker) != _OWNERSHIP_KEYS:
+    if not isinstance(marker, dict) or not valid_ownership_shape(marker):
         raise ValueError("Invocation ownership marker keys are not exact")
     if canonical_json_bytes(marker) != encoded:
         raise ValueError("Invocation ownership marker is not canonical JSON")
@@ -381,7 +394,7 @@ def _validate_receipt_creation_authority(
         marker = json.loads(marker_bytes, object_pairs_hook=_unique_object)
     except RecursionError as error:
         raise ValueError("Invocation ownership marker is excessively nested") from error
-    if not isinstance(marker, dict) or frozenset(marker) != _OWNERSHIP_KEYS:
+    if not isinstance(marker, dict) or not valid_ownership_shape(marker):
         raise ValueError("Invocation ownership marker keys are not exact")
     if canonical_json_bytes(marker) != marker_bytes:
         raise ValueError("Invocation ownership marker is not canonical JSON")
@@ -395,7 +408,6 @@ def _validate_receipt_creation_authority(
         "evidence_label": EVIDENCE_LABEL,
         "final_run_path": str(final_run),
         "invocation_id": invocation_id,
-        "ownership_version": "1.0",
         "run_id": run_id,
         "schema_version": SCHEMA_VERSION,
         "seed": manifest.get("seed"),
@@ -703,7 +715,6 @@ def verify_execution_receipt(
             "evidence_label": EVIDENCE_LABEL,
             "final_run_path": str(final_run),
             "invocation_id": invocation_id,
-            "ownership_version": "1.0",
             "run_id": run_id,
             "schema_version": SCHEMA_VERSION,
             "seed": manifest.get("seed"),
