@@ -152,6 +152,38 @@ returns `ESCALATE`. The verification records equal before/after state digests,
 and the audit records zero executions. Human completion times, resource
 budgets and comparative performance are outside these diagnostic runs.
 
+## Trace the Increment 5 PACD planner
+
+The new planner asks whether the same observed subject produced an elevated
+signal on two distinct delivery ticks. Run it against a verified trace from
+either fixture and either diagnostic condition. From the checkout and frozen
+environment that produced `$first`, use the following commands.
+
+```powershell
+$result = & $uv run --frozen --no-sync pacd-sim defender-trace $first.run_dir --workspace-root $w | ConvertFrom-Json
+if ($LASTEXITCODE -or !$result.execution_identity_assured) { throw 'Defender trace failed verification' }
+$result.defender_trace.decisions | ConvertTo-Json -Depth 5
+$result.defender_trace.trace_sha256
+```
+
+The planner receives one delivery tick, observed subject and sensor signal at
+a time. A reading at or above 0.75 starts a pending episode for that subject.
+A second elevated reading on a distinct tick within three ticks proposes human
+review. Each elevated reading refreshes the window. After referral, further
+elevated readings in the same episode suppress duplicate proposals. A lower
+same-subject signal or a gap longer than three ticks clears the episode.
+Missing subjects abstain. The trace records the prior qualifying tick when
+available, the decision and any proposal. Its digest binds the policy version,
+rule settings, ordered readings and decisions.
+
+Each shipped fixture has a single elevated reading for its user at the two
+registered seeds. A reviewer can see the planner wait for more evidence and
+the episode end without a referral. This illustrates the cost of requiring
+confirmation. The threshold and window are diagnostic design choices. The
+command reads verified evidence and keeps the source run's decisions and
+state transitions intact. Prospective governor evaluation for this planner
+and any measurement of performance remain future work.
+
 ## Rebuild the summary from retained raw records
 
 This command derives one summary from the raw Parquet table held by the bounded verifier. After verification succeeds, it serializes that row, checks both output hashes against the verified artifact digests and writes fresh CSV and Parquet under `var/tmp`.
