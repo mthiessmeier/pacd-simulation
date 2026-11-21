@@ -1,6 +1,12 @@
 # Phase 2 Increment 1 candidate · 21 November 2026
 
-## Preflight and decision log
+## Owner decision for PR #2
+
+On November 21, 2026, Michael Thiessmeier designated §4 of the November continuation handoff and §§4, 6 and 7 of the bootstrap architecture as the governing equivalents for Increment 1. He confirmed that the five shipped configuration inputs for scenario, safety policy, seed registry, baseline definition and metric definition satisfy the increment. The broader configuration families in architecture §6 remain design targets for later work. The accepted architecture names 26 core records. The bootstrap supplied 22 and this increment adds four evidence records.
+
+The owner authorized adoption of the tested PR #3 lockfile into PR #2. Commit `3682df418ac8eb12d6b540f7974166694219f98f` supplies the lock with SHA-256 `2ed6b7134df13ce28adaed91bbed4198251fb98e46618f98608cfb8db6047b69`. It updates six distributions with advisories and the required transitive dependency python-discovery. The PR review and its exact-commit validation record track the results on this lock. PR #2 remains subject to the owner's separate merge decision. Simulator evidence retains the `NON_REPORTABLE_DIAGNOSTIC` classification.
+
+## Historical preflight and decision log
 
 The supplied Downloads folder contains the bootstrap handoff and historical review material. The approved simulator workspace is `%USERPROFILE%\PACD-Workspaces\PACD-Simulation`. Read-only discovery found a clean original checkout on `codex/environment-bootstrap-v1` at `d3d63bc213c386a7839bb7a2f05cfdafa3ca5eb3`. Its local main reference is stale. Private GitHub PR #1 merged into `main` at `a09991a3a6ed6ff3889138a787c61c8c545c1cd0`. The live annotated `pacd-bootstrap-v1.0` object is `cbd9517cb86888243ff6b02551aab6af3202c0c9` and peels to that merge. No later remote branch or pending increment was visible at discovery. A new, separate clone at `repo/pacd-phase2-i1` starts the candidate branch from that verified main. The old checkout, Downloads and publication files remain inputs.
 
@@ -22,7 +28,7 @@ The selected condition is the shipped `diagnostic_identity_smoke` scenario with 
 
 The single case contains three proposals, selected in advance from the accepted scenario. The questions are whether wire compatibility survives the schema change, whether the governor dispositions are retained separately from executed transitions, and whether replay and raw-to-derived regeneration agree. Neither independent sampling nor an effectiveness score is involved. Any failed invocation or inconsistent digest must be retained and explained. The snapshot is the code commit, five checked-in configs, `uv.lock`, `metrics/summarize.py`, `reproducibility/manifest.py`, and the regeneration script in the same tree. The retained manifest binds the exact run inputs. Separate gate runs are recorded locally under `review/phase2-i1-20261121`.
 
-## Source reconciliation
+## Source reconciliation at preflight
 
 | Requested source | Located record or gap | Consequence |
 |---|---|---|
