@@ -259,6 +259,54 @@ also carries the raw and summary semantic hashes. Incomplete, failed,
 corrupt or unauthenticated input returns a nonzero exit and no metrics.
 The original attempt remains available for inspection.
 
+## Account for a registered set of attempts
+
+An evaluator can declare up to 100 attempts in a workspace-local UTF-8 JSON
+file before the first run. The [top-level walkthrough](../../README.md#run-the-diagnostic)
+creates a register, records its digest, runs one slot and replays the set.
+The version is `pacd-attempt-register-v1`. Each row names one unique
+`attempt_id` (lowercase letter first, up to 64 letters, digits, underscores
+or hyphens), one unique 32-character lowercase hexadecimal `invocation_id`,
+and its nonnegative integer seed. The register is limited to 64 KiB.
+
+Use `pacd-sim metrics --register FILE` to read the canonical
+`register_sha256`. Retain that digest before launching any diagnostics.
+Pass the registered invocation ID and seed to `diagnostic`. Supply
+`--register-sha256 DIGEST` on later set reads. Changing membership, order,
+IDs or seeds changes the digest. A retry needs a fresh invocation ID and a
+separate slot. The ordinary diagnostic still generates a fresh ID by default.
+
+| Row status | Evidence and treatment |
+| --- | --- |
+| COMPLETED | Full content and execution-receipt verification succeeded. The row exposes the single-run metric object and its digest. |
+| FAILED | The parent-owned final directory contains a retained failure declaration. The row names the error type. |
+| TIMED_OUT | The retained failure type is `DiagnosticTimeoutError`. |
+| INCOMPLETE | No invocation was observed, allocation or staging is unfinished, or the bound run lacks a terminal record. The reason distinguishes these cases. |
+| INVALID | Evidence is corrupt, contradictory or fails its binding, including a completed status with a missing or invalid receipt. |
+
+Each declared attempt gets one row in register order. A failure declaration
+has local ownership evidence and carries no success receipt. Every row outside
+COMPLETED has null episode metrics. Failure after raw events have been written
+still leaves their outcomes unmeasured. Missing evidence cannot distinguish
+an attempt that never launched from one that failed before allocation.
+
+The completion fraction is verified completions divided by all registered
+attempts. The observed escalation fraction is the sum of escalations divided
+by the sum of candidate actions in verified episodes. The absolute counts,
+including prohibited executions, remain visible by run ID. With no verified
+episodes the observed counts are null. A verified episode with zero
+candidates contributes observed zeros, and any zero-denominator fraction has
+a null value. A valid accounting report exits zero even if it contains an
+INVALID row. Check the status counts to determine completion.
+
+`report_sha256` covers the entire set report except that digest itself,
+including invocation identities and the evidence visible at read time.
+Re-reading an unchanged set reproduces it. Reading during a run can show
+a later status on the next read. The pin identifies membership, order and seeds.
+The completed row supplies the observed configuration hash. A reviewer who
+needs evidence of when the set was declared must retain the pre-run pin
+separately. All results are local synthetic diagnostics.
+
 ## Rebuild the summary from retained raw records
 
 This command derives one summary from the raw Parquet table held by the bounded verifier. After verification succeeds, it serializes that row, checks both output hashes against the verified artifact digests and writes fresh CSV and Parquet under `var/tmp`.

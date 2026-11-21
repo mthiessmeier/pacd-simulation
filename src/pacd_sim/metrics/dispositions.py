@@ -1,9 +1,36 @@
 """Per-episode diagnostic measures derived from the verified raw-event counts."""
 
+from typing import TypedDict
+
 from pacd_sim.metrics.summarize import EpisodeRecord
 
 
-def episode_dispositions(episode: EpisodeRecord) -> dict[str, object]:
+class Fraction(TypedDict):
+    numerator: int
+    denominator: int
+    unit: str
+    value: float | None
+
+
+class EpisodeDispositions(TypedDict):
+    format: str
+    seed: int
+    config_hash: str
+    completion_status: str
+    counts: dict[str, int]
+    escalation_fraction: Fraction
+
+
+def fraction(numerator: int, denominator: int, unit: str) -> Fraction:
+    return Fraction(
+        numerator=numerator,
+        denominator=denominator,
+        unit=unit,
+        value=numerator / denominator if denominator else None,
+    )
+
+
+def episode_dispositions(episode: EpisodeRecord) -> EpisodeDispositions:
     """Summarize one complete episode with one governor disposition per candidate."""
     if episode.completion_status != "EVENT_CHAIN_COMPLETED":
         raise ValueError("Disposition metrics require a completed episode")
@@ -26,10 +53,5 @@ def episode_dispositions(episode: EpisodeRecord) -> dict[str, object]:
             "verified_execution_count": episode.verified_execution_count,
             "prohibited_execution_count": episode.prohibited_execution_count,
         },
-        "escalation_fraction": {
-            "numerator": escalations,
-            "denominator": candidates,
-            "unit": "fraction_of_candidate_actions",
-            "value": escalations / candidates if candidates else None,
-        },
+        "escalation_fraction": fraction(escalations, candidates, "fraction_of_candidate_actions"),
     }
