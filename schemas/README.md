@@ -27,6 +27,31 @@ aggregate canonical digests. Doctor, diagnostic invocation and retained-run
 verification use the same typed input check. Shape inspection alone cannot
 establish that a bundle is executable.
 
+### Optional dependencies in the synthetic scenario
+
+The scenario can declare up to 100 directed dependencies. Each row has a unique
+ID, two existing entity IDs and a finite, nonnegative numeric weight. Direction
+runs from `upstream_id` to `downstream_id`. The two dependencies below
+share the endpoints of the fixture's existing service-to-mission relationship.
+
+```yaml
+dependencies:
+  - id: dependency-a
+    upstream_id: service-synthetic-saas
+    downstream_id: mission-synthetic-core
+    weight: 0.0
+  - id: dependency-b
+    upstream_id: service-synthetic-saas
+    downstream_id: mission-synthetic-core
+    weight: 2.5
+```
+
+Each row contributes one relationship to the diagnostic graph. IDs are unique
+across the environment's entities and dependencies. A weight of zero is valid.
+Omitting the field preserves the original fixture and its replay hashes. An
+explicit empty list also builds an environment with zero declared dependencies.
+The configuration digest binds the input as supplied.
+
 ### File boundaries and compatibility
 
 The loader reads at most 1 MiB plus one sentinel byte per UTF-8 file. The

@@ -1,6 +1,14 @@
-# Phase 2 Increment 1 candidate · 21 November 2026
+# Phase 2 Increment 1 acceptance · 21 November 2026
 
-## Owner decision for PR #2
+Michael Thiessmeier approved PR #2 at `16b5e5404f49b62f75345eb82aeddf7d562e6747`.
+It merged into `main` as `1138180a6cfecde352efb1a9a4c2b48a6a690c3f` with
+the approved tree. Two full post-merge suites each passed 294 tests and
+skipped the Windows directory-symlink privilege case. The dependency audit,
+scope checks, diagnostic replay, raw-to-derived regeneration and reportability
+interlock were verified at the merged commit.
+[Acceptance and post-merge gate results](https://github.com/mthiessmeier/pacd-simulation/pull/2#issuecomment-7066975410)
+
+## Pre-merge owner decision for PR #2
 
 On November 21, 2026, Michael Thiessmeier designated §4 of the November continuation handoff and §§4, 6 and 7 of the bootstrap architecture as the governing equivalents for Increment 1. He confirmed that the five shipped configuration inputs for scenario, safety policy, seed registry, baseline definition and metric definition satisfy the increment. The broader configuration families in architecture §6 remain design targets for later work. The accepted architecture names 26 core records. The bootstrap supplied 22 and this increment adds four evidence records.
 

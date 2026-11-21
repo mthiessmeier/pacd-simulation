@@ -26,12 +26,13 @@ from yaml.nodes import MappingNode, Node, ScalarNode, SequenceNode
 
 from pacd_sim.actions.models import DefensiveAction, RequestedAuthority
 from pacd_sim.audit.writer import AuditWriter
-from pacd_sim.configuration import DiagnosticInputs
+from pacd_sim.configuration import DiagnosticInputs, ScenarioConfig
 from pacd_sim.constants import EVIDENCE_LABEL, SCHEMA_VERSION
 from pacd_sim.defenders.base import DefenderContext
 from pacd_sim.defenders.pacd.diagnostic import DiagnosticPACDDefender
 from pacd_sim.engine.scheduler import DeterministicScheduler, ScheduledEvent
 from pacd_sim.environment.model import (
+    Dependency,
     EnvironmentState,
     Identity,
     MissionFunction,
@@ -362,63 +363,37 @@ def _expect_probability(value: object, name: str) -> float:
     return result
 
 
-def _build_environment(scenario: Mapping[str, object], protocol_version: str) -> EnvironmentState:
-    identities = tuple(
-        Identity(
-            id=_expect_string(item["id"], "identity.id"),
-            role=_expect_string(item["role"], "identity.role"),
+def _build_environment(
+    scenario: Mapping[str, object] | ScenarioConfig, protocol_version: str
+) -> EnvironmentState:
+    try:
+        config = ScenarioConfig.model_validate(scenario)
+        return EnvironmentState(
             configuration_version=protocol_version,
+            identities=tuple(
+                Identity(configuration_version=protocol_version, **item.model_dump())
+                for item in config.identities
+            ),
+            sessions=tuple(
+                Session(configuration_version=protocol_version, **item.model_dump())
+                for item in config.sessions
+            ),
+            services=tuple(
+                Service(configuration_version=protocol_version, **item.model_dump())
+                for item in config.services
+            ),
+            mission_functions=tuple(
+                MissionFunction(configuration_version=protocol_version, **item.model_dump())
+                for item in config.missions
+            ),
+            dependencies=tuple(
+                Dependency(configuration_version=protocol_version, **item.model_dump())
+                for item in config.dependencies or ()
+            ),
         )
-        for item in (
-            _expect_mapping(value, "identity")
-            for value in _expect_list(scenario.get("identities"), "identities")
-        )
-    )
-    missions = tuple(
-        MissionFunction(
-            id=_expect_string(item["id"], "mission.id"),
-            criticality=_expect_probability(item.get("criticality"), "mission.criticality"),
-            configuration_version=protocol_version,
-        )
-        for item in (
-            _expect_mapping(value, "mission")
-            for value in _expect_list(scenario.get("missions"), "missions")
-        )
-    )
-    services = tuple(
-        Service(
-            id=_expect_string(item["id"], "service.id"),
-            mission_id=_expect_string(item["mission_id"], "service.mission_id"),
-            configuration_version=protocol_version,
-        )
-        for item in (
-            _expect_mapping(value, "service")
-            for value in _expect_list(scenario.get("services"), "services")
-        )
-    )
-    sessions = tuple(
-        Session(
-            id=_expect_string(item["id"], "session.id"),
-            identity_id=_expect_string(item["identity_id"], "session.identity_id"),
-            service_id=_expect_string(item["service_id"], "session.service_id"),
-            configuration_version=protocol_version,
-        )
-        for item in (
-            _expect_mapping(value, "session")
-            for value in _expect_list(scenario.get("sessions"), "sessions")
-        )
-    )
-    if not identities or not missions or not services or not sessions:
-        raise ConfigurationError(
-            "Diagnostic scenario must include identity, mission, service, and session"
-        )
-    return EnvironmentState(
-        configuration_version=protocol_version,
-        identities=identities,
-        sessions=sessions,
-        services=services,
-        mission_functions=missions,
-    )
+    except ValidationError as error:
+        issue = error.errors(include_url=False, include_input=False)[0]
+        raise ConfigurationError(f"Invalid diagnostic environment: {issue['msg']}") from error
 
 
 def _build_events(
@@ -552,7 +527,7 @@ def _validate_loaded_configuration_bundle(
     if default_seed not in registered_seeds:
         raise ConfigurationError("Scenario default_seed is absent from the seed registry")
 
-    environment = _build_environment(scenario, protocol_version)
+    environment = _build_environment(inputs.scenario, protocol_version)
     events = _build_events(scenario, protocol_version)
     policy = _build_policy(policy_config)
     action_tick = max(event.tick for event in events)
@@ -1395,7 +1370,7 @@ def _run_diagnostic_worker(
             )
 
             state = state.at_tick(observation.tick)
-            graph = state.to_graph()
+            graph = state.to_graph(multigraph=True)
             snapshot = create_snapshot(state)
             audit.emit(
                 "state_update",

@@ -44,3 +44,23 @@ v1 evidence contracts and the input boundary. Each remains in the module that ow
 | Evaluation harness outside the eleven layers | `configuration.py` types the scenario, policy, baseline, metric selection and seed registry. The shared gate in `harness/run.py` validates the bundle before diagnostic allocation. |
 
 See the [wire contracts](../schemas/README.md) and [reproduction guide](application_demo/README.md).
+
+## Increment 2 opening · core environment topology
+
+The harness reads optional dependency rows from the governed scenario into
+immutable `Dependency` records in `EnvironmentState`. A state snapshot binds
+the endpoints, weights and IDs to its digest. The diagnostic writer and the
+retained-run verifier count relationships using `to_graph(multigraph=True)`.
+This detached directed multigraph preserves a built-in relationship and any
+separately declared dependencies between the same two entities. Existing
+callers can use `to_graph()` for the simple directed projection.
+
+With the two service-to-mission dependencies in the [scenario example](../schemas/README.md#optional-dependencies-in-the-synthetic-scenario),
+the synthetic fixture has five nodes and five edges. Session isolation changes
+the session state while preserving the dependencies. The weights are recorded
+as topology data. Mission degradation, continuity and recovery rules remain
+future environment work.
+
+Run `uv run --frozen --no-sync pytest -q tests/scenario/test_environment_dependencies.py`
+in the project environment to exercise the graph projections, run and verify
+the populated fixture, and check rejection before diagnostic allocation.

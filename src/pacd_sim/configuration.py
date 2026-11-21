@@ -1,14 +1,17 @@
 """Wire schemas for the five version 1.0 bootstrap diagnostic inputs."""
 
+from sys import float_info
 from typing import Annotated, Literal, Self
 
-from pydantic import AfterValidator, BeforeValidator, Field, model_validator
+from pydantic import AfterValidator, BeforeValidator, Field, field_validator, model_validator
+from pydantic.json_schema import SkipJsonSchema
 
 from pacd_sim.actions.models import RequestedAuthority
 from pacd_sim.schema import (
     STABLE_ID_MAX_LENGTH,
     DiagnosticRecord,
     NonemptyText,
+    NonNegativeFloat,
     Probability,
     Signed64Count,
     StableId,
@@ -67,6 +70,21 @@ class MissionConfig(StrictFrozenModel):
     criticality: Probability
 
 
+class DependencyConfig(StrictFrozenModel):
+    """One directed relationship among the scenario's synthetic entities."""
+
+    id: StableId
+    upstream_id: StableId
+    downstream_id: StableId
+    # Keep integer wire values intact for the configuration digest. State uses finite floats.
+    weight: Annotated[int, Field(ge=0, le=int(float_info.max))] | NonNegativeFloat
+
+
+type DependencyRows = Annotated[
+    tuple[DependencyConfig, ...], Field(max_length=100), BeforeValidator(_freeze_array)
+]
+
+
 class EventConfig(StrictFrozenModel):
     # The full-coverage v1 harness creates a context for every observation.
     id: Annotated[
@@ -103,6 +121,10 @@ class ScenarioConfig(DiagnosticRecord):
     sessions: NonemptyArray[SessionConfig]
     services: NonemptyArray[ServiceConfig]
     missions: NonemptyArray[MissionConfig]
+    # An omitted field has no wire representation. An explicit empty array is retained.
+    dependencies: DependencyRows | SkipJsonSchema[None] = Field(
+        default_factory=lambda: None, validate_default=False, exclude_if=lambda value: value is None
+    )
     events: BoundedArray[EventConfig]
     actions: BoundedArray[ActionConfig]
 
@@ -111,6 +133,13 @@ class ScenarioConfig(DiagnosticRecord):
         if len({event.id for event in self.events}) != len(self.events):
             raise ValueError("diagnostic event IDs must be unique")
         return self
+
+    @field_validator("dependencies", mode="before")
+    @classmethod
+    def _require_dependency_rows(cls, value: object) -> object:
+        if value is None:
+            raise ValueError("dependencies must be an array when supplied")
+        return value
 
 
 class PolicyConfig(DiagnosticRecord):

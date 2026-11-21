@@ -597,7 +597,7 @@ def _expected_event_rows(
             },
         )
         state = state.at_tick(observation.tick)
-        graph = state.to_graph()
+        graph = state.to_graph(multigraph=True)
         snapshot = create_snapshot(state)
         emit(
             "state_update",
