@@ -1,10 +1,10 @@
 # PACD Simulation
 
 **Reproduce the current work sample.** The [checkout instructions](#reconstruct-inside-the-bounded-workspace)
-pin the Increment 6 implementation at [`d968358`](https://github.com/mthiessmeier/pacd-simulation/commit/d968358ef57e3505f546b8cc23c4083faa8c6927).
-The [diagnostic walkthrough](#run-the-diagnostic) runs the accepted Increment 5 planner on
-repeated sensor readings and displays the proposed Increment 6 per-episode metrics.
-At seed 424242, expect one escalated candidate and zero executions.
+pin the Increment 6 implementation at [`5eb554c`](https://github.com/mthiessmeier/pacd-simulation/commit/5eb554c21b008038ecc50d0f7433977bef64ba7a).
+The [diagnostic walkthrough](#run-the-diagnostic) registers two attempts and runs
+the accepted planner on repeated sensor readings in one. Expect one verified completion
+and one incomplete attempt. The completed episode has one escalated candidate and zero executions.
 
 This private repository contains a bounded, local-first, CPU-only PACD simulation environment.
 Its current outputs are environment diagnostics only. They do not establish PACD effectiveness,
@@ -53,7 +53,7 @@ Begin outside protected Desktop, Documents, Downloads, and redirected equivalent
 
 ```powershell
 $WorkspaceRoot = Join-Path $env:USERPROFILE 'PACD-Workspaces\PACD-Simulation'
-$Revision = 'd968358ef57e3505f546b8cc23c4083faa8c6927'
+$Revision = '5eb554c21b008038ecc50d0f7433977bef64ba7a'
 $RepoParent = Join-Path $WorkspaceRoot 'repo'
 $RepoRoot = Join-Path $RepoParent ('evaluator-i6-' + [guid]::NewGuid().ToString('N').Substring(0,10))
 $uv = Join-Path $WorkspaceRoot 'var\cache\tools\uv\0.12.5\uv.exe'
@@ -121,13 +121,27 @@ uv run --frozen --no-sync pip-audit --local --skip-editable
 
 ## Run the diagnostic
 
-From the pinned checkout, produce a fresh repeated-reading run, verify its
-event sequence, replay the planner and read the episode's disposition counts.
+From the pinned checkout, declare the attempt IDs and their seeds before running
+the first slot. The second slot stays open so its contribution to the completion
+denominator is visible. Verify the first episode, replay the planner and read both reports.
 The diagnostic writes to the authorized workspace's `var/runs` directory.
 
 ```powershell
 $RunRoot = Join-Path $WorkspaceRoot 'var\runs'
-$Diagnostic = & $uv run --frozen --no-sync pacd-sim diagnostic --workspace-root $WorkspaceRoot --output-root $RunRoot --scenario configs/scenarios/diagnostic_repeated_readings.yaml --baseline configs/defenders/pacd_corroborated_review.yaml --seed 424242 | ConvertFrom-Json
+$Invocation = [guid]::NewGuid().ToString('N')
+$RegisterPath = Join-Path $TaskTemp 'attempt-register.json'
+$Register = @{
+    format = 'pacd-attempt-register-v1'
+    attempts = @(
+        @{attempt_id='repeated-reading'; invocation_id=$Invocation; seed=424242}
+        @{attempt_id='reserved-control'; invocation_id=[guid]::NewGuid().ToString('N'); seed=424242}
+    )
+}
+[IO.File]::WriteAllText($RegisterPath, ($Register | ConvertTo-Json -Depth 4), [Text.UTF8Encoding]::new($false))
+$Before = & $uv run --frozen --no-sync pacd-sim metrics --register $RegisterPath --workspace-root $WorkspaceRoot | ConvertFrom-Json
+if ($LASTEXITCODE -or $Before.status_counts.INCOMPLETE -ne 2) { throw 'Register preflight failed' }
+$RegisterPin = $Before.register_sha256
+$Diagnostic = & $uv run --frozen --no-sync pacd-sim diagnostic --workspace-root $WorkspaceRoot --output-root $RunRoot --scenario configs/scenarios/diagnostic_repeated_readings.yaml --baseline configs/defenders/pacd_corroborated_review.yaml --seed 424242 --invocation-id $Invocation | ConvertFrom-Json
 if ($LASTEXITCODE) { throw 'Diagnostic failed' }
 $Verified = & $uv run --frozen --no-sync pacd-sim verify $Diagnostic.run_dir --workspace-root $WorkspaceRoot --show-event-sequence | ConvertFrom-Json
 if ($LASTEXITCODE -or !$Verified.execution_identity_assured) { throw 'Run verification failed' }
@@ -137,7 +151,18 @@ $Trace.defender_trace.decisions | Select-Object outcome, previous_elevated_tick
 $Report = & $uv run --frozen --no-sync pacd-sim metrics $Diagnostic.run_dir --workspace-root $WorkspaceRoot | ConvertFrom-Json
 if ($LASTEXITCODE -or !$Report.valid) { throw 'Metric verification failed' }
 $Report.metrics | ConvertTo-Json -Depth 4
+$SetReport = & $uv run --frozen --no-sync pacd-sim metrics --register $RegisterPath --register-sha256 $RegisterPin --workspace-root $WorkspaceRoot | ConvertFrom-Json
+if ($LASTEXITCODE -or $SetReport.status_counts.COMPLETED -ne 1 -or $SetReport.status_counts.INCOMPLETE -ne 1) { throw 'Registered attempt accounting failed' }
+$SetReport.attempts | Select-Object attempt_id, status, reason
+$SetReport.completion_fraction
+$SetReport.observed_escalation_fraction
 ```
+
+The completion fraction is 1/2. The escalation fraction is 1/1 and counts
+only candidate actions from verified completions. Re-reading the same register
+with its pin reproduces `report_sha256` while the retained evidence is unchanged.
+The [set report definition](docs/application_demo/README.md#account-for-a-registered-set-of-attempts)
+also covers failed, timed-out and invalid episodes.
 
 Reportable mode is intentionally denied during bootstrap and must not create a run directory:
 
