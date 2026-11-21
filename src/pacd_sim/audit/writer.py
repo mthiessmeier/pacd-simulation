@@ -33,6 +33,7 @@ EventType = Literal[
     "safety_decision",
     "simulated_execution",
     "verification",
+    "mission_effect",
     "audit",
     "manifest",
 ]

@@ -137,6 +137,9 @@ class ScenarioConfig(DiagnosticRecord):
     dependencies: DependencyRows | SkipJsonSchema[None] = Field(
         default_factory=lambda: None, validate_default=False, exclude_if=lambda value: value is None
     )
+    availability_model: Literal["required_dependencies_v1"] | SkipJsonSchema[None] = Field(
+        default_factory=lambda: None, validate_default=False, exclude_if=lambda value: value is None
+    )
     events: BoundedArray[EventConfig]
     actions: BoundedArray[ActionConfig]
 
@@ -146,11 +149,11 @@ class ScenarioConfig(DiagnosticRecord):
             raise ValueError("diagnostic event IDs must be unique")
         return self
 
-    @field_validator("dependencies", mode="before")
+    @field_validator("dependencies", "availability_model", mode="before")
     @classmethod
-    def _require_dependency_rows(cls, value: object) -> object:
+    def _reject_explicit_null(cls, value: object) -> object:
         if value is None:
-            raise ValueError("dependencies must be an array when supplied")
+            raise ValueError("explicit null is invalid for this optional scenario field")
         return value
 
 

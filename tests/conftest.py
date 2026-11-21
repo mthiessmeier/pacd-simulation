@@ -56,6 +56,39 @@ def controlled_config_files(config_root: Path) -> tuple[Path, ...]:
     )
 
 
+def run_committed_scenario(workspace: IsolatedWorkspace) -> RunResult:
+    """Bind a synthetic scenario edit to its temporary Git repo and run it in process."""
+    scenario, policy, seeds, baseline, metrics = controlled_config_files(workspace.config_root)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=PACD Test",
+            "-c",
+            "user.email=pacd-test@example.invalid",
+            "commit",
+            "--quiet",
+            "-m",
+            "synthetic scenario fixture",
+            "--",
+            str(scenario.relative_to(workspace.repo_root)),
+        ],
+        cwd=workspace.repo_root,
+        check=True,
+    )
+    return run_diagnostic(
+        scenario,
+        policy,
+        seeds,
+        workspace.output_root,
+        workspace_root=workspace.root,
+        repo_root=workspace.repo_root,
+        baseline_path=baseline,
+        metric_path=metrics,
+        seed=424242,
+    )
+
+
 def _create_isolated_workspace(root: Path) -> IsolatedWorkspace:
     repo_root = root / "repo" / "pacd-simulation"
     config_root = repo_root / "configs"

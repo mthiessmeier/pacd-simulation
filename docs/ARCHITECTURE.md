@@ -57,10 +57,31 @@ callers can use `to_graph()` for the simple directed projection.
 
 With the two service-to-mission dependencies in the [scenario example](../schemas/README.md#optional-dependencies-in-the-synthetic-scenario),
 the synthetic fixture has five nodes and five edges. Session isolation changes
-the session state while preserving the dependencies. The weights are recorded
-as topology data. Mission degradation, continuity and recovery rules remain
-future environment work.
+the session state while preserving the dependencies. Scenarios can opt into
+the availability rule below to observe effects of that state change.
 
 Run `uv run --frozen --no-sync pytest -q tests/scenario/test_environment_dependencies.py`
 in the project environment to exercise the graph projections, run and verify
 the populated fixture, and check rejection before diagnostic allocation.
+
+## Increment 2 · availability and mission continuity
+
+`environment/availability.py` evaluates each immutable state from its intrinsic
+flags. Assets and services use `available`, identities use `enabled`, credentials
+use `active`, and a session must be both active and unisolated. A mission must
+be intrinsically operational and have at least one effectively available
+supporting service. Every entity must also have its positive-weight declared
+prerequisites available. The evaluator propagates failures downstream until
+no further entity changes. Parallel prerequisites count once. A healthy cycle
+remains available until an intrinsic or upstream failure reaches it.
+Re-evaluating a restored snapshot recomputes availability from that state.
+
+With `required_dependencies_v1` enabled, each state update records availability
+counts and a digest of entity membership. A separate `mission_effect` record
+links a verified execution to its before/after state digests. It classifies each
+mission across that transition as continued, interrupted, restored or unavailable
+throughout. The four counts sum to the mission population. The continuity digest
+binds classifications to mission IDs. The effect record lets reviewers inspect
+service and mission consequences alongside the earlier approval and execution
+records. This is a binary synthetic rule. Duration, calibrated harm and
+real-world service-level performance remain outside this model.

@@ -12,9 +12,16 @@ from pathlib import Path
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
-from conftest import DiagnosticRuns
+import yaml
+from conftest import (
+    DiagnosticRuns,
+    IsolatedWorkspace,
+    controlled_config_files,
+    run_committed_scenario,
+)
 
 from pacd_sim.audit.writer import EVENT_SCHEMA
+from pacd_sim.harness.run import RunResult, load_yaml_config
 from pacd_sim.reproducibility import evidence_validation
 from pacd_sim.reproducibility import verify as verify_module
 from pacd_sim.reproducibility.canonical import canonical_sha256
@@ -25,6 +32,109 @@ from pacd_sim.reproducibility.manifest import (
 )
 from pacd_sim.reproducibility.paths import is_symlink_or_reparse
 from pacd_sim.reproducibility.verify import verify_run
+
+
+def _run_mission_fixture(workspace: IsolatedWorkspace, redundant: bool = False) -> RunResult:
+    source = controlled_config_files(workspace.config_root)[0]
+    scenario = load_yaml_config(source)
+    scenario["availability_model"] = "required_dependencies_v1"
+    scenario["dependencies"] = [
+        {
+            "id": "dependency-session-service",
+            "upstream_id": "session-synthetic-001",
+            "downstream_id": "service-synthetic-saas",
+            "weight": 1,
+        },
+    ]
+    if redundant:
+        services = scenario["services"]
+        assert isinstance(services, list)
+        services.append({"id": "service-synthetic-backup", "mission_id": "mission-synthetic-core"})
+    source.write_text(yaml.safe_dump(scenario, sort_keys=False), encoding="utf-8")
+    return run_committed_scenario(workspace)
+
+
+@pytest.mark.reproducibility
+@pytest.mark.parametrize("redundant", [False, True], ids=["single-support", "redundant-support"])
+def test_verified_mission_effect_tracks_actual_session_isolation(
+    isolated_workspace: IsolatedWorkspace, redundant: bool
+) -> None:
+    result = _run_mission_fixture(isolated_workspace, redundant)
+    verified = verify_run(
+        result.run_dir,
+        workspace_root=isolated_workspace.root,
+        repo_root=isolated_workspace.repo_root,
+    )
+    assert verified.valid and verified.execution_identity_assured, verified.errors
+    rows = pq.read_table(result.run_dir / "raw" / "events.parquet").to_pylist()
+    (effect_index,) = [i for i, row in enumerate(rows) if row["event_type"] == "mission_effect"]
+    execution, verification, effect = rows[effect_index - 2 : effect_index + 1]
+    assert [execution["event_type"], verification["event_type"]] == [
+        "simulated_execution",
+        "verification",
+    ]
+    assert (
+        execution["action_id"]
+        == verification["action_id"]
+        == effect["action_id"]
+        == "action-allowed"
+    )
+    assert effect["entity_id"] == "session-synthetic-001"
+    assert effect["tick"] == verification["tick"] == execution["tick"]
+    executed = json.loads(execution["payload_json"])
+    checked = json.loads(verification["payload_json"])
+    payload = json.loads(effect["payload_json"])
+    assert payload["execution_id"] == executed["execution_id"]
+    assert payload["verification_id"] == checked["verification_id"]
+    for field in ("state_before_digest", "state_after_digest"):
+        assert payload[field] == executed[field]
+    before, after = payload["availability_before"], payload["availability_after"]
+    assert before["entity_count"] == after["entity_count"] == 5 + int(redundant)
+    assert before["service_count"] == after["service_count"] == 1 + int(redundant)
+    assert before["mission_count"] == after["mission_count"] == 1
+    assert before["available_entity_count"] == before["entity_count"]
+    assert before["available_service_count"] == before["service_count"]
+    assert before["operational_mission_count"] == 1
+    assert after["available_entity_count"] == (4 if redundant else 2)
+    assert after["available_service_count"] == after["operational_mission_count"] == int(redundant)
+    assert before["availability_digest"] != after["availability_digest"]
+    checkpoints = [
+        json.loads(row["payload_json"]) for row in rows if row["event_type"] == "state_update"
+    ]
+    assert len(checkpoints) == 2 and all(entry["availability"] == before for entry in checkpoints)
+    disposition = "continued" if redundant else "interrupted"
+    assert payload["mission_continuity"] == {
+        "continued_mission_count": int(redundant),
+        "interrupted_mission_count": int(not redundant),
+        "restored_mission_count": 0,
+        "unavailable_throughout_mission_count": 0,
+        "continuity_digest": canonical_sha256({"mission-synthetic-core": disposition}),
+    }
+
+
+@pytest.mark.reproducibility
+@pytest.mark.parametrize("incorrect", [False, 0.0, 1], ids=["boolean", "float", "wrong-count"])
+def test_verifier_rejects_incorrect_post_execution_availability(
+    isolated_workspace: IsolatedWorkspace, incorrect: bool | float | int
+) -> None:
+    result = _run_mission_fixture(isolated_workspace)
+    copy = isolated_workspace.root / "var" / "tmp" / "altered" / result.run_dir.name
+    shutil.copytree(result.run_dir, copy)
+    rows = pq.read_table(copy / "raw" / "events.parquet").to_pylist()
+    (effect,) = [row for row in rows if row["event_type"] == "mission_effect"]
+    payload = json.loads(effect["payload_json"])
+    assert payload["availability_after"]["operational_mission_count"] == 0
+    payload["availability_after"]["operational_mission_count"] = incorrect
+    effect["payload_json"] = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    _rewrite_raw_events_with_refreshed_closure(copy, rows)
+    verified = verify_run(
+        copy,
+        workspace_root=isolated_workspace.root,
+        repo_root=isolated_workspace.repo_root,
+    )
+    assert not verified.valid and not verified.semantic_content_valid
+    assert any("payload does not match reconstructed event semantics" in e for e in verified.errors)
+    assert not any("checksum mismatch" in e.lower() for e in verified.errors)
 
 
 def _manifest(run_dir: Path) -> dict[str, object]:

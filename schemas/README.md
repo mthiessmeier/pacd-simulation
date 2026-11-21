@@ -54,6 +54,29 @@ Omitting the field preserves the original fixture and its replay hashes. An
 explicit empty list also builds an environment with zero declared dependencies.
 The configuration digest binds the input as supplied.
 
+### Opt-in availability and mission continuity
+
+Set `availability_model` in the governed scenario to `required_dependencies_v1`
+to evaluate downstream effects. Omission retains the earlier diagnostic format
+and replay hashes. This fixture connects the isolated session to the service
+that supports the mission.
+
+```yaml
+availability_model: required_dependencies_v1
+dependencies:
+  - id: required-session
+    upstream_id: session-synthetic-001
+    downstream_id: service-synthetic-saas
+    weight: 1
+```
+
+Every positive-weight edge makes its upstream entity a prerequisite for its
+downstream entity. Zero-weight edges remain visible in the graph and never
+block availability. Magnitude above zero has no additional effect. A mission
+also needs at least one available service assigned to it. A second supporting
+service can keep the mission operational when the first loses its prerequisite.
+An explicit prerequisite of the mission itself still applies.
+
 ### File boundaries and compatibility
 
 The loader reads at most 1 MiB plus one sentinel byte per UTF-8 file. The

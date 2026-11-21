@@ -31,6 +31,7 @@ from pacd_sim.constants import EVIDENCE_LABEL, SCHEMA_VERSION
 from pacd_sim.defenders.base import DefenderContext
 from pacd_sim.defenders.pacd.diagnostic import DiagnosticPACDDefender
 from pacd_sim.engine.scheduler import DeterministicScheduler, ScheduledEvent
+from pacd_sim.environment.availability import continuity_transition, evaluate_availability
 from pacd_sim.environment.model import (
     Dependency,
     EnvironmentState,
@@ -1195,6 +1196,7 @@ def _run_diagnostic_worker(
     )
 
     scenario = load_yaml_config(scenario_file)
+    evaluate_missions = "availability_model" in scenario
     policy_config = load_yaml_config(policy_file)
     seed_registry = _load_json_config(seed_file)
     baseline_definition = load_yaml_config(baseline_file)
@@ -1372,16 +1374,19 @@ def _run_diagnostic_worker(
             state = state.at_tick(observation.tick)
             graph = state.to_graph(multigraph=True)
             snapshot = create_snapshot(state)
+            state_payload: dict[str, object] = {
+                "graph_edge_count": graph.number_of_edges(),
+                "graph_node_count": graph.number_of_nodes(),
+                "snapshot_digest": snapshot.environment_digest,
+            }
+            if evaluate_missions:
+                state_payload["availability"] = evaluate_availability(state).audit_summary()
             audit.emit(
                 "state_update",
                 tick=state.tick,
                 entity_id=state.id,
                 outcome="immutable_snapshot",
-                payload={
-                    "graph_edge_count": graph.number_of_edges(),
-                    "graph_node_count": graph.number_of_nodes(),
-                    "snapshot_digest": snapshot.environment_digest,
-                },
+                payload=state_payload,
             )
 
             belief_state = update_beliefs(evidence_items)
@@ -1536,6 +1541,25 @@ def _run_diagnostic_worker(
                             "verification_id": verification.id,
                         },
                     )
+                    if evaluate_missions:
+                        before = evaluate_availability(execution.record.state_before)
+                        after = evaluate_availability(execution.record.state_after)
+                        audit.emit(
+                            "mission_effect",
+                            tick=verification.tick,
+                            entity_id=action.target_id,
+                            action_id=action.id,
+                            outcome="evaluated",
+                            payload={
+                                "execution_id": execution.record.id,
+                                "verification_id": verification.id,
+                                "state_before_digest": execution.record.state_before_digest,
+                                "state_after_digest": execution.record.state_after_digest,
+                                "availability_before": before.audit_summary(),
+                                "availability_after": after.audit_summary(),
+                                "mission_continuity": continuity_transition(before, after),
+                            },
+                        )
                 else:
                     audit.emit(
                         "verification",

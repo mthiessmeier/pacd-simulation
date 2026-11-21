@@ -1,12 +1,11 @@
 """Configured synthetic dependencies survive state transitions and diagnostic verification."""
 
 import json
-import subprocess
 from sys import float_info
 
 import pytest
 import yaml
-from conftest import CONFIG_ROOT, IsolatedWorkspace, controlled_config_files
+from conftest import CONFIG_ROOT, IsolatedWorkspace, controlled_config_files, run_committed_scenario
 
 from pacd_sim.configuration import ScenarioConfig
 from pacd_sim.environment.model import (
@@ -20,7 +19,6 @@ from pacd_sim.environment.model import (
 from pacd_sim.harness.run import (
     ConfigurationError,
     RunResult,
-    _run_diagnostic_in_process,
     load_yaml_config,
     run_diagnostic,
     validate_diagnostic_configuration_files,
@@ -42,12 +40,9 @@ def _write_dependencies(workspace: IsolatedWorkspace, dependencies: object) -> N
         yaml.safe_dump({"dependencies": dependencies}, stream, sort_keys=False)
 
 
-def _run(workspace: IsolatedWorkspace, *, in_process: bool = False) -> RunResult:
+def _run(workspace: IsolatedWorkspace) -> RunResult:
     scenario, policy, seeds, baseline, metrics = controlled_config_files(workspace.config_root)
-    # The spawned worker is bound to the author workspace. Run the positive fixture
-    # in process so the normal allocation, finalization and verification stay hermetic.
-    runner = _run_diagnostic_in_process if in_process else run_diagnostic
-    return runner(
+    return run_diagnostic(
         scenario,
         policy,
         seeds,
@@ -87,25 +82,7 @@ def test_parallel_dependencies_reach_verified_state_updates(
     _write_dependencies(
         isolated_workspace, [{**EDGE, "id": "dependency-z", "weight": weight}, EDGE]
     )
-    # Verification binds the retained configuration to a clean, committed fixture.
-    subprocess.run(
-        [
-            "git",
-            "-c",
-            "user.name=PACD Test",
-            "-c",
-            "user.email=pacd-test@example.invalid",
-            "commit",
-            "--quiet",
-            "-m",
-            "synthetic parallel dependency fixture",
-            "--",
-            "configs/scenarios/diagnostic_identity_smoke.yaml",
-        ],
-        cwd=isolated_workspace.repo_root,
-        check=True,
-    )
-    result = _run(isolated_workspace, in_process=True)
+    result = run_committed_scenario(isolated_workspace)
     verified = verify_run(
         result.run_dir,
         workspace_root=isolated_workspace.root,
@@ -167,16 +144,21 @@ def test_explicit_dependency_list_boundaries(
     assert hashes["config_hash"]
 
 
-def test_optional_edges_preserve_scenario_wire_hash_and_schema() -> None:
+def test_optional_fields_preserve_scenario_wire_hash_and_schema() -> None:
     original = load_yaml_config(controlled_config_files(CONFIG_ROOT)[0])
-    schema = ScenarioConfig.model_json_schema(mode="serialization")
-    assert set(original) | {"dependencies"} == set(schema["properties"])
-    assert "dependencies" not in schema["required"]
+    for schema in (
+        ScenarioConfig.model_json_schema(),
+        ScenarioConfig.model_json_schema(mode="serialization"),
+    ):
+        assert set(original) | {"dependencies", "availability_model"} == set(schema["properties"])
+        assert not {"dependencies", "availability_model"}.intersection(schema["required"])
+        assert schema["properties"]["availability_model"]["const"] == "required_dependencies_v1"
     wire_hashes = set()
     variations: tuple[dict[str, object], ...] = (
         {},
         {"dependencies": []},
         {"dependencies": [{**EDGE, "weight": 2}]},
+        {"availability_model": "required_dependencies_v1"},
     )
     for fields in variations:
         wire = {**original, **fields}
@@ -184,7 +166,39 @@ def test_optional_edges_preserve_scenario_wire_hash_and_schema() -> None:
         restored = ScenarioConfig.model_validate_json(model.model_dump_json())
         wire_hashes.add(canonical_sha256(wire))
         assert canonical_sha256(model) == canonical_sha256(restored) == canonical_sha256(wire)
-    assert len(wire_hashes) == 3
+    assert len(wire_hashes) == len(variations)
+
+
+@pytest.mark.negative
+@pytest.mark.parametrize("value", [None, False, "required_dependencies_v2", 1])
+def test_invalid_availability_model_stops_before_allocation(
+    isolated_workspace: IsolatedWorkspace, value: object
+) -> None:
+    scenario = controlled_config_files(isolated_workspace.config_root)[0]
+    with scenario.open("a", encoding="utf-8") as stream:
+        yaml.safe_dump({"availability_model": value}, stream)
+    with pytest.raises(ConfigurationError, match="availability_model"):
+        _run(isolated_workspace)
+    assert not list(isolated_workspace.output_root.iterdir())
+    assert not (isolated_workspace.root / "var" / "invocations").exists()
+    assert not (isolated_workspace.root / "var" / "receipts").exists()
+
+
+def test_topology_only_fixture_preserves_previous_pr4_replay(
+    isolated_workspace: IsolatedWorkspace,
+) -> None:
+    # Digests from the populated aaef7d4 topology fixture at its registered seed 424242.
+    _write_dependencies(isolated_workspace, [EDGE, {**EDGE, "id": "dependency-b", "weight": 2.5}])
+    result = run_committed_scenario(isolated_workspace)
+    assert result.config_hash == "ad42c9c8f75f4f94625769843513d7fc71f77bacf55943c546f94322d5fe357e"
+    assert (
+        result.raw_semantic_hash
+        == "36ac8022799e3d2d1640dafb8589ad6d6d5b2708c6512eaf19cca666ec1906f6"
+    )
+    assert (
+        result.summary_semantic_hash
+        == "01b60d993c3b09868d4265a14629f675d01b5d1faab89605f82a7c96b41e3d34"
+    )
 
 
 @pytest.mark.negative
