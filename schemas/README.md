@@ -27,6 +27,56 @@ aggregate canonical digests. Doctor, diagnostic invocation and retained-run
 verification use the same typed input check. Shape inspection alone cannot
 establish that a bundle is executable.
 
+### Optional dependencies in the synthetic scenario
+
+The scenario can declare up to 100 directed dependencies. Each row has a unique
+ID, two existing entity IDs and a finite, nonnegative numeric weight. The state
+stores weights as binary64 floats. An integer weight must be exactly representable
+in that format so the snapshot retains its value. Direction runs from
+`upstream_id` to `downstream_id`. The two dependencies below
+share the endpoints of the fixture's existing service-to-mission relationship.
+
+```yaml
+dependencies:
+  - id: dependency-a
+    upstream_id: service-synthetic-saas
+    downstream_id: mission-synthetic-core
+    weight: 0.0
+  - id: dependency-b
+    upstream_id: service-synthetic-saas
+    downstream_id: mission-synthetic-core
+    weight: 2.5
+```
+
+Each row contributes one relationship to the diagnostic graph. IDs are unique
+across the environment's entities and dependencies. A weight of zero is valid.
+Omitting the field preserves the original fixture and its replay hashes. An
+explicit empty list also builds an environment with zero declared dependencies.
+The configuration digest binds the input as supplied.
+
+### Opt-in availability and mission continuity
+
+Set `availability_model` in the governed scenario to `required_dependencies_v1`
+to evaluate downstream effects. Omission retains the earlier diagnostic format
+and replay hashes. This fixture connects the isolated session to the service
+that supports the mission.
+
+```yaml
+availability_model: required_dependencies_v1
+dependencies:
+  - id: required-session
+    upstream_id: session-synthetic-001
+    downstream_id: service-synthetic-saas
+    weight: 1
+```
+
+Every positive-weight edge makes its upstream entity a prerequisite for its
+downstream entity. Zero-weight edges remain visible in the graph and never
+block availability. Magnitude above zero has no additional effect. A mission
+also needs at least one available service assigned to it. A second supporting
+service can keep the mission operational when the first loses its prerequisite.
+An explicit prerequisite of the mission itself still applies.
+
 ### File boundaries and compatibility
 
 The loader reads at most 1 MiB plus one sentinel byte per UTF-8 file. The

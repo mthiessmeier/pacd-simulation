@@ -234,16 +234,16 @@ class EnvironmentState(ConsequentialRecord):
             dependencies=self.dependencies,
         )
 
-    def to_graph(self) -> nx.DiGraph:
-        """Build a detached NetworkX view; mutating it cannot mutate this state."""
+    def to_graph(self, *, multigraph: bool = False) -> nx.DiGraph:
+        """Build a detached view. A multigraph retains every parallel relationship."""
 
-        return environment_to_graph(self)
+        return environment_to_graph(self, multigraph=multigraph)
 
 
-def environment_to_graph(state: EnvironmentState) -> nx.DiGraph:
+def environment_to_graph(state: EnvironmentState, *, multigraph: bool = False) -> nx.DiGraph:
     """Derive a stable directed graph from immutable synthetic environment state."""
 
-    graph = nx.DiGraph()
+    graph = nx.MultiDiGraph() if multigraph else nx.DiGraph()
     for asset in state.assets:
         graph.add_node(
             asset.id,

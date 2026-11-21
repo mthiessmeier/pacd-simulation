@@ -24,6 +24,7 @@ from pacd_sim.constants import EVIDENCE_LABEL, SCHEMA_VERSION
 from pacd_sim.defenders.base import DefenderContext
 from pacd_sim.defenders.pacd.diagnostic import DiagnosticPACDDefender
 from pacd_sim.engine.scheduler import DeterministicScheduler
+from pacd_sim.environment.availability import continuity_transition, evaluate_availability
 from pacd_sim.evidence.normalize import EvidenceItem, normalize_observation
 from pacd_sim.governance.governor import GovernanceContext, SafetyGovernor
 from pacd_sim.harness.run import (
@@ -70,7 +71,14 @@ _MAX_RAW_IDENTIFIER_BYTES = 500
 _MAX_SUMMARY_STRING_BYTES = 1024
 _RAW_KEYS = frozenset(field.name for field in EVENT_SCHEMA)
 _ACTION_EVENT_TYPES = frozenset(
-    {"candidate_action", "safety_decision", "simulated_execution", "verification", "audit"}
+    {
+        "candidate_action",
+        "safety_decision",
+        "simulated_execution",
+        "verification",
+        "mission_effect",
+        "audit",
+    }
 )
 _CANONICAL_CONFIG_KEYS = frozenset(
     {
@@ -501,6 +509,7 @@ def _expected_event_rows(
     canonical_config: Mapping[str, object], seed: int
 ) -> list[dict[str, object]]:
     scenario = cast(dict[str, object], canonical_config["scenario"])
+    evaluate_missions = "availability_model" in scenario
     policy_config = cast(dict[str, object], canonical_config["safety_policy"])
     protocol_version = cast(str, canonical_config["protocol_version"])
     environment = _build_environment(scenario, protocol_version)
@@ -597,18 +606,21 @@ def _expected_event_rows(
             },
         )
         state = state.at_tick(observation.tick)
-        graph = state.to_graph()
+        graph = state.to_graph(multigraph=True)
         snapshot = create_snapshot(state)
+        state_payload: dict[str, object] = {
+            "graph_edge_count": graph.number_of_edges(),
+            "graph_node_count": graph.number_of_nodes(),
+            "snapshot_digest": snapshot.environment_digest,
+        }
+        if evaluate_missions:
+            state_payload["availability"] = evaluate_availability(state).audit_summary()
         emit(
             "state_update",
             tick=state.tick,
             entity_id=state.id,
             outcome="immutable_snapshot",
-            payload={
-                "graph_edge_count": graph.number_of_edges(),
-                "graph_node_count": graph.number_of_nodes(),
-                "snapshot_digest": snapshot.environment_digest,
-            },
+            payload=state_payload,
         )
         belief_state = update_beliefs(evidence_items)
         compromise_probability = (
@@ -702,7 +714,8 @@ def _expected_event_rows(
                         "Only a defender-proposed supported isolation action may be reconstructed "
                         "as executed"
                     )
-                before_digest = canonical_sha256(state)
+                before_state = state
+                before_digest = canonical_sha256(before_state)
                 state = state.at_tick(max(state.tick, action.tick, decision.tick)).isolate_session(
                     action.target_id
                 )
@@ -745,6 +758,25 @@ def _expected_event_rows(
                         "verification_id": f"verification-{execution_id}",
                     },
                 )
+                if evaluate_missions:
+                    before = evaluate_availability(before_state)
+                    after = evaluate_availability(state)
+                    emit(
+                        "mission_effect",
+                        tick=decision.tick,
+                        entity_id=action.target_id,
+                        action_id=action.id,
+                        outcome="evaluated",
+                        payload={
+                            "execution_id": execution_id,
+                            "verification_id": f"verification-{execution_id}",
+                            "state_before_digest": before_digest,
+                            "state_after_digest": after_digest,
+                            "availability_before": before.audit_summary(),
+                            "availability_after": after.audit_summary(),
+                            "mission_continuity": continuity_transition(before, after),
+                        },
+                    )
             else:
                 emit(
                     "verification",
@@ -1235,21 +1267,33 @@ def _validate_raw_events(
     if jsonl_path.stat().st_size > _MAX_RAW_ARTIFACT_BYTES:
         errors.append("Raw evidence exceeds the 64 MiB bounded-read cap")
         return
-    jsonl_rows: list[dict[str, object]] = []
+    line_number = 0
     with jsonl_path.open("r", encoding="utf-8") as handle:
         for line_number, line in enumerate(handle, start=1):
-            if len(line.encode("utf-8")) > _MAX_RAW_LINE_BYTES:
+            if line_number > len(parquet_rows):
+                errors.append("Raw JSONL contains more rows than its Parquet peer")
+                return
+            encoded_line = line.encode("utf-8")
+            if len(encoded_line) > _MAX_RAW_LINE_BYTES:
                 errors.append(f"Raw JSONL line {line_number} exceeds the 128 KiB cap")
                 return
+            # The typed Parquet peer supplies each row's exact canonical wire representation.
+            # Matching rows receive the payload and semantic checks below on that same peer.
+            wire_row = encoded_line.rstrip(b"\r\n")
+            if wire_row == canonical_json_bytes(parquet_rows[line_number - 1]):
+                continue
+            errors.append(
+                f"JSONL and Parquet raw-event rows are not exactly identical at row {line_number}"
+            )
             if not line.strip():
                 errors.append(f"Raw JSONL contains a blank line at {line_number}")
-                continue
+                return
             value = strict_json_loads(line, source=f"raw/events.jsonl:{line_number}")
             if not isinstance(value, dict):
                 errors.append(f"Raw JSONL row {line_number} is not an object")
-                continue
+                return
             row = {str(key): item for key, item in value.items()}
-            if line.rstrip("\r\n").encode("utf-8") != canonical_json_bytes(row):
+            if wire_row != canonical_json_bytes(row):
                 errors.append(f"Raw JSONL row {line_number} is not canonical JSON")
             payload_text = row.get("payload_json")
             if not isinstance(payload_text, str):
@@ -1265,11 +1309,10 @@ def _validate_raw_events(
                     errors.append(f"Raw JSONL row {line_number} payload is not an object")
                 elif payload_text.encode("utf-8") != canonical_json_bytes(payload):
                     errors.append(f"Raw JSONL row {line_number} payload_json is not canonical JSON")
-            jsonl_rows.append(row)
+            return
+    if line_number != len(parquet_rows):
+        errors.append("Raw JSONL contains fewer rows than its Parquet peer")
     if errors:
-        return
-    if tuple(jsonl_rows) != parquet_rows:
-        errors.append("JSONL and Parquet raw-event rows are not exactly identical")
         return
 
     run_id = manifest.get("run_id")
@@ -1335,7 +1378,7 @@ def _validate_raw_events(
                     errors.append(
                         f"Raw row {index} does not match reconstructed {key}: {event_type}"
                     )
-            if payload != expected["payload"]:
+            if payload_text.encode("utf-8") != canonical_json_bytes(expected["payload"]):
                 errors.append(
                     f"Raw row {index} payload does not match reconstructed event semantics"
                 )

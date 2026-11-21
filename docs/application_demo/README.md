@@ -56,3 +56,24 @@ $fresh = Join-Path $w ('t\i1-' + [guid]::NewGuid().ToString('N').Substring(0,8))
 The accepted fixture uses two identities, one session, a service and one mission. The governor binds a decision to its policy, target and pre-state. The verifier checks the intended isolated session state. The defender context in this diagnostic includes immutable environment state and beliefs. A research comparison first needs an explicit observation-only interface and a documented ground-truth boundary.
 
 Output classification is `NON_REPORTABLE_DIAGNOSTIC`. A local run shows how these components behave for one scripted case. A request left pending for human review has a visible completion cost. Mission harm and false-positive rates have no defined denominator in this fixture. The dated local reviewer packet contains the per-action trace, exact results, audit advisories and review disposition.
+
+## Reproduce a mission interruption and continued service
+
+The integration check runs the identity fixture with a positive session-to-service
+dependency. It exercises the same isolation a second time with an additional
+service assigned to the mission. Both variants retain a verified action and its
+linked `mission_effect` record. These checks use temporary fixture checkouts.
+
+```powershell
+$fresh = Join-Path $w ('t\mission-' + [guid]::NewGuid().ToString('N').Substring(0,8))
+& $uv run --frozen --no-sync pytest -p no:cacheprovider --basetemp $fresh -q tests/reproducibility/test_diagnostic_replay.py::test_verified_mission_effect_tracks_actual_session_isolation
+```
+
+For a retained CLI demonstration, use a fresh workspace-local fixture checkout,
+apply the [opt-in scenario fields](../../schemas/README.md#opt-in-availability-and-mission-continuity)
+to its governed scenario and commit that configuration in the fixture checkout.
+Use the produce, verify and regenerate commands above. For the redundant-service
+case, add a second service with its own ID and the same `mission_id`.
+The before/after counts and the transition classification are in
+`raw/events.jsonl` and `raw/events.parquet`. The effect is linked to the
+corresponding verification and execution by ID.
