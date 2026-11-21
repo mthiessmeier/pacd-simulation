@@ -182,3 +182,12 @@ uv run --frozen --no-sync pacd-sim diagnostic --workspace-root $WorkspaceRoot --
 
 Architecture, evidence boundaries, retained status records, and exact validation outcomes are
 documented under `docs/` and `status/`.
+
+## Development scope and continuity
+
+The accepted Phase 2 diagnostic milestone is documented separately from the broader original
+research-implementation requirements. See the [scope continuity crosswalk](docs/PHASE2_SCOPE_CONTINUITY.md),
+[original source inventory](docs/PHASE2_ORIGINAL_SCOPE_INVENTORY.csv), and
+[preserved planning sources](docs/reference/phase2-original-2026-08-23/README.md).
+A proposed next-phase label or first integrated mechanism does not remove remaining work.
+
