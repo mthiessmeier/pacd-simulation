@@ -29,6 +29,8 @@ The [work order](../docs/work_orders/GUARDED_REVIEW_ISOLATION_v1.0.md) gives the
 
 Initial checks passed 63 domain/governor/broker tests, 49 existing governed-configuration and prospective-policy tests, seven matched and variant integration cases, and five failed-attempt/rejection cases. Fault injection is confined to hermetic tests. The exact candidate, complete suite, coverage, security checks, public CLI plan and independent review disposition are recorded against the branch head on the pull request. Private raw evidence and exact commands remain under the dedicated workspaceÃ¢â‚¬â„¢s `review` tree, with gate drivers and exact plan builders under `var/tmp/wp05-06-guarded-review`.
 
+The exact-head compatibility suite also found an obsolete assertion listing every scenario property. The final test update adds `guarded_review` to the optional properties and checks a real guarded wire round-trip while preserving the existing legacy wire-hash assertions. Its parent is `7b92735b69ee7f3acfda66d5a79c56fc0e7ad5fa`. This update was prepared in `repo/wp05-06-final` while the earlier exact-head runs continued. See the PR for the tested final SHA and private evidence packet names.
+
 ## Next action and limitations
 
 Review the exact candidate from this branch against the work order, particularly stale or duplicated requests, common-mode verification errors, collateral and rollback failures, comparator parity, zero-versus-missing outcomes and reportability denials. If findings require changes, preserve the earlier evidence, add a new feature commit and repeat the affected gates and independent review. Merge requires a new owner instruction.

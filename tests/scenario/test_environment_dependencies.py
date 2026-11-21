@@ -146,12 +146,14 @@ def test_explicit_dependency_list_boundaries(
 
 def test_optional_fields_preserve_scenario_wire_hash_and_schema() -> None:
     original = load_yaml_config(controlled_config_files(CONFIG_ROOT)[0])
+    optional_fields = {"dependencies", "availability_model", "guarded_review"}
     for schema in (
         ScenarioConfig.model_json_schema(),
         ScenarioConfig.model_json_schema(mode="serialization"),
     ):
-        assert set(original) | {"dependencies", "availability_model"} == set(schema["properties"])
-        assert not {"dependencies", "availability_model"}.intersection(schema["required"])
+        assert set(original) | optional_fields == set(schema["properties"])
+        assert optional_fields.isdisjoint(schema["required"])
+        assert schema["properties"]["guarded_review"]["$ref"] == "#/$defs/GuardedReviewConfig"
         assert schema["properties"]["availability_model"]["const"] == "required_dependencies_v1"
     wire_hashes = set()
     variations: tuple[dict[str, object], ...] = (
@@ -167,6 +169,12 @@ def test_optional_fields_preserve_scenario_wire_hash_and_schema() -> None:
         wire_hashes.add(canonical_sha256(wire))
         assert canonical_sha256(model) == canonical_sha256(restored) == canonical_sha256(wire)
     assert len(wire_hashes) == len(variations)
+    guarded = load_yaml_config(CONFIG_ROOT / "scenarios/diagnostic_guarded_benign.yaml")
+    parsed = ScenarioConfig.model_validate(guarded)
+    assert parsed.guarded_review is not None
+    assert canonical_sha256(
+        ScenarioConfig.model_validate_json(parsed.model_dump_json())
+    ) == canonical_sha256(guarded)
 
 
 @pytest.mark.negative
