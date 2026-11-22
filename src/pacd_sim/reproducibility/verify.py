@@ -966,9 +966,8 @@ def _verify_run_impl(
             )
         guarded_review = None
         if isinstance(scenario, Mapping) and "guarded_review" in scenario:
-            guarded_review = guarded_review_metrics(
-                raw_rows, ScenarioConfig.model_validate(scenario).sensing_operator
-            )
+            governed = ScenarioConfig.model_validate(scenario)
+            guarded_review = guarded_review_metrics(raw_rows, governed.sensing_operator)
             if include_mission_impact and retained_validation.mission_impact is not None:
                 guarded_review["mission_impact"] = retained_validation.mission_impact
             if include_review_routing or include_approval_burden:
@@ -977,6 +976,11 @@ def _verify_run_impl(
                         raw_rows,
                         include_review_routing=include_review_routing,
                         include_approval_burden=include_approval_burden,
+                        override_policy=(
+                            governed.guarded_review.override_policy
+                            if governed.guarded_review is not None
+                            else None
+                        ),
                     )
                 )
             if include_sensing_freshness and isinstance(baseline_definition, Mapping):

@@ -178,7 +178,7 @@ def _parser() -> argparse.ArgumentParser:
     metrics.add_argument(
         "--approval-burden",
         action="store_true",
-        help="include admitted review requests, waiting time and timeouts for guarded episodes",
+        help="include admitted requests, waiting time, expiry and modeled review vetoes",
     )
     metrics.add_argument("--workspace-root", type=Path)
     return parser
