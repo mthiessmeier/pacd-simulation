@@ -14,6 +14,7 @@ from typing import Annotated, Literal, Self, cast
 
 import pyarrow.parquet as pq
 from pydantic import ConfigDict, Field, field_validator, model_validator
+from pydantic.json_schema import SkipJsonSchema
 
 from pacd_sim.constants import EVIDENCE_LABEL, SCHEMA_VERSION
 from pacd_sim.reproducibility.canonical import canonical_json_bytes, canonical_sha256
@@ -68,6 +69,11 @@ class RunManifest(DiagnosticRecord):
         Annotated[str, Field(pattern=r"^[a-f0-9]{40}$", max_length=40)] | Literal["UNAVAILABLE"]
     )
     dirty_state: bool
+    producer_commit: (
+        Annotated[str, Field(pattern=r"^[a-f0-9]{40}$", max_length=40)] | SkipJsonSchema[None]
+    ) = Field(
+        default_factory=lambda: None, validate_default=False, exclude_if=lambda value: value is None
+    )
     python_version: StableId
     lockfile_hash: Sha256Digest | Literal["UNAVAILABLE"]
     os_class: StableId
@@ -91,8 +97,19 @@ class RunManifest(DiagnosticRecord):
             raise ValueError("Diagnostic manifests require reportable=false")
         return False
 
+    @field_validator("producer_commit", mode="before")
+    @classmethod
+    def _require_present_producer_sha(cls, value: object) -> object:
+        if value is None:
+            raise ValueError("producer_commit must be omitted or a canonical Git commit")
+        return value
+
     @model_validator(mode="after")
     def _bind_manifest_fields(self) -> Self:
+        if self.producer_commit is not None and (
+            self.producer_commit != self.code_commit or self.dirty_state
+        ):
+            raise ValueError("Producer commit requires the same clean code revision")
         if self.completion_status == "FAILED":
             if not self.failure_type:
                 raise ValueError("A failed manifest must identify its failure type")
@@ -403,6 +420,7 @@ def build_manifest(
     summary_semantic_hash: str,
     artifact_hashes: Mapping[str, str],
     test_status: str = "NOT_RUN",
+    producer_commit: str | None = None,
 ) -> dict[str, object]:
     """Build the manifest data structure without performing any write."""
     return RunManifest.model_validate(
@@ -416,6 +434,7 @@ def build_manifest(
             "completion_status": completion_status,
             "reportable": False,
             "code_commit": code_commit,
+            **({"producer_commit": producer_commit} if producer_commit is not None else {}),
             "dirty_state": dirty_state,
             "python_version": python_version,
             "lockfile_hash": lockfile_hash,

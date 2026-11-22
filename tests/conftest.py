@@ -145,7 +145,12 @@ def isolated_workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Isola
     root = tmp_path / "PACD-Workspaces" / "PACD-Simulation"
     monkeypatch.setenv("PACD_WORKSPACE_ROOT", str(root))
     monkeypatch.setattr("pacd_sim.harness.run.default_workspace_root", lambda: root.resolve())
-    return _create_isolated_workspace(root)
+    workspace = _create_isolated_workspace(root)
+    # In-process diagnostics use the test fixture's committed checkout identity.
+    monkeypatch.setattr(
+        "pacd_sim.harness.run.__file__", str(workspace.repo_root / "src/pacd_sim/harness/run.py")
+    )
+    return workspace
 
 
 @pytest.fixture(scope="session")
@@ -163,6 +168,10 @@ def diagnostic_runs(tmp_path_factory: pytest.TempPathFactory) -> DiagnosticRuns:
 
     with pytest.MonkeyPatch.context() as patcher:
         patcher.setenv("PACD_WORKSPACE_ROOT", str(root))
+        patcher.setattr(
+            "pacd_sim.harness.run.__file__",
+            str(workspace.repo_root / "src/pacd_sim/harness/run.py"),
+        )
         patcher.setattr(
             "pacd_sim.harness.run.default_workspace_root",
             lambda: root.resolve(),

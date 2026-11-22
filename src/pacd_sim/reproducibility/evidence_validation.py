@@ -427,10 +427,12 @@ def _validate_document_shapes(
     seed_registry = documents["seed_registry.json"]
     status = documents["status.json"]
     manifest = documents["manifest.json"]
+    sensing = "sensing_operator" in cast(dict[str, object], expected_config["scenario"])
     _exact_keys(canonical_config, _CANONICAL_CONFIG_KEYS, "canonical_config.json", errors)
     _exact_keys(seed_registry, _SEED_REGISTRY_KEYS, "seed_registry.json", errors)
     _exact_keys(status, _STATUS_KEYS, "status.json", errors)
-    _exact_keys(manifest, _MANIFEST_KEYS, "manifest.json", errors)
+    manifest_keys = _MANIFEST_KEYS | {"producer_commit"} if sensing else _MANIFEST_KEYS
+    _exact_keys(manifest, manifest_keys, "manifest.json", errors)
 
     if canonical_config != expected_config:
         errors.append("Retained canonical configuration does not match the controlled repository")
@@ -508,6 +510,8 @@ def _validate_document_shapes(
         if not _is_sha256(manifest.get(digest_name)):
             errors.append(f"Manifest contains an invalid digest: {digest_name}")
     commit_value = manifest.get("code_commit")
+    if sensing and manifest.get("producer_commit") != commit_value:
+        errors.append("Manifest producer_commit does not match the sensing execution revision")
     if not isinstance(commit_value, str) or _COMMIT_RE.fullmatch(commit_value) is None:
         errors.append("Manifest code_commit is not a canonical Git commit")
     else:

@@ -363,6 +363,7 @@ def _validate_sensing_sources(
     if (
         "sensing_operator" not in scenario
         and scenario_file.name not in SENSING_SCENARIO_FILES
+        and not any(scenario.get("name") == Path(name).stem for name in SENSING_SCENARIO_FILES)
         and baseline_file.name not in SENSING_BASELINE_FILES
         and policy_file.name != SENSING_POLICY_FILE
         and not any(
@@ -762,6 +763,36 @@ def _replace_task_created_json(
 def _log(handle: TextIO, message: str) -> None:
     handle.write(f"[{EVIDENCE_LABEL}] {message}\n")
     handle.flush()
+
+
+@dataclass(frozen=True)
+class _ProducerRevision:
+    """Checkout observed before allocation and checked again by worker and receipt owner."""
+
+    repository: Path
+    commit: str
+    dirty: bool
+    sensing: bool
+
+    @classmethod
+    def capture(cls, repository: Path, *, sensing: bool) -> _ProducerRevision:
+        executing = Path(__file__).resolve().parents[3]
+        if executing != repository:
+            raise ConfigurationError(
+                "Diagnostic execution requires the checkout running this harness"
+            )
+        try:
+            commit = git_commit(executing)
+            dirty = git_is_dirty(executing)
+        except ReportableModeDenied as error:
+            raise ConfigurationError(
+                "Diagnostic producer Git state could not be established"
+            ) from error
+        return cls(executing, commit, dirty, sensing)
+
+    def recheck(self, repository: Path) -> None:
+        if self != self.capture(repository, sensing=self.sensing):
+            raise RuntimeError("Diagnostic producer checkout, revision or dirty state changed")
 
 
 @dataclass(frozen=True)
@@ -1305,6 +1336,7 @@ def _run_diagnostic_worker(
     metric_path: Path | str | None = None,
     reportable: bool = False,
     _ownership: _InvocationOwnership,
+    _producer: _ProducerRevision,
 ) -> RunResult:
     """Run the tiny synthetic diagnostic and retain a fully verified artifact set."""
     start_counter = time.perf_counter()
@@ -1329,6 +1361,7 @@ def _run_diagnostic_worker(
             "Repository must be a direct child of the designated PACD workspace repo directory"
         )
     _validate_invocation_ownership(_ownership, workspace)
+    _producer.recheck(repository)
 
     scenario, policy_config, baseline_definition = _load_condition_inputs(
         repository, scenario_path, policy_path, baseline_path
@@ -1358,13 +1391,19 @@ def _run_diagnostic_worker(
         raise ConfigurationError("Selected seed is not present in the controlled seed registry")
     if selected_seed != _ownership.seed:
         raise ConfigurationError("Selected seed differs from parent invocation authority")
+    if _producer.sensing != ("sensing_operator" in scenario):
+        raise ConfigurationError("Sensing configuration differs from the parent producer binding")
 
     canonical_config = _canonical_bundle(
         protocol_version, scenario, policy_config, baseline_definition, metric_definition
     )
     if _ownership.planned_attempt is not None:
         _check_planned_inputs(
-            _ownership.planned_attempt, repository, selected_seed, canonical_config, seed_registry
+            _ownership.planned_attempt,
+            _producer.commit,
+            selected_seed,
+            canonical_config,
+            seed_registry,
         )
     config_hash = canonical_sha256(canonical_config)
     scenario_hash = canonical_sha256(scenario)
@@ -1925,12 +1964,7 @@ def _run_diagnostic_worker(
         artifact_hashes = collect_artifact_hashes(run_dir, artifact_names_without_status)
         status_bytes = canonical_json_bytes(status)
         artifact_hashes["status.json"] = hashlib.sha256(status_bytes).hexdigest()
-        try:
-            commit_value = git_commit(repository)
-            dirty_value = git_is_dirty(repository)
-        except (OSError, PermissionError, RuntimeError, ValueError):
-            commit_value = "UNAVAILABLE"
-            dirty_value = True
+        _producer.recheck(repository)
         lock_path = repository / "uv.lock"
         lock_hash = sha256_file(lock_path) if lock_path.is_file() else "UNAVAILABLE"
         manifest = build_manifest(
@@ -1939,8 +1973,9 @@ def _run_diagnostic_worker(
             started_at=started_at,
             ended_at=ended_at,
             completion_status="COMPLETED",
-            code_commit=commit_value,
-            dirty_state=dirty_value,
+            code_commit=_producer.commit,
+            dirty_state=_producer.dirty,
+            producer_commit=_producer.commit if _producer.sensing else None,
             python_version=platform.python_version(),
             lockfile_hash=lock_hash,
             os_class=platform.system(),
@@ -2051,6 +2086,7 @@ def _finalize_owned_result(
     ownership: _InvocationOwnership,
     result: RunResult,
     workspace_root: Path,
+    producer: _ProducerRevision,
 ) -> RunResult:
     """Parent-finalize one exact owned directory and create its receipt."""
 
@@ -2101,6 +2137,16 @@ def _finalize_owned_result(
     for key, expected in parent_bindings.items():
         if manifest.get(key) != expected:
             raise RuntimeError(f"Final manifest {key} differs from parent invocation result")
+    if (
+        manifest.get("code_commit") != producer.commit
+        or manifest.get("dirty_state") is not producer.dirty
+    ):
+        raise RuntimeError("Final manifest differs from the pinned producer revision")
+    if producer.sensing and manifest.get("producer_commit") != producer.commit:
+        raise RuntimeError("Final sensing manifest lacks the pinned producer revision")
+    if not producer.sensing and "producer_commit" in manifest:
+        raise RuntimeError("Unexpected sensing producer binding on a legacy episode")
+    producer.recheck(producer.repository)
     receipt_path = create_execution_receipt(
         workspace_root=workspace_root,
         invocation_id=ownership.invocation_id,
@@ -2154,19 +2200,17 @@ def _canonical_bundle(
 
 def _check_planned_inputs(
     attempt: PlannedAttempt,
-    repository: Path,
+    commit: str,
     seed: int,
     canonical_config: Mapping[str, object],
     seed_registry: Mapping[str, object],
 ) -> None:
-    if Path(__file__).resolve().parents[3] != repository or git_is_dirty(repository):
-        raise ValueError("Planned execution requires the clean checkout running this harness")
-    observed = ComparisonInputs.from_inputs(canonical_config, seed_registry, git_commit(repository))
+    observed = ComparisonInputs.from_inputs(canonical_config, seed_registry, commit)
     if attempt.seed != seed or attempt.expected != observed:
         raise ValueError("Governed inputs, code revision or seed differ from planned attempt")
 
 
-def _selected_invocation_seed(
+def _prepare_invocation(
     scenario_path: Path | str,
     policy_path: Path | str,
     seed_registry_path: Path | str,
@@ -2176,7 +2220,7 @@ def _selected_invocation_seed(
     baseline_path: Path | str | None,
     metric_path: Path | str | None,
     planned_attempt: PlannedAttempt | None = None,
-) -> int:
+) -> tuple[int, _ProducerRevision]:
     """Fully validate controlled inputs in the parent before allocating ownership."""
 
     scenario, policy, baseline = _load_condition_inputs(
@@ -2205,10 +2249,15 @@ def _selected_invocation_seed(
         raise ConfigurationError("Selected seed must be an integer")
     if selected not in registered:
         raise ConfigurationError("Selected seed is not present in the controlled seed registry")
+    producer = _ProducerRevision.capture(repository, sensing="sensing_operator" in scenario)
+    if producer.dirty and (producer.sensing or planned_attempt is not None):
+        raise ConfigurationError(
+            "Planned and sensing diagnostics require a clean producer checkout"
+        )
     if planned_attempt is not None:
         config = _canonical_bundle(protocol_version, scenario, policy, baseline, metrics)
-        _check_planned_inputs(planned_attempt, repository, selected, config, seed_registry)
-    return selected
+        _check_planned_inputs(planned_attempt, producer.commit, selected, config, seed_registry)
+    return selected, producer
 
 
 def _deny_reportable_without_invocation(
@@ -2292,7 +2341,7 @@ def _run_diagnostic_in_process(
             baseline_path=baseline_path,
             metric_path=metric_path,
         )
-    selected_seed = _selected_invocation_seed(
+    selected_seed, producer = _prepare_invocation(
         scenario_path,
         policy_path,
         seed_registry_path,
@@ -2322,8 +2371,9 @@ def _run_diagnostic_in_process(
             metric_path=metric_path,
             reportable=reportable,
             _ownership=_worker_ownership(ownership),
+            _producer=producer,
         )
-        return _finalize_owned_result(ownership, staged_result, workspace)
+        return _finalize_owned_result(ownership, staged_result, workspace, producer)
     except Exception as error:
         _retain_parent_failure(workspace, ownership, error)
         raise
@@ -2342,6 +2392,7 @@ class _DiagnosticRequest:
     metric_path: str | None
     reportable: bool
     ownership: _InvocationOwnership
+    producer: _ProducerRevision
 
 
 def _worker_ownership(ownership: _InvocationOwnership) -> _InvocationOwnership:
@@ -2369,6 +2420,7 @@ def _diagnostic_process_entry(sender: Connection, request: _DiagnosticRequest) -
             metric_path=request.metric_path,
             reportable=request.reportable,
             _ownership=request.ownership,
+            _producer=request.producer,
         )
         sender.send({"ok": True, "result": result.to_dict()})
     except Exception as error:
@@ -2509,7 +2561,7 @@ def run_diagnostic(
             baseline_path=baseline_path,
             metric_path=metric_path,
         )
-    selected_seed = _selected_invocation_seed(
+    selected_seed, producer = _prepare_invocation(
         scenario_path,
         policy_path,
         seed_registry_path,
@@ -2538,6 +2590,7 @@ def run_diagnostic(
         metric_path=str(Path(metric_path)) if metric_path is not None else None,
         reportable=reportable,
         ownership=_worker_ownership(ownership),
+        producer=producer,
     )
     context = multiprocessing.get_context("spawn")
     receiver, sender = context.Pipe(duplex=False)
@@ -2638,7 +2691,7 @@ def run_diagnostic(
         _retain_parent_failure(workspace, ownership, error)
         raise error from conversion_error
     try:
-        return _finalize_owned_result(ownership, staged_result, workspace)
+        return _finalize_owned_result(ownership, staged_result, workspace, producer)
     except Exception as finalization_error:
         _retain_parent_failure(workspace, ownership, finalization_error)
         raise

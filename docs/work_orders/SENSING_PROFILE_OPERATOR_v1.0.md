@@ -30,6 +30,12 @@ Both shipped scenarios use latent signal 0.86, the same live opportunity, capaci
 
 These numbers are deterministic acceptance oracles. A zero-duration verified switch and rollback has an observed cost and zero alternate ticks. Missing measurements remain null. Operators cannot change the evaluator, scenario, seeds, budget, authority, or metric calculation.
 
+## Provenance checks
+
+Use the frozen editable install from the checkout whose inputs the diagnostic is evaluating. The public parent binds its executing checkout and revision before allocating an invocation. The spawned worker and the parent at completion check the same revision. Sensing completions carry the producer revision in their receipt-bound manifest. Verified sensing measures require that revision to match the claimed code commit. This protects single-run and comparison-plan reads even when an older writer supplies a receipt. Earlier non-sensing artifacts keep their established wire format and checks.
+
+The governed sensing scenario IDs and defender names are reserved. Pair them with their designated checkout paths, sensing configuration and policy. A legacy file relabeled with a sensing scenario ID must fail before allocation. A changed manifest or substituted producer must withhold the episode's measurements on every verified read.
+
 ## Verification and reproduction
 
 For a clean checkout inside the dedicated workspace, the following commands use registered development seeds and the frozen environment. Supply the run directory printed by the diagnostic to `verify` and `metrics`.

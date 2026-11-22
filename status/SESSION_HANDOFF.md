@@ -18,6 +18,10 @@ Clean post-merge checkout `repo/wp14-merged-main-check` passed the full frozen s
 
 [Draft PR #15](https://github.com/mthiessmeier/pacd-simulation/pull/15) opened with implementation commit `ad16f1f27dfaad5aad967ad759575dfea5dfc6d4` following work order `bb211268ee7d069917f51e5a3b1df828199b547b`. This additive checkpoint identifies the code under review. The PR records the final candidate SHA, checks and disposition. Initial checks passed 71 domain tests, 62 governed configuration and sensing selector tests, 81 replay/metrics/comparison tests, and seven matched-integration and schema checks. Some tests overlap across these groups.
 
+The first exact-head review candidate was `5cb1aa375c756f8d28ee6638e3c61731f5055a19`. Both full suites passed 480 tests with one skip. Its eight guarded compatibility cases and twelve new sensing cases completed. A separate reviewer reproduced two errors despite those passing checks. A clean older executable targeting another checkout produced a receipt claiming the target SHA, and a legacy isolation fixture could declare a reserved sensing scenario name. Private reproductions are under `t/ir7b`. A second review-only session independently checked timing, inactive siblings, budget, failure and invalid attempt denominators under `t/ir7a`.
+
+Corrections were prepared in `repo/wp07-sensing-verified` on the same feature branch to preserve the exact first-candidate checkout and its active tests. The corrections reserve both sensing role identities and bind verified sensing measurements to the executing revision, including unplanned launches. The pull request records the corrected SHA and fresh review disposition. Archived unplanned non-sensing v1 artifacts retain their original provenance format.
+
 ## Checkpoint
 
 The first deliverable is a synthetic, reversible sensing-profile switch with fixed, adaptive and disabled choices, one evaluator-owned decision opportunity, cost budget, clock, and a declared passive-observer knowledge model. Public execution and verification use the normal guarded, receipt-backed diagnostic infrastructure. Broader scope and separate reportable and human-study gates are retained.

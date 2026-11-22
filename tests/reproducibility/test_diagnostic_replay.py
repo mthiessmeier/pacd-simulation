@@ -131,6 +131,23 @@ def test_sensing_configuration_and_effect_cannot_be_substituted(
     assert isinstance(measure, dict)
     assert measure["switch_tick"] == 4 and measure["alternate_profile_ticks"] == 4
     assert measure["expected_known_profile_ticks"] == 5
+    honest = _manifest(run.run_dir)
+    assert honest["producer_commit"] == honest["code_commit"]
+    for case, revision in (("older-writer", None), ("wrong-writer", "0" * 40)):
+        destination = ws.root / "var/tmp" / case / run.run_dir.name
+        shutil.copytree(run.run_dir, destination)
+        altered = honest.copy()
+        if revision is None:
+            del altered["producer_commit"]
+        else:
+            altered["producer_commit"] = revision
+        _write_canonical_json(destination / "manifest.json", altered)
+        _refresh_integrity_closure(destination, ())
+        result, material = verify_module.verify_run_with_summary(
+            destination, ws.root, repo_root=ws.repo_root
+        )
+        assert not result.semantic_content_valid and material is None
+        assert any("producer_commit" in error for error in result.errors), result.errors
     for component, replacement, error in [
         ("safety_policy", legacy_policy, "configuration hashes do not match controlled"),
         ("scenario", ws.config_root / "scenarios/diagnostic_guarded_benign.yaml", "governed pair"),
@@ -481,6 +498,22 @@ def _manifest(run_dir: Path) -> dict[str, object]:
     value = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
     assert isinstance(value, dict)
     return {str(key): item for key, item in value.items()}
+
+
+@pytest.mark.reproducibility
+def test_legacy_manifest_rejects_a_sensing_producer_field(diagnostic_runs: DiagnosticRuns) -> None:
+    destination = _copy_run(diagnostic_runs, "extraneous-producer")
+    manifest = _manifest(destination)
+    assert "producer_commit" not in manifest
+    manifest["producer_commit"] = manifest["code_commit"]
+    _write_canonical_json(destination / "manifest.json", manifest)
+    _refresh_integrity_closure(destination, ())
+    ws = diagnostic_runs.workspace
+    result, material = verify_module.verify_run_with_summary(
+        destination, ws.root, repo_root=ws.repo_root
+    )
+    assert material is None and not result.semantic_content_valid
+    assert any("producer_commit" in error and "extra" in error for error in result.errors)
 
 
 @pytest.mark.reproducibility
