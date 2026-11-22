@@ -88,6 +88,8 @@ The accepted planner consumes observation-only tick, subject and signal inputs. 
 - Sensor/event streams reproduce while documenting permitted causal divergence between defender conditions.
 - Calibration measures have defined outcomes/timing and adversarial or misleading evidence can worsen decisions visibly.
 
+The [verified evidence context work order](work_orders/VERIFIED_EVIDENCE_CONTEXT_v1.0.md) covers measurement age and distinct sensor presence for a retrospective WP08 input. Reliability, contradiction, competing beliefs, prospective decisions and calibration remain open.
+
 ## WP04 · Implement bounded adaptive adversary and scenario state machines
 
 Start dependencies: WP00. Workstreams: SC-05, SC-15, SC-16, SC-17. Sources: WO 6.2, TM layer 4 and 5–6, EC 5,8, MD 2.
