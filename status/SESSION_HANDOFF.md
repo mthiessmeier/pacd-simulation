@@ -1,29 +1,29 @@
-# PACD session handoff - WP07 sensing-profile operator
+# PACD session handoff · WP03 evidence freshness
 
-**Evidence class** `NON_REPORTABLE_DIAGNOSTIC`. Owner instruction authorized merging PR #14 at one exact head and then implementing the next authorized increment for independent review. The choice of a single development operator follows the sequencing in the [remaining implementation plan](../docs/REMAINING_IMPLEMENTATION_PLAN.md). See the [WP07 work order](../docs/work_orders/SENSING_PROFILE_OPERATOR_v1.0.md) and the [source ledger](REMAINING_SCOPE_RECONCILIATION.csv).
+**Candidate.** [Draft PR #16](https://github.com/mthiessmeier/pacd-simulation/pull/16) adds a read-only `pacd-sim evidence-trace RUN_DIR` on `codex/wp03-evidence-freshness`. Its [work order](../docs/work_orders/VERIFIED_EVIDENCE_CONTEXT_v1.0.md) defines the delivered fields, assumptions and review challenges. All outputs are `NON_REPORTABLE_DIAGNOSTIC`.
 
-## Verified starting state
+## Merge verification
 
-| Record | Identity or disposition |
+| Record | Verified identity |
 |---|---|
-| Repository | Private `mthiessmeier/pacd-simulation`, default `main` |
-| Approved PR #14 head | `18f3364775ad379b73b4b1ea958b125e4ace31cf`, checked via PR data and Git ref. Two independent scoped passes recorded in the [merged PR](https://github.com/mthiessmeier/pacd-simulation/pull/14). |
-| Live merge | `814bb411bf1f9512950ecc715c1558ce8fc9aaa3`, first parent `b4609ac1c8d7f4631ad371edf81587aed313842e`, second parent the approved head, tree `2337758d1a77dd379ceb924b07bd2de54039f452`. |
-| Concurrent work preserved | PR #13 had already merged the owner's license decision D-017. The twelve licensing, metadata and governance paths account for the merge's entire diff against the approved head. Docs PRs #9 and #11 remain separate. |
-| Branch | Fresh ordinary clone `repo/wp07-governed-operator`, feature branch `codex/wp07-policy-variation` at the verified merge. |
-| Governing controls | Current root AGENTS.md, decision log, DEC-037/038 continuation and owner instruction. The simulator license adopted on main is Apache-2.0 within LICENSING.md. |
-| Inputs and environment | Frozen uv 0.12.5, CPython 3.13.15. The prior acceptance and all broader residuals remain available in the [WP05/WP06 handoff](https://github.com/mthiessmeier/pacd-simulation/blob/18f3364775ad379b73b4b1ea958b125e4ace31cf/status/SESSION_HANDOFF.md). |
+| Repository and authority | Private `mthiessmeier/pacd-simulation`. The owner's latest instruction approved the specified head of PR #15 and one subsequent development increment. Current AGENTS.md, D-017 and the continuation decisions recorded in status/PHASE2_INCREMENT1.md apply. |
+| Approved head of [PR #15](https://github.com/mthiessmeier/pacd-simulation/pull/15) | `8b724603d6bc92af03ac58733564495edc94b9cc`. PR data and the remote Git ref agreed. Prior independent dispositions are recorded on that PR. |
+| Merged main | `05c45758cabba10a40aa1e15192b78edece3346a`, first parent `814bb411bf1f9512950ecc715c1558ce8fc9aaa3`, second parent the approved head. The GitHub response, remote main and clean clone agreed. |
+| Tree | `10cbe39c60619af580ab2835f0ec0d94260f694f` on both merged main and the approved head. Whole-tree diff was empty. |
+| Continuity | Previous [WP07 handoff](https://github.com/mthiessmeier/pacd-simulation/blob/8b724603d6bc92af03ac58733564495edc94b9cc/status/SESSION_HANDOFF.md). PR #9 and PR #11 were open drafts at preflight. Their historical package instructions do not supersede live authority. |
 
-Clean post-merge checkout `repo/wp14-merged-main-check` passed the full frozen suite with 442 passed and one Windows directory-symlink privilege skip. The lock SHA-256 was `2ed6b7134df13ce28adaed91bbed4198251fb98e46618f98608cfb8db6047b69`. The retained command output is `review/wp07-sensing/main-pytest.log`.
+## Development checkpoint
 
-[Draft PR #15](https://github.com/mthiessmeier/pacd-simulation/pull/15) opened with implementation commit `ad16f1f27dfaad5aad967ad759575dfea5dfc6d4` following work order `bb211268ee7d069917f51e5a3b1df828199b547b`. This additive checkpoint identifies the code under review. The PR records the final candidate SHA, checks and disposition. Initial checks passed 71 domain tests, 62 governed configuration and sensing selector tests, 81 replay/metrics/comparison tests, and seven matched-integration and schema checks. Some tests overlap across these groups.
+Used the fresh ordinary clone `repo/wp03-evidence-freshness`. Work order `bac93ec3b115251ef68014fcbfeccabec316a22b` preceded implementation `b2c40355fb2b38ea79d93864d3a053c76b34c075`. PR #16 opened at that implementation commit. Its final body records the exact candidate SHA, full checks and independent disposition. The private evidence index is `review/wp03-evidence-freshness/final-evidence-index.json`.
 
-The first exact-head review candidate was `5cb1aa375c756f8d28ee6638e3c61731f5055a19`. Both full suites passed 480 tests with one skip. Its eight guarded compatibility cases and twelve new sensing cases completed. A separate reviewer reproduced two errors despite those passing checks. A clean older executable targeting another checkout produced a receipt claiming the target SHA, and a legacy isolation fixture could declare a reserved sensing scenario name. Private reproductions are under `t/ir7b`. A second review-only session independently checked timing, inactive siblings, budget, failure and invalid attempt denominators under `t/ir7a`.
+WP03 supplies an input capability for WP08. The earlier planner's repeated readings can come from the same sensor. The new trace preserves that fact, distinguishes freshness from signal strength, and tracks fresh sensors separately for each subject. Event labels and generated latent signals are evaluator data. Use the actual delivered signal and an opaque episode-local key on the shared evidence boundary. In the v1 fixture the governed event tick models the sensor's acquisition time. The three-tick window is a development assumption.
 
-Corrections were prepared in `repo/wp07-sensing-verified` on the same feature branch to preserve the exact first-candidate checkout and its active tests. The corrections reserve both sensing role identities and bind verified sensing measurements to the executing revision, including unplanned launches. The pull request records the corrected SHA and fresh review disposition. Archived unplanned non-sensing v1 artifacts retain their original provenance format.
+The 22 domain tests passed. Another 13 CLI/replay tests passed, including the inclusive three-tick boundary, stale-at-four, tied readings, missing subjects, changed observations and missing receipts. The work order and plan link the source obligations. Reconciliation against the preserved handoff accounted for 558 source units, 47 metric IDs, 18 workstreams and 16 packages.
 
-## Checkpoint
+## Reproduction and review
 
-The first deliverable is a synthetic, reversible sensing-profile switch with fixed, adaptive and disabled choices, one evaluator-owned decision opportunity, cost budget, clock, and a declared passive-observer knowledge model. Public execution and verification use the normal guarded, receipt-backed diagnostic infrastructure. Broader scope and separate reportable and human-study gates are retained.
+Use CPython 3.13.15 and uv 0.12.5. The lock SHA-256 is `2ed6b7134df13ce28adaed91bbed4198251fb98e46618f98608cfb8db6047b69`. The [work order](../docs/work_orders/VERIFIED_EVIDENCE_CONTEXT_v1.0.md) gives the public entry point. Candidate evidence in the private workspace retains exact commands and results, including a clean merged-main check, candidate coverage, frozen reconstruction, separate review-only probes and a development comparison on seeds 424242 and 424243 with an unlaunched slot. Consult the PR's exact-SHA disposition before proceeding.
 
-Local commands, raw evidence and review outcomes belong under the dedicated workspace's `review/wp07-sensing` and candidate-specific review directories. The PR records the exact candidate SHA, gate results and independent disposition without requiring a self-referential commit. The candidate requires the scoped independent review and gate evidence recorded on its PR. Merge requires an exact-head owner decision. WP08 and WP09 retain portfolio and coordination work with the start and closure dependencies in the remaining plan.
+For independent review, challenge source linkage and age at delivery, the bound on retained inputs, missing/repeated sources, the separation between simulator truth and delivered observations, and release on invalid receipts. Compare unchanged v1 raw, summary and metric behavior. Keep failed or incomplete attempts outside the set of measured completions and retain their identities.
+
+Only the owner can approve merging the candidate. A next WP08 slice can bind the accepted context to a prospective, governed selection and fallback under matched inputs. Source reliability, contradiction, competing beliefs, all six variation classes, portfolio weights, coordination and the remaining work packages continue under the [full plan](../docs/REMAINING_IMPLEMENTATION_PLAN.md). CAL-005/CAL-006 still require decision-level definitions and denominators. H6 retains separate human-study authority.
