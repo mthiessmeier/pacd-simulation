@@ -226,7 +226,7 @@ Shared observation/governor paths and attempt accounting are useful foundations,
 
 Start dependencies: WP00. Workstreams: SC-17, SC-18, SC-01. Sources: WO 6.5, TM layer 11 and 7, EC 10–11, MD 1–12.
 
-Verified disposition metrics, registered completion accounting and raw-to-derived regeneration are accepted. Forty-seven broader metric definitions remain individually tracked.
+Verified disposition metrics, registered completion accounting and raw-to-derived regeneration are accepted. Forty-seven broader metric definitions remain individually tracked. The [CAL-006 sensing attribution work order](work_orders/SENSING_FRESHNESS_ATTRIBUTION_v1.0.md) measures the age of the original supporting evidence at candidate and execution time for the two WP08 conditions. The broader CAL-006 definition and failed-episode safety accounting remain open.
 
 - Preserve SEC-001–007, MIS-001–006, POL-001–007, SAF-001–006, GOV-001–005, CAL-001–006, GEN-001–005 and OPS-001–005, implementing each as its required mechanics become available.
 - Complete raw-event, episode and manifest contracts; define numerator, denominator, unit, eligibility, timing/censoring, aggregation, missingness, exclusions, provenance and applicable distribution/tail reporting.

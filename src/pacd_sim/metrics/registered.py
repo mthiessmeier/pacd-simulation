@@ -130,7 +130,13 @@ def _retained_object(path: Path, limit: int) -> dict[str, object]:
 
 
 def _final_outcome(
-    run: OwnedRun, attempt: RegisteredAttempt, receipt: bool, workspace: Path, repo: Path
+    run: OwnedRun,
+    attempt: RegisteredAttempt,
+    receipt: bool,
+    workspace: Path,
+    repo: Path,
+    *,
+    include_sensing_freshness: bool,
 ) -> Outcome:
     if receipt:
         verified, summary = verify_run_with_summary(
@@ -138,6 +144,7 @@ def _final_outcome(
             workspace,
             repo_root=repo,
             include_comparison_inputs=isinstance(attempt, PlannedAttempt),
+            include_sensing_freshness=include_sensing_freshness,
         )
         if verified.valid and summary is not None and summary.episode.seed == attempt.seed:
             return Outcome(
@@ -191,7 +198,12 @@ def _final_outcome(
 
 
 def _observe(
-    attempt: RegisteredAttempt, workspace: Path, repo: Path, plan_digest: str | None = None
+    attempt: RegisteredAttempt,
+    workspace: Path,
+    repo: Path,
+    plan_digest: str | None,
+    *,
+    include_sensing_freshness: bool,
 ) -> Outcome:
     key = attempt.invocation_id
     marker_path = assert_exact_control_path(
@@ -222,7 +234,14 @@ def _observe(
         final = _directory_present(run.final, run.identity)
         staging = _directory_present(run.staging, run.identity)
         if final and not staging:
-            outcome = _final_outcome(run, observed_attempt, receipt, workspace, repo)
+            outcome = _final_outcome(
+                run,
+                observed_attempt,
+                receipt,
+                workspace,
+                repo,
+                include_sensing_freshness=include_sensing_freshness,
+            )
         elif receipt or final:
             outcome = Outcome("INVALID", "conflicting_run_locations", run.run_id)
         else:
@@ -274,7 +293,13 @@ def load_register[T: (AttemptRegister, ComparisonPlan)](
 
 
 def registered_metrics(
-    path: Path, workspace: Path, repo: Path, expected_digest: str | None, *, planned: bool = False
+    path: Path,
+    workspace: Path,
+    repo: Path,
+    expected_digest: str | None,
+    *,
+    planned: bool = False,
+    include_sensing_freshness: bool = False,
 ) -> dict[str, object]:
     """Account for each declared attempt once, releasing counts only for verified completions."""
     register: ComparisonPlan | AttemptRegister
@@ -287,7 +312,13 @@ def registered_metrics(
     rows = []
     for attempt in register.attempts:
         try:
-            outcome = _observe(attempt, workspace, repo, digest if planned else None)
+            outcome = _observe(
+                attempt,
+                workspace,
+                repo,
+                digest if planned else None,
+                include_sensing_freshness=include_sensing_freshness,
+            )
         except (OSError, ValueError, RecursionError):
             outcome = Outcome("INVALID", "invalid_invocation_evidence")
         status_counts[outcome.status] += 1
