@@ -6,6 +6,7 @@ from sys import float_info
 import pytest
 import yaml
 from conftest import CONFIG_ROOT, IsolatedWorkspace, controlled_config_files, run_committed_scenario
+from pydantic import ValidationError
 
 from pacd_sim.configuration import ScenarioConfig
 from pacd_sim.environment.model import (
@@ -147,6 +148,8 @@ def test_explicit_dependency_list_boundaries(
 def test_optional_fields_preserve_scenario_wire_hash_and_schema() -> None:
     original = load_yaml_config(controlled_config_files(CONFIG_ROOT)[0])
     optional_fields = {
+        "assets",
+        "credentials",
         "dependencies",
         "availability_model",
         "guarded_review",
@@ -159,6 +162,18 @@ def test_optional_fields_preserve_scenario_wire_hash_and_schema() -> None:
     ):
         assert set(original) | optional_fields == set(schema["properties"])
         assert optional_fields.isdisjoint(schema["required"])
+        for field, flag, reference in (
+            ("assets", "available", "kind"),
+            ("credentials", "active", "identity_id"),
+        ):
+            array_ref = schema["properties"][field]["$ref"]
+            array = schema["$defs"][array_ref.rsplit("/", 1)[1]]
+            assert array["type"] == "array" and array["maxItems"] == 100
+            assert array.get("minItems", 0) == 0
+            row = schema["$defs"][array["items"]["$ref"].rsplit("/", 1)[1]]
+            assert row["additionalProperties"] is False
+            assert set(row["required"]) == set(row["properties"]) == {"id", flag, reference}
+            assert row["properties"][flag]["type"] == "boolean"
         selected_ref = schema["properties"]["critical_mission_ids"]["$ref"]
         selected = schema["$defs"][selected_ref.rsplit("/", 1)[1]]
         assert selected["type"] == "array" and selected["minItems"] == 1
@@ -168,6 +183,9 @@ def test_optional_fields_preserve_scenario_wire_hash_and_schema() -> None:
     wire_hashes = set()
     variations: tuple[dict[str, object], ...] = (
         {},
+        {"assets": []},
+        {"credentials": []},
+        {"assets": [], "credentials": []},
         {"dependencies": []},
         {"dependencies": [{**EDGE, "weight": 2}]},
         {"availability_model": "required_dependencies_v1"},
@@ -190,6 +208,37 @@ def test_optional_fields_preserve_scenario_wire_hash_and_schema() -> None:
     assert canonical_sha256(
         ScenarioConfig.model_validate_json(parsed.model_dump_json())
     ) == canonical_sha256(guarded)
+
+
+@pytest.mark.parametrize(
+    ("field", "flag", "reference", "target"),
+    [
+        ("assets", "available", "kind", "synthetic_endpoint"),
+        ("credentials", "active", "identity_id", USER),
+    ],
+)
+def test_bounded_entity_rows_round_trip_and_reject_invalid_inputs(
+    field: str, flag: str, reference: str, target: str
+) -> None:
+    original = load_yaml_config(controlled_config_files(CONFIG_ROOT)[0])
+    rows = [{"id": f"item-{i}", flag: bool(i % 2), reference: target} for i in range(100)]
+    wire = {**original, field: rows}
+    parsed = ScenarioConfig.model_validate(wire)
+    assert canonical_sha256(parsed) == canonical_sha256(wire)
+    assert ScenarioConfig.model_validate_json(parsed.model_dump_json()) == parsed
+
+    row = rows[0]
+    for invalid in (
+        None,
+        row,
+        rows + [row],
+        [{k: v for k, v in row.items() if k != flag}],
+        [{**row, flag: 0}],
+        [{**row, flag: "false"}],
+        [{**row, "extra": True}],
+    ):
+        with pytest.raises(ValidationError):
+            ScenarioConfig.model_validate({**original, field: invalid})
 
 
 @pytest.mark.negative

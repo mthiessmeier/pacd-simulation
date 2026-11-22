@@ -58,6 +58,21 @@ class TelemetryConfig(StrictFrozenModel):
     delay_ticks: Annotated[int, Field(ge=0, le=100)]
 
 
+class AssetConfig(StrictFrozenModel):
+    id: StableId
+    kind: StableId
+    available: bool
+
+
+class CredentialConfig(StrictFrozenModel):
+    id: StableId
+    identity_id: StableId
+    active: bool
+
+
+type EntityRows[T] = Annotated[tuple[T, ...], Field(max_length=100), BeforeValidator(_freeze_array)]
+
+
 class IdentityConfig(StrictFrozenModel):
     id: StableId
     role: StableId
@@ -172,8 +187,14 @@ class ScenarioConfig(DiagnosticRecord):
     synthetic: Enabled
     default_seed: Signed64Count
     telemetry: TelemetryConfig
+    assets: EntityRows[AssetConfig] | SkipJsonSchema[None] = Field(
+        default_factory=lambda: None, validate_default=False, exclude_if=lambda value: value is None
+    )
     identities: NonemptyArray[IdentityConfig]
     sessions: NonemptyArray[SessionConfig]
+    credentials: EntityRows[CredentialConfig] | SkipJsonSchema[None] = Field(
+        default_factory=lambda: None, validate_default=False, exclude_if=lambda value: value is None
+    )
     services: NonemptyArray[ServiceConfig]
     missions: NonemptyArray[MissionConfig]
     critical_mission_ids: NonemptyArray[StableId] | SkipJsonSchema[None] = Field(
@@ -231,6 +252,8 @@ class ScenarioConfig(DiagnosticRecord):
         return self
 
     @field_validator(
+        "assets",
+        "credentials",
         "dependencies",
         "availability_model",
         "guarded_review",

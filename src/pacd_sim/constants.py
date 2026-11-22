@@ -52,6 +52,11 @@ ENTERPRISE_POPULATION_FILES: Final = (
     "diagnostic_enterprise_30.yaml",
     "diagnostic_enterprise_100.yaml",
 )
+ASSET_CREDENTIAL_SCENARIO_FILES: Final = (
+    "diagnostic_dependency_nominal.yaml",
+    "diagnostic_dependency_asset_down.yaml",
+    "diagnostic_dependency_credential_inactive.yaml",
+)
 DIAGNOSTIC_SCENARIO_FILES: Final = (
     DEFAULT_SCENARIO_FILE,
     "diagnostic_maintenance_window.yaml",
@@ -67,6 +72,7 @@ DIAGNOSTIC_SCENARIO_FILES: Final = (
     MISSION_RECOVERY_ROLLBACK_FILE,
     *CRITICAL_OUTAGE_FILES,
     *ENTERPRISE_POPULATION_FILES,
+    *ASSET_CREDENTIAL_SCENARIO_FILES,
 )
 
 
@@ -97,5 +103,6 @@ def diagnostic_pair_supported(scenario_file: str, defender_file: str) -> bool:
             MISSION_RECOVERY_ROLLBACK_FILE,
             *CRITICAL_OUTAGE_FILES,
             *ENTERPRISE_POPULATION_FILES,
+            *ASSET_CREDENTIAL_SCENARIO_FILES,
         )
     return True
