@@ -61,6 +61,7 @@ from pacd_sim.harness.static_review import (
     static_review_candidate,
 )
 from pacd_sim.hypotheses.update import BeliefState, update_beliefs
+from pacd_sim.metrics.mission_impact import MissionSnapshot, mission_loss
 from pacd_sim.metrics.summarize import SUMMARY_SCHEMA
 from pacd_sim.reproducibility.canonical import canonical_json_bytes, canonical_sha256
 from pacd_sim.reproducibility.guarded_review import ExpectedReviewQueue, expected_availability
@@ -632,7 +633,10 @@ def _expected_profile_selection(
 
 
 def _expected_event_rows(
-    canonical_config: Mapping[str, object], seed: int
+    canonical_config: Mapping[str, object],
+    seed: int,
+    *,
+    mission_snapshots: list[MissionSnapshot] | None = None,
 ) -> list[dict[str, object]]:
     scenario = cast(dict[str, object], canonical_config["scenario"])
     baseline_definition = cast(dict[str, object], canonical_config["baseline_definition"])
@@ -696,6 +700,9 @@ def _expected_event_rows(
             }
         )
 
+    initial_availability = evaluate_availability(environment) if guarded is not None else None
+    if mission_snapshots is not None and initial_availability is not None:
+        mission_snapshots.append((0, initial_availability.operational_mission_ids))
     emit(
         "run_started",
         tick=0,
@@ -705,8 +712,8 @@ def _expected_event_rows(
             "state_graph": "networkx_detached_view",
             "synthetic_only": True,
             **(
-                {"initial_availability": expected_availability(evaluate_availability(environment))}
-                if guarded is not None
+                {"initial_availability": expected_availability(initial_availability)}
+                if initial_availability is not None
                 else {}
             ),
         },
@@ -717,7 +724,11 @@ def _expected_event_rows(
     state = environment
     actions_processed = False
     governor = SafetyGovernor(_build_policy(policy_config))
-    queue = ExpectedReviewQueue(guarded, governor, rows) if guarded is not None else None
+    queue = (
+        ExpectedReviewQueue(guarded, governor, rows, mission_snapshots)
+        if guarded is not None
+        else None
+    )
     defender = DiagnosticPACDDefender(compromise_threshold=0.5)
     for ordinal, observation in enumerate(observations, start=1):
         if queue is not None:
@@ -1123,6 +1134,7 @@ class RetainedEvidenceValidation:
     document_identities: Mapping[str, _StableParquetIdentity] | None = None
     document_ingestion_failed: bool = False
     parquet_ingestion_failed: bool = False
+    mission_impact: dict[str, object] | None = None
 
 
 @dataclass(frozen=True)
@@ -1688,6 +1700,7 @@ def validate_retained_evidence(
     workspace: Path,
     *,
     repo_root: Path | str | None,
+    include_mission_impact: bool = False,
 ) -> RetainedEvidenceValidation:
     """Validate retained evidence and return the sole bounded Parquet materialization."""
     errors: list[str] = []
@@ -1704,6 +1717,7 @@ def validate_retained_evidence(
     document_identities: dict[str, _StableParquetIdentity] = {}
     document_ingestion_failed = False
     parquet_ingestion_failed = False
+    impact = None
     try:
         repository = _resolve_repository(workspace, repo_root)
         document_names = (
@@ -1777,7 +1791,13 @@ def validate_retained_evidence(
                 document_sha256=document_sha256,
                 document_identities=document_identities,
             )
-        expected_rows = _expected_event_rows(expected_config, cast(int, seed))
+        snapshots: list[MissionSnapshot] = []
+        if include_mission_impact:
+            expected_rows = _expected_event_rows(
+                expected_config, cast(int, seed), mission_snapshots=snapshots
+            )
+        else:
+            expected_rows = _expected_event_rows(expected_config, cast(int, seed))
         ingestion = _ingest_bounded_parquet(
             artifacts,
             expected_raw_row_count=len(expected_rows),
@@ -1820,6 +1840,17 @@ def validate_retained_evidence(
                 raw_file_identity=raw_file_identity,
                 summary_file_identity=summary_file_identity,
             )
+        if snapshots:
+            scenario = ScenarioConfig.model_validate(expected_config["scenario"])
+            if (
+                scenario.guarded_review is not None
+                and scenario.availability_model == "required_dependencies_v1"
+            ):
+                impact = mission_loss(
+                    {mission.id: mission.criticality for mission in scenario.missions},
+                    snapshots,
+                    scenario.guarded_review.end_tick,
+                )
     except (
         ConfigurationError,
         OSError,
@@ -1850,4 +1881,5 @@ def validate_retained_evidence(
         document_identities=document_identities,
         document_ingestion_failed=document_ingestion_failed,
         parquet_ingestion_failed=parquet_ingestion_failed,
+        mission_impact=impact,
     )

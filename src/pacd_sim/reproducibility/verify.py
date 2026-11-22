@@ -391,6 +391,7 @@ def _verify_run_impl(
     include_comparison_inputs: bool = False,
     include_evidence_readings: bool = False,
     include_sensing_freshness: bool = False,
+    include_mission_impact: bool = False,
 ) -> tuple[VerificationResult, VerifiedSummary | None]:
     """Implement complete verification behind the public defensive boundary."""
     errors: list[str] = []
@@ -499,6 +500,7 @@ def _verify_run_impl(
         artifacts,
         workspace,
         repo_root=repo_root,
+        include_mission_impact=include_mission_impact,
     )
     errors.extend(retained_validation.errors)
     if retained_validation.errors:
@@ -964,6 +966,8 @@ def _verify_run_impl(
             guarded_review = guarded_review_metrics(
                 raw_rows, ScenarioConfig.model_validate(scenario).sensing_operator
             )
+            if include_mission_impact and retained_validation.mission_impact is not None:
+                guarded_review["mission_impact"] = retained_validation.mission_impact
             if include_sensing_freshness and isinstance(baseline_definition, Mapping):
                 condition = baseline_definition.get("name")
                 if condition in (CONTEXTUAL, SCHEDULED):
@@ -1000,6 +1004,7 @@ def verify_run_with_summary(
     include_comparison_inputs: bool = False,
     include_evidence_readings: bool = False,
     include_sensing_freshness: bool = False,
+    include_mission_impact: bool = False,
 ) -> tuple[VerificationResult, VerifiedSummary | None]:
     """Release the summary and requested sensor fields only after full local verification."""
 
@@ -1013,6 +1018,7 @@ def verify_run_with_summary(
             include_comparison_inputs=include_comparison_inputs,
             include_evidence_readings=include_evidence_readings,
             include_sensing_freshness=include_sensing_freshness,
+            include_mission_impact=include_mission_impact,
         )
     except RecursionError as error:
         return VerificationResult(

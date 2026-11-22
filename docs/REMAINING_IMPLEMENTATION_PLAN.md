@@ -60,7 +60,7 @@ The current attempt register binds attempt ID, invocation ID and seed. Verified 
 
 Start dependencies: WP00. Workstreams: SC-01, SC-02, SC-15, SC-16, SC-17. Sources: WO 6.1, TM layer 3 and 4–5, EC 4, MD 3.
 
-Immutable graphs, directed dependencies and binary availability/continuity are accepted for bounded fixtures; broader temporal and entity semantics require reconciliation.
+Immutable graphs, directed dependencies and binary availability/continuity are accepted for bounded fixtures; broader temporal and entity semantics require reconciliation. The [MIS-002 work order](work_orders/MISSION_LOSS_INTEGRAL_v1.0.md) integrates weighted binary mission loss and varies the configured criticalities in a matched diagnostic. Graded mission degradation and frozen harm weights remain open.
 
 - Extend configured identities, accounts, credentials, sessions, privileges, trust paths, endpoints and synthetic SaaS/cloud services to the original 30–100-identity target while keeping tests small.
 - Define mission criticality, dependencies, time-weighted availability, degradation, recovery and defensive collateral effects using explicit synthetic assumptions.

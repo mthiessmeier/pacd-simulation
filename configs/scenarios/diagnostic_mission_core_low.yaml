@@ -1,0 +1,58 @@
+evidence_label: NON_REPORTABLE_DIAGNOSTIC
+schema_version: "1.0"
+protocol_version: BOOTSTRAP_DRAFT_v1
+name: diagnostic_mission_core_low
+synthetic: true
+default_seed: 424242
+telemetry:
+  noise_standard_deviation: 0.0
+  delay_ticks: 1
+guarded_review:
+  capacity: 1
+  delay_ticks: 2
+  validity_ticks: 4
+  end_tick: 8
+  response: approve
+  rollback: false
+  matched_signal_mean: 0.9
+availability_model: required_dependencies_v1
+identities:
+  - id: identity-guarded-user
+    role: synthetic_user
+sessions:
+  - id: session-guarded-user
+    identity_id: identity-guarded-user
+    service_id: service-guarded-console
+services:
+  - id: service-guarded-console
+    mission_id: mission-guarded-core
+  - id: service-guarded-aux
+    mission_id: mission-guarded-aux
+missions:
+  - id: mission-guarded-core
+    criticality: 0.2
+  - id: mission-guarded-aux
+    criticality: 0.8
+dependencies:
+  - id: dependency-session-console
+    upstream_id: session-guarded-user
+    downstream_id: service-guarded-console
+    weight: 1.0
+events:
+  - id: event-guarded-first
+    tick: 1
+    kind: benign_administrative
+    identity_id: identity-guarded-user
+  - id: event-guarded-tie
+    tick: 1
+    kind: benign_administrative
+    identity_id: identity-guarded-user
+  - id: event-guarded-next
+    tick: 2
+    kind: benign_administrative
+    identity_id: identity-guarded-user
+  - id: event-guarded-followup
+    tick: 4
+    kind: benign_administrative
+    identity_id: identity-guarded-user
+actions: []

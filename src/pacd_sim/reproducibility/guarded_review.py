@@ -18,6 +18,7 @@ from pacd_sim.execution.verification import (
     expected_sensing_profile,
 )
 from pacd_sim.governance.governor import PolicyDecision, SafetyGovernor
+from pacd_sim.metrics.mission_impact import MissionSnapshot
 from pacd_sim.reproducibility.canonical import canonical_sha256
 from pacd_sim.schema import PolicyDisposition, RollbackDisposition, VerificationDisposition
 from pacd_sim.state.snapshot import create_snapshot
@@ -37,10 +38,14 @@ def expected_availability(report: AvailabilityReport) -> dict[str, int | str]:
 
 
 def _expected_mission_effect(
-    before: EnvironmentState, after: EnvironmentState
+    before: EnvironmentState,
+    after: EnvironmentState,
+    mission_snapshots: list[MissionSnapshot] | None = None,
 ) -> dict[str, object]:
     previous = evaluate_availability(before)
     current = evaluate_availability(after)
+    if mission_snapshots is not None:
+        mission_snapshots.append((after.tick, current.operational_mission_ids))
     was_up = set(previous.operational_mission_ids)
     now_up = set(current.operational_mission_ids)
     groups = {
@@ -77,11 +82,16 @@ class ExpectedReviewQueue:
     """Derive expected audit rows from controlled inputs, without invoking the broker or queue."""
 
     def __init__(
-        self, config: GuardedReviewConfig, governor: SafetyGovernor, rows: list[dict[str, object]]
+        self,
+        config: GuardedReviewConfig,
+        governor: SafetyGovernor,
+        rows: list[dict[str, object]],
+        mission_snapshots: list[MissionSnapshot] | None = None,
     ) -> None:
         self.config = config
         self.governor = governor
         self.rows = rows
+        self.mission_snapshots = mission_snapshots
         self.pending: list[_ExpectedRequest] = []
         self.history: list[tuple[BaselineObservation, bool]] = []
 
@@ -301,7 +311,11 @@ class ExpectedReviewQueue:
             verification=verification.model_dump(mode="json"),
             dispatch_prestate_matches=True,
         )
-        record("mission_effect", stage="execution", **_expected_mission_effect(before, after))
+        record(
+            "mission_effect",
+            stage="execution",
+            **_expected_mission_effect(before, after, self.mission_snapshots),
+        )
         if not self.config.rollback:
             return after
         rollback = RollbackRecord.model_validate(
@@ -316,5 +330,9 @@ class ExpectedReviewQueue:
         record(
             "rolled_back", rollback=rollback.model_dump(mode="json"), exact_prestate_restored=True
         )
-        record("mission_effect", stage="rollback", **_expected_mission_effect(after, before))
+        record(
+            "mission_effect",
+            stage="rollback",
+            **_expected_mission_effect(after, before, self.mission_snapshots),
+        )
         return before

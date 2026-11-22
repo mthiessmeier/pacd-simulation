@@ -30,12 +30,17 @@ GUARDED_SCENARIO_FILES: Final = (
     "diagnostic_guarded_benign.yaml",
     "diagnostic_guarded_adverse.yaml",
 )
+MISSION_WEIGHT_SCENARIO_FILES: Final = (
+    "diagnostic_mission_core_high.yaml",
+    "diagnostic_mission_core_low.yaml",
+)
 DIAGNOSTIC_SCENARIO_FILES: Final = (
     DEFAULT_SCENARIO_FILE,
     "diagnostic_maintenance_window.yaml",
     "diagnostic_repeated_readings.yaml",
     *GUARDED_SCENARIO_FILES,
     *SENSING_SCENARIO_FILES,
+    *MISSION_WEIGHT_SCENARIO_FILES,
 )
 
 
@@ -55,4 +60,6 @@ def diagnostic_pair_supported(scenario_file: str, defender_file: str) -> bool:
         return False
     if scenario_file == "diagnostic_sensing_delayed.yaml":
         return defender_file in SELECTION_BASELINE_FILES
-    return not (scenario_file in GUARDED_SCENARIO_FILES and defender_file == DEFAULT_BASELINE_FILE)
+    if defender_file == DEFAULT_BASELINE_FILE:
+        return scenario_file not in (*GUARDED_SCENARIO_FILES, *MISSION_WEIGHT_SCENARIO_FILES)
+    return True
