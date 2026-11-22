@@ -91,6 +91,64 @@ def outcomes(step: ReviewStep) -> list[str]:
     return [event.outcome for event in step.events]
 
 
+@pytest.mark.parametrize("rollback", [False, True])
+def test_reviewed_sensing_changes_only_target_profile(
+    state: EnvironmentState, rollback: bool
+) -> None:
+    broker = SimulatedExecutionBroker(
+        SafetyGovernor(
+            SafetyPolicy(
+                allowed_action_types=("switch_sensing_profile",),
+                escalated_action_types=("require_human_review",),
+                prohibited_action_types=(),
+            )
+        )
+    )
+    review = queue(rollback=rollback)
+    request = review.submit(*inputs(state, broker), state, broker, sensing_cost=0.25)
+    binding = request.events[0].payload["binding"]
+    assert isinstance(binding, dict) and binding["contract"] == "guarded-review-sensing-v1"
+    assert binding["action"]["action_type"] == "switch_sensing_profile"
+    assert binding["action"]["mission_cost"] == 0.25
+    assert binding["action_digest"] == canonical_sha256(binding["action"])
+    before = state.at_tick(2)
+    expected_wire = before.model_dump(mode="json")
+    assert "sensing_profile" not in expected_wire["sessions"][0]
+    expected_wire["sessions"][0]["sensing_profile"] = "alternate"
+    after_digest = canonical_sha256(expected_wire)
+    result = review.advance(2, state, broker)
+    assert outcomes(result)[:4] == ["approved", "executed", "verified", "mission_effect"]
+    assert result.events[1].payload["state_after_digest"] == after_digest
+    mission = result.events[3].payload["mission_continuity"]
+    assert isinstance(mission, dict) and mission["continued_mission_count"] == 1
+    if rollback:
+        assert outcomes(result)[4:] == ["rolled_back", "mission_effect"]
+        assert canonical_sha256(result.state) == canonical_sha256(before)
+    else:
+        assert outcomes(result)[4:] == []
+        assert canonical_sha256(result.state) == after_digest
+        repeated = review.submit(
+            *inputs(result.state, broker, "new"), result.state, broker, sensing_cost=0.25
+        )
+        assert outcomes(repeated) == ["refused"]
+        assert (
+            repeated.events[0].payload["reason"]
+            == "target session already uses the alternate sensing profile"
+        )
+
+
+def test_reviewed_sensing_requires_separate_policy_allowlist(
+    state: EnvironmentState, broker: SimulatedExecutionBroker
+) -> None:
+    review = queue()
+    assert outcomes(review.submit(*inputs(state, broker), state, broker, sensing_cost=0.25)) == [
+        "pending"
+    ]
+    result = review.advance(2, state, broker)
+    assert outcomes(result) == ["approved", "unauthorized"]
+    assert canonical_sha256(result.state) == canonical_sha256(state.at_tick(2))
+
+
 def test_action_policy_evidence_clock_and_exact_recovery(
     state: EnvironmentState,
     broker: SimulatedExecutionBroker,

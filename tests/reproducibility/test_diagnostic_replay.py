@@ -23,13 +23,17 @@ from conftest import (
 )
 
 from pacd_sim.audit.writer import EVENT_SCHEMA
+from pacd_sim.comparison import RegisteredAttempt
+from pacd_sim.environment.model import EnvironmentState
 from pacd_sim.evidence.normalize import EvidenceItem
 from pacd_sim.execution.broker import SimulatedExecutionBroker
 from pacd_sim.harness.run import RunResult, _run_diagnostic_in_process, load_yaml_config
 from pacd_sim.harness.static_review import ReviewEpisodeGate
+from pacd_sim.metrics.registered import AttemptRegister, registered_metrics
 from pacd_sim.metrics.summarize import write_episode_summary
 from pacd_sim.oversight import guarded
 from pacd_sim.oversight.guarded import GuardedReviewQueue
+from pacd_sim.polymorphism.sensing import project_sensing_observation
 from pacd_sim.reproducibility import evidence_validation
 from pacd_sim.reproducibility import guarded_review as replay
 from pacd_sim.reproducibility import verify as verify_module
@@ -42,6 +46,128 @@ from pacd_sim.reproducibility.manifest import (
 from pacd_sim.reproducibility.paths import is_symlink_or_reparse
 from pacd_sim.reproducibility.receipts import verify_execution_receipt
 from pacd_sim.reproducibility.verify import verify_run
+from pacd_sim.telemetry.generator import Observation
+
+
+@pytest.mark.reproducibility
+@pytest.mark.parametrize("fault", ["choice", "delivered_precision"])
+def test_sensing_replay_rejects_receipted_producer_fault(
+    isolated_workspace: IsolatedWorkspace, monkeypatch: pytest.MonkeyPatch, fault: str
+) -> None:
+    ws = isolated_workspace
+    _, _, seeds, _, metrics = controlled_config_files(ws.config_root)
+    if fault == "choice":
+        monkeypatch.setattr(
+            "pacd_sim.harness.run.sensing_decision",
+            lambda policy, reading, ordinal, cost, budget: (
+                "no_positive_gain" if ordinal == 1 else "outside_opportunity"
+            ),
+        )
+    else:
+
+        def wrong_reading(
+            observation: Observation, state: EnvironmentState
+        ) -> tuple[Observation, dict[str, object]]:
+            delivered, detail = project_sensing_observation(observation, state)
+            return delivered.model_copy(update={"signal": round(observation.signal, 1)}), detail
+
+        monkeypatch.setattr("pacd_sim.harness.run.project_sensing_observation", wrong_reading)
+    run = _run_diagnostic_in_process(
+        ws.config_root / "scenarios/diagnostic_sensing_nominal.yaml",
+        ws.config_root / "policies/diagnostic_sensing.yaml",
+        seeds,
+        ws.output_root,
+        repo_root=ws.repo_root,
+        workspace_root=ws.root,
+        baseline_path=ws.config_root / "defenders/sensing_adaptive.yaml",
+        metric_path=metrics,
+    )
+    result, material = verify_module.verify_run_with_summary(
+        run.run_dir, ws.root, repo_root=ws.repo_root
+    )
+    assert verify_execution_receipt(
+        workspace_root=ws.root, run_dir=run.run_dir, manifest=_manifest(run.run_dir)
+    ).identity_assured
+    assert not result.semantic_content_valid and material is None
+    assert any("reconstructed" in e or "row count is not exactly" in e for e in result.errors)
+    register = AttemptRegister(
+        format="pacd-attempt-register-v1",
+        attempts=(
+            RegisteredAttempt(attempt_id="tested", invocation_id=run.invocation_id, seed=run.seed),
+        ),
+    )
+    path = ws.root / "register.json"
+    path.write_bytes(canonical_json_bytes(register))
+    report = registered_metrics(path, ws.root, ws.repo_root, canonical_sha256(register))
+    statuses, attempts = report["status_counts"], report["attempts"]
+    assert isinstance(statuses, dict) and statuses["INVALID"] == 1
+    assert isinstance(attempts, list) and attempts[0]["metrics"] is None
+    assert report["observed_counts"] is None
+
+
+@pytest.mark.reproducibility
+def test_sensing_configuration_and_effect_cannot_be_substituted(
+    isolated_workspace: IsolatedWorkspace,
+) -> None:
+    ws = isolated_workspace
+    _, legacy_policy, seeds, _, metrics = controlled_config_files(ws.config_root)
+    run = _run_diagnostic_in_process(
+        ws.config_root / "scenarios/diagnostic_sensing_nominal.yaml",
+        ws.config_root / "policies/diagnostic_sensing.yaml",
+        seeds,
+        ws.output_root,
+        repo_root=ws.repo_root,
+        workspace_root=ws.root,
+        baseline_path=ws.config_root / "defenders/sensing_fixed.yaml",
+        metric_path=metrics,
+    )
+    verified, summary = verify_module.verify_run_with_summary(
+        run.run_dir, ws.root, repo_root=ws.repo_root
+    )
+    assert verified.valid and summary is not None and summary.guarded_review is not None, (
+        verified.errors
+    )
+    measure = summary.guarded_review["sensing_operator"]
+    assert isinstance(measure, dict)
+    assert measure["switch_tick"] == 4 and measure["alternate_profile_ticks"] == 4
+    assert measure["expected_known_profile_ticks"] == 5
+    for component, replacement, error in [
+        ("safety_policy", legacy_policy, "configuration hashes do not match controlled"),
+        ("scenario", ws.config_root / "scenarios/diagnostic_guarded_benign.yaml", "governed pair"),
+        (
+            "scenario",
+            ws.config_root / "scenarios/diagnostic_sensing_costly.yaml",
+            "does not match the controlled repository",
+        ),
+    ]:
+        copy = ws.root / "var/tmp" / replacement.stem / run.run_dir.name
+        shutil.copytree(run.run_dir, copy)
+        manifest = _manifest(copy)
+        hashes = manifest["configuration_hashes"]
+        assert isinstance(hashes, dict)
+        hashes[component] = canonical_sha256(load_yaml_config(replacement))
+        _write_canonical_json(copy / "manifest.json", manifest)
+        _refresh_integrity_closure(copy, ())
+        result, material = verify_module.verify_run_with_summary(
+            copy, ws.root, repo_root=ws.repo_root
+        )
+        assert not result.semantic_content_valid and material is None
+        assert any(error in reason for reason in result.errors), result.errors
+    destination = ws.root / "var/tmp/false-sensing-cost" / run.run_dir.name
+    shutil.copytree(run.run_dir, destination)
+    rows = pq.read_table(destination / "raw/events.parquet").to_pylist()
+    decision = next(row for row in rows if row["event_type"] == "baseline_decision")
+    payload = json.loads(decision["payload_json"])
+    payload["switch_cost"] = 0.0
+    decision["payload_json"] = canonical_json_bytes(payload).decode()
+    _rewrite_raw_events_with_refreshed_closure(destination, rows)
+    result, material = verify_module.verify_run_with_summary(
+        destination, ws.root, repo_root=ws.repo_root
+    )
+    assert material is None
+    assert any(
+        "payload does not match reconstructed event semantics" in reason for reason in result.errors
+    )
 
 
 @pytest.mark.reproducibility

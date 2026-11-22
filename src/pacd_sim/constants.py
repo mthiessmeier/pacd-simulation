@@ -7,10 +7,21 @@ SCHEMA_VERSION: Final = "1.0"
 DEFAULT_PROTOCOL_VERSION: Final = "BOOTSTRAP_DRAFT_v1"
 DEFAULT_SCENARIO_FILE: Final = "diagnostic_identity_smoke.yaml"
 DEFAULT_BASELINE_FILE: Final = "diagnostic_baseline.yaml"
+SENSING_POLICY_FILE: Final = "diagnostic_sensing.yaml"
+SENSING_BASELINE_FILES: Final = (
+    "sensing_fixed.yaml",
+    "sensing_adaptive.yaml",
+    "sensing_disabled.yaml",
+)
+SENSING_SCENARIO_FILES: Final = (
+    "diagnostic_sensing_nominal.yaml",
+    "diagnostic_sensing_costly.yaml",
+)
 DIAGNOSTIC_BASELINE_FILES: Final = (
     DEFAULT_BASELINE_FILE,
     "static_review.yaml",
     "pacd_corroborated_review.yaml",
+    *SENSING_BASELINE_FILES,
 )
 GUARDED_SCENARIO_FILES: Final = (
     "diagnostic_guarded_benign.yaml",
@@ -21,4 +32,22 @@ DIAGNOSTIC_SCENARIO_FILES: Final = (
     "diagnostic_maintenance_window.yaml",
     "diagnostic_repeated_readings.yaml",
     *GUARDED_SCENARIO_FILES,
+    *SENSING_SCENARIO_FILES,
 )
+
+
+def policy_file_for_scenario(scenario_file: str) -> str:
+    if scenario_file in SENSING_SCENARIO_FILES:
+        return SENSING_POLICY_FILE
+    return "diagnostic_safety.yaml"
+
+
+def diagnostic_pair_supported(scenario_file: str, defender_file: str) -> bool:
+    if (
+        scenario_file not in DIAGNOSTIC_SCENARIO_FILES
+        or defender_file not in DIAGNOSTIC_BASELINE_FILES
+    ):
+        return False
+    if (scenario_file in SENSING_SCENARIO_FILES) != (defender_file in SENSING_BASELINE_FILES):
+        return False
+    return not (scenario_file in GUARDED_SCENARIO_FILES and defender_file == DEFAULT_BASELINE_FILE)

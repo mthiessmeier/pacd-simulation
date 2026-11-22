@@ -27,9 +27,12 @@ from pacd_sim.constants import (
     DIAGNOSTIC_SCENARIO_FILES,
     EVIDENCE_LABEL,
     SCHEMA_VERSION,
+    diagnostic_pair_supported,
+    policy_file_for_scenario,
 )
 from pacd_sim.defenders.base import DefenderContext
 from pacd_sim.defenders.baselines.static import STATIC_REVIEW_VERSION
+from pacd_sim.defenders.observations import BaselineObservation
 from pacd_sim.defenders.pacd import corroboration
 from pacd_sim.defenders.pacd.diagnostic import DiagnosticPACDDefender
 from pacd_sim.engine.scheduler import DeterministicScheduler
@@ -46,6 +49,7 @@ from pacd_sim.harness.run import (
     _load_json_config,
     _proposal_matches_candidate,
     _validate_loaded_configuration_bundle,
+    _validate_sensing_sources,
     load_yaml_config,
 )
 from pacd_sim.harness.static_review import (
@@ -333,7 +337,6 @@ def _resolve_repository(workspace: Path, repo_root: Path | str | None) -> Path:
     controlled_paths = (
         repository / ".git",
         repository / "uv.lock",
-        repository / "configs" / "policies" / "diagnostic_safety.yaml",
         repository / "configs" / "seeds" / "diagnostic_seeds.json",
         repository / "configs" / "metrics" / "diagnostic_metrics.yaml",
     )
@@ -345,14 +348,14 @@ def _resolve_repository(workspace: Path, repo_root: Path | str | None) -> Path:
 
 def _select_controlled_yaml(
     directory: Path, filenames: tuple[str, ...], digest: object, component: str
-) -> dict[str, object]:
+) -> tuple[str, dict[str, object]]:
     if not _is_sha256(digest):
         raise ValueError(f"Manifest configuration_hashes lacks a valid {component} digest")
     # The manifest selects by content. Only checkout-owned filenames may reach the loader.
     for filename in filenames:
         fixture = load_yaml_config(directory / filename)
         if canonical_sha256(fixture) == digest:
-            return fixture
+            return filename, fixture
     raise ValueError(
         f"{component.capitalize()} digest does not match any fixture in the controlled repository"
     )
@@ -365,19 +368,30 @@ def _load_controlled_bundle(
     hashes = manifest.get("configuration_hashes")
     if not isinstance(hashes, dict):
         raise ValueError("Manifest configuration_hashes is missing or invalid")
-    scenario = _select_controlled_yaml(
+    scenario_file, scenario = _select_controlled_yaml(
         repository / "configs" / "scenarios",
         DIAGNOSTIC_SCENARIO_FILES,
         hashes.get("scenario"),
         "scenario",
     )
-    policy = load_yaml_config(repository / "configs" / "policies" / "diagnostic_safety.yaml")
+    policy_path = repository / "configs" / "policies" / policy_file_for_scenario(scenario_file)
+    policy = load_yaml_config(policy_path)
     seed_registry = _load_json_config(repository / "configs" / "seeds" / "diagnostic_seeds.json")
-    baseline = _select_controlled_yaml(
+    defender_file, baseline = _select_controlled_yaml(
         repository / "configs" / "defenders",
         DIAGNOSTIC_BASELINE_FILES,
         hashes.get("baseline_definition"),
         "baseline_definition",
+    )
+    if not diagnostic_pair_supported(scenario_file, defender_file):
+        raise ValueError("Selected scenario and defender do not form a governed pair")
+    _validate_sensing_sources(
+        repository,
+        repository / "configs/scenarios" / scenario_file,
+        policy_path,
+        repository / "configs/defenders" / defender_file,
+        scenario,
+        baseline,
     )
     metrics = load_yaml_config(repository / "configs" / "metrics" / "diagnostic_metrics.yaml")
     protocol_version, seeds = _validate_loaded_configuration_bundle(
@@ -554,7 +568,9 @@ def _expected_event_rows(
     scenario = cast(dict[str, object], canonical_config["scenario"])
     baseline_definition = cast(dict[str, object], canonical_config["baseline_definition"])
     review_only = baseline_definition["actions"] == "require_human_review"
-    guarded = ScenarioConfig.model_validate(scenario).guarded_review
+    scenario_config = ScenarioConfig.model_validate(scenario)
+    guarded = scenario_config.guarded_review
+    sensing = scenario_config.sensing_operator
     planner = (
         corroboration.CorroboratedReviewPlanner(suppress_repeats=guarded is None)
         if baseline_definition["name"] == corroboration.POLICY
@@ -636,6 +652,21 @@ def _expected_event_rows(
     for ordinal, observation in enumerate(observations, start=1):
         if queue is not None:
             state = queue.advance(observation.tick, state)
+        sensing_fields: dict[str, object] = {}
+        if sensing is not None:
+            subject = observation.identity_id or observation.target_id
+            profiles = [
+                session.sensing_profile
+                for session in state.sessions
+                if session.active
+                and not session.isolated
+                and subject in (session.identity_id, session.id)
+            ]
+            profile = profiles[0] if len(profiles) == 1 else "default"
+            sensing_fields.update(latent_signal=observation.signal, sensing_profile=profile)
+            observation = observation.model_copy(
+                update={"signal": round(observation.signal, 2 if profile == "alternate" else 1)}
+            )
         emit(
             "observation",
             tick=observation.tick,
@@ -647,6 +678,7 @@ def _expected_event_rows(
                 "signal": observation.signal,
                 "sensor_id": observation.sensor_id,
                 "synthetic": True,
+                **sensing_fields,
             },
         )
         evidence = normalize_observation(observation)
@@ -705,14 +737,56 @@ def _expected_event_rows(
             },
         )
         if review_only:
-            if planner is None:
+            if sensing is not None:
+                defender_id = cast(str, baseline_definition["name"])
+                subject = observation.identity_id or observation.target_id
+                projected = BaselineObservation(
+                    tick=observation.tick,
+                    signal=observation.signal,
+                    subject_id=None if subject == "synthetic-unknown" else subject,
+                )
+                candidate = None
+                if ordinal != 1:
+                    outcome = "outside_opportunity"
+                elif defender_id == "sensing_disabled_v1":
+                    outcome = "disabled"
+                elif projected.subject_id is None:
+                    outcome = "no_subject"
+                elif sensing.switch_cost > sensing.budget:
+                    outcome = "over_budget"
+                elif (
+                    defender_id == "sensing_adaptive_v1" and projected.signal <= sensing.switch_cost
+                ):
+                    outcome = "no_positive_gain"
+                else:
+                    outcome = "proposed"
+                    candidate = DefensiveAction(
+                        id=f"action-sensing-review-{ordinal}",
+                        tick=observation.tick,
+                        configuration_version=protocol_version,
+                        action_type="require_human_review",
+                        target_id=projected.subject_id,
+                        reversible=True,
+                        requested_authority="human",
+                    )
+                decision_event = "baseline_decision"
+                decision_payload: dict[str, object] = {
+                    "operator_class": "sensing",
+                    "variant": "alternate",
+                    "switch_cost": sensing.switch_cost,
+                    "budget": sensing.budget,
+                    "detectability": sensing.detectability,
+                    "signal": projected.signal,
+                    "opportunity": ordinal == 1,
+                }
+            elif planner is None:
                 defender_id = STATIC_REVIEW_VERSION
                 projected, candidate = static_review_candidate(
                     observation, ordinal, protocol_version
                 )
                 decision_event = "baseline_decision"
                 outcome = "abstained" if candidate is None else "proposed"
-                decision_payload: dict[str, object] = {}
+                decision_payload = {}
             else:
                 defender_id = corroboration.POLICY
                 projected = sensor_reading(observation)
@@ -723,7 +797,7 @@ def _expected_event_rows(
                 decision_event = "defender_decision"
                 outcome = step.outcome
                 decision_payload = {"previous_elevated_tick": step.previous_elevated_tick}
-            if queue is not None:
+            if queue is not None and sensing is None:
                 suppressed = queue.suppresses(projected, candidate is not None)
                 decision_payload.update(
                     raw_candidate_action_id=candidate.id if candidate is not None else None,
@@ -918,7 +992,13 @@ def _expected_event_rows(
                 payload={"candidate_and_decision_retained": True},
             )
             if queue is not None:
-                queue.submit(action, decision, evidence, state)
+                queue.submit(
+                    action,
+                    decision,
+                    evidence,
+                    state,
+                    sensing_cost=sensing.switch_cost if sensing is not None else None,
+                )
                 state = queue.advance(observation.tick, state)
         actions_processed = True
     final_tick = float(max((observation.tick for observation in observations), default=0))

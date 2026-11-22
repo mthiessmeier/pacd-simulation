@@ -11,7 +11,12 @@ from pacd_sim.environment.availability import (
 )
 from pacd_sim.environment.model import EnvironmentState
 from pacd_sim.evidence.normalize import EvidenceItem
-from pacd_sim.execution.verification import RollbackRecord, VerificationRecord, expected_isolation
+from pacd_sim.execution.verification import (
+    RollbackRecord,
+    VerificationRecord,
+    expected_isolation,
+    expected_sensing_profile,
+)
 from pacd_sim.governance.governor import PolicyDecision, SafetyGovernor
 from pacd_sim.reproducibility.canonical import canonical_sha256
 from pacd_sim.schema import PolicyDisposition, RollbackDisposition, VerificationDisposition
@@ -116,6 +121,8 @@ class ExpectedReviewQueue:
         decision: PolicyDecision,
         evidence: EvidenceItem,
         state: EnvironmentState,
+        *,
+        sensing_cost: float | None = None,
     ) -> None:
         sessions = [
             s
@@ -140,6 +147,8 @@ class ExpectedReviewQueue:
             reason = "referral, evidence, state or governing decision mismatch"
         elif len(sessions) != 1:
             reason = "observed subject lacks a unique eligible synthetic session"
+        elif sensing_cost is not None and sessions[0].sensing_profile == "alternate":
+            reason = "target session already uses the alternate sensing profile"
         elif len(self.pending) >= self.config.capacity:
             reason = "simulated review queue is full"
             outcome = "capacity"
@@ -157,24 +166,34 @@ class ExpectedReviewQueue:
         due = state.tick + self.config.delay_ticks
         expiry = state.tick + self.config.validity_ticks
         referral_digest = canonical_sha256(referral)
+        sensing = sensing_cost is not None
         action = DefensiveAction(
-            id=f"reviewed-isolation-{referral_digest}",
+            id=f"reviewed-{'sensing' if sensing else 'isolation'}-{referral_digest}",
             tick=due,
             schema_version=state.schema_version,
             configuration_version=state.configuration_version,
-            action_type="isolate_session",
+            action_type="switch_sensing_profile" if sensing else "isolate_session",
             target_id=sessions[0].id,
             requested_authority="automatic",
             reversible=True,
-            preconditions=("unique active unisolated session for the observed subject",),
-            expected_effect="make exactly the reviewed synthetic session inactive and isolated",
+            mission_cost=0.0 if sensing_cost is None else sensing_cost,
+            preconditions=(
+                "unique active unisolated session using the default sensing profile"
+                if sensing
+                else "unique active unisolated session for the observed subject",
+            ),
+            expected_effect=(
+                "switch only the reviewed synthetic session to the alternate sensing profile"
+                if sensing
+                else "make exactly the reviewed synthetic session inactive and isolated"
+            ),
             verification=(
                 "compare the complete state with the independently reconstructed transition"
             ),
             rollback="restore the exact immutable dispatch pre-state",
         )
         binding = {
-            "contract": "guarded-review-isolation-v1",
+            "contract": "guarded-review-sensing-v1" if sensing else "guarded-review-isolation-v1",
             "referral_digest": referral_digest,
             "referral_decision_digest": canonical_sha256(decision),
             "subject_id": evidence.subject_id,
@@ -238,7 +257,9 @@ class ExpectedReviewQueue:
 
         # The bound unique session is active in the submitted state. A valid dispatch changes
         # exactly that session, preserving all other field values and entity memberships.
-        after = expected_isolation(before, action.target_id, decision.tick)
+        sensing = action.action_type == "switch_sensing_profile"
+        transition = expected_sensing_profile if sensing else expected_isolation
+        after = transition(before, action.target_id, decision.tick)
         execution_id = f"execution-{action.id}"
         record(
             "executed",
@@ -247,7 +268,11 @@ class ExpectedReviewQueue:
             execution_id=execution_id,
             policy_decision=policy,
             disposition="EXECUTED",
-            reason="synthetic session isolated in immutable in-memory state",
+            reason=(
+                "synthetic session sensing profile switched in immutable in-memory state"
+                if sensing
+                else "synthetic session isolated in immutable in-memory state"
+            ),
             state_before_digest=canonical_sha256(before),
             state_after_digest=canonical_sha256(after),
         )
@@ -264,7 +289,11 @@ class ExpectedReviewQueue:
                 "disposition": VerificationDisposition.VERIFIED,
                 "state_hashes_valid": True,
                 "expected_effect_observed": True,
-                "reason": "expected synthetic isolation transition observed",
+                "reason": (
+                    "expected synthetic sensing profile transition observed"
+                    if sensing
+                    else "expected synthetic isolation transition observed"
+                ),
             }
         )
         record(

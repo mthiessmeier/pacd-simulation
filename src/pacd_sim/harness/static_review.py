@@ -4,7 +4,7 @@ from collections.abc import Callable
 from typing import Final, TypedDict
 
 from pacd_sim.actions.models import DefensiveAction
-from pacd_sim.configuration import GuardedReviewConfig
+from pacd_sim.configuration import GuardedReviewConfig, SensingOperatorConfig
 from pacd_sim.defenders.baselines.static import propose_review
 from pacd_sim.defenders.observations import BaselineObservation, ReviewProposal
 from pacd_sim.oversight.guarded import GuardedReviewQueue, ReviewEvent
@@ -71,6 +71,21 @@ def sensor_reading(observation: Observation) -> BaselineObservation:
         subject_id=None if subject == "synthetic-unknown" else subject,
         signal=observation.signal,
     )
+
+
+def sensing_referral_rejection(
+    config: SensingOperatorConfig, condition: str, ordinal: int, reading: BaselineObservation
+) -> str | None:
+    """Check the evaluator's resource and ablation limits independently of the selector."""
+    if ordinal != 1:
+        return "decision opportunity consumed"
+    if condition == "sensing_disabled_v1":
+        return "operator disabled by ablation"
+    if config.switch_cost > config.budget:
+        return "switch cost exceeds the episode budget"
+    if reading.subject_id is None:
+        return "no observed subject"
+    return None
 
 
 def review_action(

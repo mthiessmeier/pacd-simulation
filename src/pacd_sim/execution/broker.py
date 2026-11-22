@@ -57,7 +57,9 @@ class SimulatedExecutionBroker:
 
     adapter_name: ClassVar[Literal["simulated_only"]] = "simulated_only"
     network_enabled: ClassVar[Literal[False]] = False
-    supported_action_types: ClassVar[frozenset[str]] = frozenset({"isolate_session"})
+    supported_action_types: ClassVar[frozenset[str]] = frozenset(
+        {"isolate_session", "switch_sensing_profile"}
+    )
 
     def __init__(self, governor: SafetyGovernor) -> None:
         self._governor = governor
@@ -98,7 +100,7 @@ class SimulatedExecutionBroker:
             reason = "candidate action configuration does not match the environment state"
         elif action.schema_version != state.schema_version:
             reason = "candidate action schema does not match the environment state"
-        elif decision != expected_decision:
+        elif canonical_sha256(decision) != canonical_sha256(expected_decision):
             reason = "policy decision is not an exact fresh governor authorization"
         elif decision.state_digest != state_digest:
             reason = "governor authorization does not bind the supplied environment state"
@@ -112,17 +114,27 @@ class SimulatedExecutionBroker:
             reason = "action type is not implemented by the simulated broker"
 
         after = state
-        if reason is None and action.action_type == "isolate_session":
+        if reason is None:
             session = state.get_session(action.target_id)
             if session is None:
                 reason = "target is not a known synthetic session"
             elif session.isolated or not session.active:
                 reason = "target session is already inactive or isolated"
-            else:
+            elif action.action_type == "isolate_session":
                 after = state.at_tick(
                     max(state.tick, action.tick, expected_decision.tick)
                 ).isolate_session(action.target_id)
                 reason = "synthetic session isolated in immutable in-memory state"
+            elif action.action_type == "switch_sensing_profile":
+                if session.sensing_profile != "default":
+                    reason = "target session already uses the alternate sensing profile"
+                else:
+                    after = state.at_tick(
+                        max(state.tick, action.tick, expected_decision.tick)
+                    ).switch_sensing_profile(action.target_id)
+                    reason = (
+                        "synthetic session sensing profile switched in immutable in-memory state"
+                    )
 
         if reason is None:
             reason = "simulated transition completed"

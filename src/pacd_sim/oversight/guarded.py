@@ -1,4 +1,4 @@
-"""Episode-local simulated review of a single reversible session isolation contract."""
+"""Episode-local review of reversible, independently governed synthetic session actions."""
 
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -68,6 +68,29 @@ def reviewed_isolation(
     )
 
 
+def reviewed_sensing_switch(
+    referral: DefensiveAction, session_id: str, due_tick: int, sensing_cost: float
+) -> DefensiveAction:
+    """Bind the selected sensing variation and its cost before simulated review."""
+    return DefensiveAction(
+        id=f"reviewed-sensing-{canonical_sha256(referral)}",
+        tick=due_tick,
+        schema_version=referral.schema_version,
+        configuration_version=referral.configuration_version,
+        action_type="switch_sensing_profile",
+        target_id=session_id,
+        reversible=True,
+        requested_authority="automatic",
+        preconditions=("unique active unisolated session using the default sensing profile",),
+        expected_effect=(
+            "switch only the reviewed synthetic session to the alternate sensing profile"
+        ),
+        mission_cost=sensing_cost,
+        verification="compare the complete state with the independently reconstructed transition",
+        rollback="restore the exact immutable dispatch pre-state",
+    )
+
+
 def review_binding(
     referral: DefensiveAction,
     decision: PolicyDecision,
@@ -78,7 +101,11 @@ def review_binding(
 ) -> dict[str, object]:
     """Material retained when enqueuing. The replay verifier can reconstruct every binding."""
     return {
-        "contract": "guarded-review-isolation-v1",
+        "contract": (
+            "guarded-review-sensing-v1"
+            if action.action_type == "switch_sensing_profile"
+            else "guarded-review-isolation-v1"
+        ),
         "referral_digest": canonical_sha256(referral),
         "referral_decision_digest": canonical_sha256(decision),
         "subject_id": referral.target_id,
@@ -189,6 +216,8 @@ class GuardedReviewQueue:
         evidence: EvidenceItem,
         state: EnvironmentState,
         broker: SimulatedExecutionBroker,
+        *,
+        sensing_cost: float | None = None,
     ) -> ReviewStep:
         """Reserve exactly one governed referral, delivered evidence and eligible session."""
         if state.tick < self._now:
@@ -249,12 +278,17 @@ class GuardedReviewQueue:
         ]
         if len(eligible) != 1:
             return reject("refused", "observed subject lacks a unique eligible synthetic session")
+        if sensing_cost is not None and eligible[0].sensing_profile != "default":
+            return reject("refused", "target session already uses the alternate sensing profile")
         if len(self._pending) >= self._capacity:
             return reject("capacity", "simulated review queue is full")
 
         due_tick = state.tick + self._delay
         expiry = state.tick + self._ttl
-        action = reviewed_isolation(referral, eligible[0].id, due_tick)
+        if sensing_cost is None:
+            action = reviewed_isolation(referral, eligible[0].id, due_tick)
+        else:
+            action = reviewed_sensing_switch(referral, eligible[0].id, due_tick, sensing_cost)
         binding = review_binding(referral, decision, evidence, state, action, expiry)
         wake = expiry + 1 if self._approve is None else min(due_tick, expiry + 1)
         request = _Pending(

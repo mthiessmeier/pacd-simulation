@@ -28,18 +28,23 @@ from yaml.nodes import MappingNode, Node, ScalarNode, SequenceNode
 from pacd_sim.actions.models import DefensiveAction, RequestedAuthority
 from pacd_sim.audit.writer import AuditWriter, EventType
 from pacd_sim.comparison import ComparisonInputs, ComparisonPlan, PlannedAttempt
-from pacd_sim.configuration import DiagnosticInputs, ScenarioConfig
+from pacd_sim.configuration import DiagnosticInputs, ScenarioConfig, SensingReviewConfig
 from pacd_sim.constants import (
     DEFAULT_BASELINE_FILE,
     DEFAULT_SCENARIO_FILE,
     DIAGNOSTIC_BASELINE_FILES,
     DIAGNOSTIC_SCENARIO_FILES,
     EVIDENCE_LABEL,
-    GUARDED_SCENARIO_FILES,
     SCHEMA_VERSION,
+    SENSING_BASELINE_FILES,
+    SENSING_POLICY_FILE,
+    SENSING_SCENARIO_FILES,
+    diagnostic_pair_supported,
+    policy_file_for_scenario,
 )
 from pacd_sim.defenders.base import DefenderContext
 from pacd_sim.defenders.baselines.static import STATIC_REVIEW_VERSION
+from pacd_sim.defenders.observations import ReviewProposal
 from pacd_sim.defenders.pacd import corroboration
 from pacd_sim.defenders.pacd.diagnostic import DiagnosticPACDDefender
 from pacd_sim.engine.scheduler import DeterministicScheduler, ScheduledEvent
@@ -61,12 +66,14 @@ from pacd_sim.harness.static_review import (
     review_action,
     review_detector_options,
     review_queue,
+    sensing_referral_rejection,
     sensor_reading,
     static_review_candidate,
 )
 from pacd_sim.hypotheses.update import BeliefState, update_beliefs
 from pacd_sim.metrics.summarize import summarize_raw_events
 from pacd_sim.oversight.guarded import ReviewEvent, ReviewStep
+from pacd_sim.polymorphism.sensing import project_sensing_observation, sensing_decision
 from pacd_sim.reproducibility.canonical import canonical_json_bytes, canonical_sha256
 from pacd_sim.reproducibility.manifest import (
     build_manifest,
@@ -344,6 +351,60 @@ def _expect_mapping(value: object, name: str) -> dict[str, object]:
     return {str(key): item for key, item in value.items()}
 
 
+def _validate_sensing_sources(
+    repository: Path,
+    scenario_file: Path,
+    policy_file: Path,
+    baseline_file: Path,
+    scenario: Mapping[str, object],
+    baseline: Mapping[str, object],
+) -> None:
+    """Bind opted-in roles to their complete checkout path and declared condition identity."""
+    if (
+        "sensing_operator" not in scenario
+        and scenario_file.name not in SENSING_SCENARIO_FILES
+        and baseline_file.name not in SENSING_BASELINE_FILES
+        and policy_file.name != SENSING_POLICY_FILE
+        and not any(
+            baseline.get("name") == f"{Path(name).stem}_v1" for name in SENSING_BASELINE_FILES
+        )
+    ):
+        return
+    configs = repository / "configs"
+    if (
+        scenario_file.name not in SENSING_SCENARIO_FILES
+        or scenario_file != configs / "scenarios" / scenario_file.name
+        or scenario.get("name") != scenario_file.stem
+        or "sensing_operator" not in scenario
+        or baseline_file.name not in SENSING_BASELINE_FILES
+        or baseline_file != configs / "defenders" / baseline_file.name
+        or baseline.get("name") != f"{baseline_file.stem}_v1"
+        or policy_file != configs / "policies" / SENSING_POLICY_FILE
+    ):
+        raise ConfigurationError(
+            "Sensing inputs must match their governed filenames, roles and identities"
+        )
+
+
+def _load_condition_inputs(
+    repository: Path,
+    scenario_path: Path | str,
+    policy_path: Path | str,
+    baseline_path: Path | str | None,
+) -> tuple[dict[str, object], dict[str, object], dict[str, object]]:
+    scenario_file = _assert_controlled_config(scenario_path, repository)
+    policy_file = _assert_controlled_config(policy_path, repository)
+    baseline_file = _assert_controlled_config(
+        baseline_path or repository / "configs" / "defenders" / DEFAULT_BASELINE_FILE, repository
+    )
+    scenario = load_yaml_config(scenario_file)
+    baseline = load_yaml_config(baseline_file)
+    _validate_sensing_sources(
+        repository, scenario_file, policy_file, baseline_file, scenario, baseline
+    )
+    return scenario, load_yaml_config(policy_file), baseline
+
+
 def _expect_list(value: object, name: str) -> list[object]:
     if not isinstance(value, list):
         raise ConfigurationError(f"{name} must be a list")
@@ -541,6 +602,12 @@ def _validate_loaded_configuration_bundle(
     environment = _build_environment(inputs.scenario, protocol_version)
     events = _build_events(scenario, protocol_version)
     policy = _build_policy(policy_config)
+    if (inputs.scenario.sensing_operator is not None) != isinstance(
+        inputs.baseline, SensingReviewConfig
+    ):
+        raise ConfigurationError(
+            "The sensing scenario and sensing defender must be selected together"
+        )
     if inputs.scenario.guarded_review is not None:
         if inputs.baseline.actions != "require_human_review":
             raise ConfigurationError("Guarded review requires a review-proposing baseline")
@@ -589,27 +656,16 @@ def validate_diagnostic_configuration_files(
         or defender_file not in DIAGNOSTIC_BASELINE_FILES
     ):
         raise ConfigurationError("Select a governed diagnostic scenario and defender filename")
-    scenario = load_yaml_config(
-        _assert_controlled_config(
-            repository / "configs" / "scenarios" / scenario_file,
-            repository,
-        )
-    )
-    policy_config = load_yaml_config(
-        _assert_controlled_config(
-            repository / "configs" / "policies" / "diagnostic_safety.yaml",
-            repository,
-        )
+    configs = repository / "configs"
+    scenario, policy_config, baseline_definition = _load_condition_inputs(
+        repository,
+        configs / "scenarios" / scenario_file,
+        configs / "policies" / policy_file_for_scenario(scenario_file),
+        configs / "defenders" / defender_file,
     )
     seed_registry = _load_json_config(
         _assert_controlled_config(
             repository / "configs" / "seeds" / "diagnostic_seeds.json",
-            repository,
-        )
-    )
-    baseline_definition = load_yaml_config(
-        _assert_controlled_config(
-            repository / "configs" / "defenders" / defender_file,
             repository,
         )
     )
@@ -626,18 +682,39 @@ def validate_diagnostic_configuration_files(
         baseline_definition,
         metric_definition,
     )
+    policies = {policy_file_for_scenario(scenario_file): policy_config}
+    scenarios = {scenario_file: scenario}
     for other_defender in DIAGNOSTIC_BASELINE_FILES:
         defender_path = repository / "configs" / "defenders" / other_defender
         definition = load_yaml_config(_assert_controlled_config(defender_path, repository))
         for other_scenario in DIAGNOSTIC_SCENARIO_FILES:
             if (other_scenario, other_defender) == (scenario_file, defender_file):
                 continue  # Already validated above for the returned hashes.
-            if other_scenario in GUARDED_SCENARIO_FILES and other_defender == DEFAULT_BASELINE_FILE:
-                continue  # The scripted-probe baseline cannot propose reviewed actions.
+            if not diagnostic_pair_supported(other_scenario, other_defender):
+                continue
+            policy_file = policy_file_for_scenario(other_scenario)
+            if policy_file not in policies:
+                policies[policy_file] = load_yaml_config(
+                    _assert_controlled_config(
+                        repository / "configs" / "policies" / policy_file, repository
+                    )
+                )
             scenario_path = repository / "configs" / "scenarios" / other_scenario
+            if other_scenario not in scenarios:
+                scenarios[other_scenario] = load_yaml_config(
+                    _assert_controlled_config(scenario_path, repository)
+                )
+            _validate_sensing_sources(
+                repository,
+                scenario_path,
+                configs / "policies" / policy_file,
+                defender_path,
+                scenarios[other_scenario],
+                definition,
+            )
             _validate_loaded_configuration_bundle(
-                load_yaml_config(_assert_controlled_config(scenario_path, repository)),
-                policy_config,
+                scenarios[other_scenario],
+                policies[policy_file],
                 seed_registry,
                 definition,
                 metric_definition,
@@ -1253,23 +1330,17 @@ def _run_diagnostic_worker(
         )
     _validate_invocation_ownership(_ownership, workspace)
 
-    scenario_file = _assert_controlled_config(scenario_path, repository)
-    policy_file = _assert_controlled_config(policy_path, repository)
-    seed_file = _assert_controlled_config(seed_registry_path, repository)
-    baseline_file = _assert_controlled_config(
-        baseline_path or repository / "configs" / "defenders" / DEFAULT_BASELINE_FILE,
-        repository,
+    scenario, policy_config, baseline_definition = _load_condition_inputs(
+        repository, scenario_path, policy_path, baseline_path
     )
+    seed_file = _assert_controlled_config(seed_registry_path, repository)
     metric_file = _assert_controlled_config(
         metric_path or repository / "configs" / "metrics" / "diagnostic_metrics.yaml",
         repository,
     )
 
-    scenario = load_yaml_config(scenario_file)
     evaluate_missions = "availability_model" in scenario
-    policy_config = load_yaml_config(policy_file)
     seed_registry = _load_json_config(seed_file)
-    baseline_definition = load_yaml_config(baseline_file)
     metric_definition = load_yaml_config(metric_file)
     protocol_version, registered_seeds = _validate_loaded_configuration_bundle(
         scenario,
@@ -1316,7 +1387,9 @@ def _run_diagnostic_worker(
         )
 
     environment = _build_environment(scenario, protocol_version)
-    guarded = ScenarioConfig.model_validate(scenario).guarded_review
+    scenario_settings = ScenarioConfig.model_validate(scenario)
+    guarded = scenario_settings.guarded_review
+    sensing = scenario_settings.sensing_operator
     scheduled_events = _build_events(scenario, protocol_version)
     safety_policy = _build_policy(policy_config)
     scheduler = DeterministicScheduler(scheduled_events)
@@ -1414,7 +1487,7 @@ def _run_diagnostic_worker(
             if guarded is not None
             else None
         )
-        episode_gate = ReviewEpisodeGate() if queue is not None else None
+        episode_gate = ReviewEpisodeGate() if queue is not None and sensing is None else None
         defender = DiagnosticPACDDefender(compromise_threshold=0.5)
         evidence_items: list[EvidenceItem] = []
         belief_state = BeliefState(configuration_version=protocol_version)
@@ -1431,6 +1504,9 @@ def _run_diagnostic_worker(
                 )
             if queue is not None:
                 state = _checked_review_state(queue.advance(observation.tick, state, broker))
+            sensing_fields: dict[str, object] = {}
+            if sensing is not None:
+                observation, sensing_fields = project_sensing_observation(observation, state)
             audit.emit(
                 "observation",
                 tick=observation.tick,
@@ -1442,6 +1518,7 @@ def _run_diagnostic_worker(
                     "signal": observation.signal,
                     "sensor_id": observation.sensor_id,
                     "synthetic": True,
+                    **sensing_fields,
                 },
             )
             evidence = normalize_observation(observation)
@@ -1506,7 +1583,40 @@ def _run_diagnostic_worker(
             if prospective:
                 decision_type: EventType
                 detail: dict[str, object] = {}
-                if planner is None:
+                if sensing is not None:
+                    reading = sensor_reading(observation)
+                    defender_id = _expect_string(baseline_definition["name"], "defender name")
+                    decision_type = "baseline_decision"
+                    outcome = sensing_decision(
+                        defender_id, reading, ordinal, sensing.switch_cost, sensing.budget
+                    )
+                    rejection = (
+                        sensing_referral_rejection(sensing, defender_id, ordinal, reading)
+                        if outcome == "proposed"
+                        else None
+                    )
+                    if rejection is not None:
+                        outcome = "inadmissible_proposal"
+                    proposal = (
+                        ReviewProposal(target_id=reading.subject_id)
+                        if outcome == "proposed" and reading.subject_id is not None
+                        else None
+                    )
+                    candidate = review_action(
+                        reading, proposal, f"action-sensing-review-{ordinal}", protocol_version
+                    )
+                    detail = {
+                        "operator_class": "sensing",
+                        "variant": "alternate",
+                        "switch_cost": sensing.switch_cost,
+                        "budget": sensing.budget,
+                        "detectability": sensing.detectability,
+                        "signal": reading.signal,
+                        "opportunity": ordinal == 1,
+                    }
+                    if rejection is not None:
+                        detail["reason"] = rejection
+                elif planner is None:
                     reading, candidate = static_review_candidate(
                         observation, ordinal, protocol_version
                     )
@@ -1543,6 +1653,10 @@ def _run_diagnostic_worker(
                         "candidate_action_id": candidate.id if candidate else None,
                     },
                 )
+                if outcome == "inadmissible_proposal":
+                    raise RuntimeError(
+                        f"Sensing proposal exceeded evaluator authority: {detail['reason']}"
+                    )
                 if candidate is None:
                     continue
                 actions = proposed_actions = (candidate,)
@@ -1731,7 +1845,14 @@ def _run_diagnostic_worker(
                 )
                 if queue is not None:
                     state = _checked_review_state(
-                        queue.submit(action, decision, evidence, state, broker)
+                        queue.submit(
+                            action,
+                            decision,
+                            evidence,
+                            state,
+                            broker,
+                            sensing_cost=sensing.switch_cost if sensing is not None else None,
+                        )
                     )
                     state = _checked_review_state(queue.advance(action.tick, state, broker))
             required_dispositions = {
@@ -2058,15 +2179,10 @@ def _selected_invocation_seed(
 ) -> int:
     """Fully validate controlled inputs in the parent before allocating ownership."""
 
-    scenario = load_yaml_config(_assert_controlled_config(scenario_path, repository))
-    policy = load_yaml_config(_assert_controlled_config(policy_path, repository))
-    seed_registry = _load_json_config(_assert_controlled_config(seed_registry_path, repository))
-    baseline = load_yaml_config(
-        _assert_controlled_config(
-            baseline_path or repository / "configs" / "defenders" / DEFAULT_BASELINE_FILE,
-            repository,
-        )
+    scenario, policy, baseline = _load_condition_inputs(
+        repository, scenario_path, policy_path, baseline_path
     )
+    seed_registry = _load_json_config(_assert_controlled_config(seed_registry_path, repository))
     metrics = load_yaml_config(
         _assert_controlled_config(
             metric_path or repository / "configs" / "metrics" / "diagnostic_metrics.yaml",
@@ -2106,15 +2222,10 @@ def _deny_reportable_without_invocation(
 ) -> None:
     """Run the approval interlock before creating any invocation-owned path."""
 
-    scenario = load_yaml_config(_assert_controlled_config(scenario_path, repository))
-    policy_config = load_yaml_config(_assert_controlled_config(policy_path, repository))
-    seed_registry = _load_json_config(_assert_controlled_config(seed_registry_path, repository))
-    baseline_definition = load_yaml_config(
-        _assert_controlled_config(
-            baseline_path or repository / "configs" / "defenders" / DEFAULT_BASELINE_FILE,
-            repository,
-        )
+    scenario, policy_config, baseline_definition = _load_condition_inputs(
+        repository, scenario_path, policy_path, baseline_path
     )
+    seed_registry = _load_json_config(_assert_controlled_config(seed_registry_path, repository))
     metric_definition = load_yaml_config(
         _assert_controlled_config(
             metric_path or repository / "configs" / "metrics" / "diagnostic_metrics.yaml",

@@ -1,9 +1,9 @@
 """Immutable, synthetic-only enterprise and mission state models."""
 
-from typing import Self
+from typing import Literal, Self
 
 import networkx as nx
-from pydantic import field_validator, model_validator
+from pydantic import Field, field_validator, model_validator
 
 from pacd_sim.schema import (
     ConsequentialRecord,
@@ -36,6 +36,9 @@ class Session(ConsequentialRecord):
     service_id: StableId
     active: bool = True
     isolated: bool = False
+    sensing_profile: Literal["default", "alternate"] = Field(
+        default="default", exclude_if=lambda profile: profile == "default"
+    )
 
 
 class Credential(ConsequentialRecord):
@@ -203,6 +206,15 @@ class EnvironmentState(ConsequentialRecord):
             raise ValueError("replacement session changes immutable session context")
         sessions = tuple(session if item.id == session.id else item for item in self.sessions)
         return self._revalidated(sessions=sessions)
+
+    def switch_sensing_profile(self, session_id: str) -> Self:
+        """Switch the active session's synthetic sensing profile once."""
+        target = self.get_session(session_id)
+        if target is None:
+            raise KeyError(f"unknown synthetic session: {session_id}")
+        if not target.active or target.isolated or target.sensing_profile != "default":
+            raise ValueError("alternate sensing requires an active session on the default profile")
+        return self.restore_session(target.model_copy(update={"sensing_profile": "alternate"}))
 
     def at_tick(self, tick: int) -> Self:
         """Return a state snapshot advanced to a nondecreasing simulation tick."""

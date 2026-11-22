@@ -135,6 +135,14 @@ class GuardedReviewConfig(StrictFrozenModel):
     matched_signal_mean: Probability
 
 
+class SensingOperatorConfig(StrictFrozenModel):
+    """Governed costs and passive observer assumptions for one sensing opportunity."""
+
+    switch_cost: Probability
+    budget: Probability
+    detectability: Probability
+
+
 class ScenarioConfig(DiagnosticRecord):
     protocol_version: NonemptyText
     name: NonemptyText
@@ -159,6 +167,9 @@ class ScenarioConfig(DiagnosticRecord):
     guarded_review: GuardedReviewConfig | SkipJsonSchema[None] = Field(
         default_factory=lambda: None, validate_default=False, exclude_if=lambda value: value is None
     )
+    sensing_operator: SensingOperatorConfig | SkipJsonSchema[None] = Field(
+        default_factory=lambda: None, validate_default=False, exclude_if=lambda value: value is None
+    )
 
     @model_validator(mode="after")
     def _unique_event_ids(self) -> Self:
@@ -169,6 +180,8 @@ class ScenarioConfig(DiagnosticRecord):
     @model_validator(mode="after")
     def _validate_review_scenario(self) -> Self:
         if self.guarded_review is None:
+            if self.sensing_operator is not None:
+                raise ValueError("sensing operator requires guarded review")
             if not self.actions:
                 raise ValueError("legacy diagnostics require configured actions")
             return self
@@ -183,7 +196,9 @@ class ScenarioConfig(DiagnosticRecord):
             raise ValueError("all guarded observations must arrive by end_tick")
         return self
 
-    @field_validator("dependencies", "availability_model", "guarded_review", mode="before")
+    @field_validator(
+        "dependencies", "availability_model", "guarded_review", "sensing_operator", mode="before"
+    )
     @classmethod
     def _reject_explicit_null(cls, value: object) -> object:
         if value is None:
@@ -207,7 +222,13 @@ class BaselineConfig(DiagnosticRecord):
     @field_validator("name")
     @classmethod
     def _reserve_review_policy_names(cls, value: str) -> str:
-        if value in {"static_signal_review_v1", "pacd_corroborated_review_v1"}:
+        if value in {
+            "static_signal_review_v1",
+            "pacd_corroborated_review_v1",
+            "sensing_fixed_v1",
+            "sensing_adaptive_v1",
+            "sensing_disabled_v1",
+        }:
             raise ValueError(f"{value} requires the human-review action")
         return value
 
@@ -224,8 +245,15 @@ class CorroboratedReviewConfig(DiagnosticRecord):
     actions: Literal["require_human_review"]
 
 
+class SensingReviewConfig(DiagnosticRecord):
+    name: Literal["sensing_fixed_v1", "sensing_adaptive_v1", "sensing_disabled_v1"]
+    observations: Literal["synthetic_only"]
+    actions: Literal["require_human_review"]
+
+
 type ReviewConfig = Annotated[
-    StaticReviewBaselineConfig | CorroboratedReviewConfig, Field(discriminator="name")
+    StaticReviewBaselineConfig | CorroboratedReviewConfig | SensingReviewConfig,
+    Field(discriminator="name"),
 ]
 
 

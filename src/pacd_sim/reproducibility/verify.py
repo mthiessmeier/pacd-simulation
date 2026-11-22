@@ -925,7 +925,9 @@ def _verify_run_impl(
             csv_sha256=artifact_snapshots["derived/episode_summary.csv"].sha256,
             parquet_sha256=artifact_snapshots["derived/episode_summary.parquet"].sha256,
             observations=observations,
-            guarded_review=guarded_review_metrics(raw_rows)
+            guarded_review=guarded_review_metrics(
+                raw_rows, ScenarioConfig.model_validate(scenario).sensing_operator
+            )
             if isinstance(scenario, Mapping) and "guarded_review" in scenario
             else None,
             comparison_inputs=ComparisonInputs.from_inputs(

@@ -74,6 +74,36 @@ def _authorize(
     return governor.evaluate(action, mission_state=create_snapshot(state))
 
 
+def test_sensing_verification_rejects_collateral_even_with_coherent_hashes(
+    synthetic_state: EnvironmentState, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    governor = SafetyGovernor(
+        SafetyPolicy(
+            allowed_action_types=("switch_sensing_profile",),
+            escalated_action_types=(),
+            prohibited_action_types=(),
+        )
+    )
+    action = _action("switch_sensing_profile", "automatic", "session-synthetic")
+    original = EnvironmentState.switch_sensing_profile
+
+    def collateral(state: EnvironmentState, session_id: str) -> EnvironmentState:
+        changed = original(state, session_id)
+        damaged = changed.mission_functions[0].model_copy(update={"operational": False})
+        return changed.model_copy(update={"mission_functions": (damaged,)})
+
+    monkeypatch.setattr(EnvironmentState, "switch_sensing_profile", collateral)
+    broker = SimulatedExecutionBroker(governor)
+    result = broker.execute(action, _authorize(governor, action, synthetic_state), synthetic_state)
+    assert result.executed and result.record.state_after_digest == canonical_sha256(result.state)
+    checked = verify_execution(action, result, governor)
+    assert checked.state_hashes_valid and checked.disposition is VerificationDisposition.FAILED
+    assert (
+        rollback_execution(action, result, governor).record.disposition
+        is RollbackDisposition.NOT_ROLLED_BACK
+    )
+
+
 def test_approved_action_is_only_an_immutable_simulated_transition(
     synthetic_state: EnvironmentState,
     governor: SafetyGovernor,

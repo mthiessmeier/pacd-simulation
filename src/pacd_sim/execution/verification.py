@@ -1,7 +1,7 @@
 """Independent verification and rollback for simulated execution records."""
 
 from pacd_sim.actions.models import DefensiveAction
-from pacd_sim.environment.model import EnvironmentState
+from pacd_sim.environment.model import EnvironmentState, Session
 from pacd_sim.execution.broker import ExecutionResult
 from pacd_sim.governance.governor import GovernanceContext, SafetyGovernor
 from pacd_sim.reproducibility.canonical import canonical_sha256
@@ -117,20 +117,38 @@ def _hashes_valid(result: ExecutionResult) -> bool:
     )
 
 
-def expected_isolation(before: EnvironmentState, target_id: str, tick: int) -> EnvironmentState:
-    """Project the isolation contract without calling the broker's transition primitives."""
+def _active_target(before: EnvironmentState, target_id: str, tick: int) -> Session:
     target = before.get_session(target_id)
     if target is None or not target.active or target.isolated:
-        raise ValueError("expected isolation requires an active, unisolated session")
+        raise ValueError("expected transition requires an active, unisolated session")
     if type(tick) is not int or tick < before.tick:
-        raise ValueError("expected isolation requires a nondecreasing simulation tick")
+        raise ValueError("expected transition requires a nondecreasing simulation tick")
+    return target
+
+
+def _expected_state(before: EnvironmentState, replacement: Session, tick: int) -> EnvironmentState:
     sessions = tuple(
-        session.model_copy(update={"active": False, "isolated": True})
-        if session.id == target_id
-        else session
-        for session in before.sessions
+        replacement if session.id == replacement.id else session for session in before.sessions
     )
     return before.model_copy(update={"tick": tick, "sessions": sessions})
+
+
+def expected_isolation(before: EnvironmentState, target_id: str, tick: int) -> EnvironmentState:
+    """Project the isolation contract without calling the broker's transition primitives."""
+    target = _active_target(before, target_id, tick)
+    return _expected_state(
+        before, target.model_copy(update={"active": False, "isolated": True}), tick
+    )
+
+
+def expected_sensing_profile(
+    before: EnvironmentState, target_id: str, tick: int
+) -> EnvironmentState:
+    """Independently project a default-to-alternate switch with all other fields preserved."""
+    target = _active_target(before, target_id, tick)
+    if target.sensing_profile != "default":
+        raise ValueError("expected sensing switch requires the default profile")
+    return _expected_state(before, target.model_copy(update={"sensing_profile": "alternate"}), tick)
 
 
 def verify_execution(
@@ -162,9 +180,15 @@ def verify_execution(
             disposition = VerificationDisposition.FAILED
             effect_observed = False
             reason = "nonexecuted record contains an unauthorized state transition"
-    elif action.action_type == "isolate_session":
+    elif action.action_type in {"isolate_session", "switch_sensing_profile"}:
+        if action.action_type == "isolate_session":
+            project = expected_isolation
+            effect = "isolation"
+        else:
+            project = expected_sensing_profile
+            effect = "sensing profile"
         try:
-            expected_after = expected_isolation(record.state_before, action.target_id, record.tick)
+            expected_after = project(record.state_before, action.target_id, record.tick)
         except ValueError:
             effect_observed = False
         else:
@@ -175,9 +199,9 @@ def verify_execution(
             else VerificationDisposition.FAILED
         )
         reason = (
-            "expected synthetic isolation transition observed"
+            f"expected synthetic {effect} transition observed"
             if disposition is VerificationDisposition.VERIFIED
-            else "synthetic isolation transition or state hashes did not verify"
+            else f"synthetic {effect} transition or state hashes did not verify"
         )
     else:
         disposition = VerificationDisposition.FAILED
