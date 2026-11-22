@@ -38,7 +38,7 @@ from pacd_sim.defenders.pacd import corroboration
 from pacd_sim.defenders.pacd.diagnostic import DiagnosticPACDDefender
 from pacd_sim.engine.scheduler import DeterministicScheduler
 from pacd_sim.environment.availability import continuity_transition, evaluate_availability
-from pacd_sim.evidence.context import MAX_AGE_TICKS, EvidenceReading, evidence_trace
+from pacd_sim.evidence.context import MAX_AGE_TICKS, EvidenceReading, evidence_trace_with_readings
 from pacd_sim.evidence.normalize import EvidenceItem, normalize_observation
 from pacd_sim.execution.verification import expected_isolation
 from pacd_sim.governance.governor import GovernanceContext, SafetyGovernor
@@ -572,8 +572,8 @@ def _expected_profile_selection(
     condition: str, prefix: list[EvidenceReading], cost: float, budget: float
 ) -> tuple[str, dict[str, object]]:
     """Reconstruct the choice from replayed deliveries, independent of the proposing policy."""
-    current = prefix[-1]
-    trace = evidence_trace(tuple(prefix))
+    readings, trace = evidence_trace_with_readings(tuple(prefix))
+    current = readings[-1]
     step = cast(list[dict[str, object]], trace["decisions"])[-1]
     clock = cast(int, step["as_of_tick"])
     age = clock - current.measured_tick
@@ -597,7 +597,7 @@ def _expected_profile_selection(
     else:
         eligible = [
             prior
-            for prior in prefix[:-1]
+            for prior in readings[:-1]
             if prior.subject_id == current.subject_id
             and clock - MAX_AGE_TICKS <= prior.measured_tick < current.measured_tick
         ]

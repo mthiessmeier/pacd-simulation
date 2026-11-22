@@ -2,6 +2,7 @@
 
 import json
 import subprocess
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -40,6 +41,32 @@ def test_replay_handles_repeated_delivery_and_unknown_subject(condition: str) ->
         observed = _expected_profile_selection(condition, list(prefix), 0.25, 1.0)
         assert observed[0] == reason and observed[1]["age_ticks"] == age
         assert observed == select_profile(condition, prefix, 0.25, 1.0)
+
+
+@pytest.mark.parametrize("limiting_index", [0, 2])
+def test_policy_and_replay_score_only_the_values_bound_by_the_evidence_digest(
+    limiting_index: int,
+) -> None:
+    prefix = [
+        EvidenceReading(
+            observation_key=i,
+            source_key=1,
+            subject_id="session",
+            measured_tick=t,
+            delivered_tick=t + 1,
+            signal=0.9,
+        )
+        for i, t in enumerate((1, 1, 2), 1)
+    ]
+    prefix[limiting_index] = prefix[limiting_index].model_copy(update={"signal": 0.1})
+    clean = select_profile("sensing_contextual_v1", tuple(prefix), 0.075, 1.0)
+    assert clean[0] == "no_positive_gain" and clean[1]["utility_exact"] == "0"
+    prefix[limiting_index] = prefix[limiting_index].model_copy(
+        update={"signal": Decimal("0.10000000000000000001")}
+    )
+    assert evidence_trace(tuple(prefix))["trace_sha256"] == clean[1]["prefix_trace_sha256"]
+    assert select_profile("sensing_contextual_v1", tuple(prefix), 0.075, 1.0) == clean
+    assert _expected_profile_selection("sensing_contextual_v1", prefix, 0.075, 1.0) == clean
 
 
 def _launch(ws: IsolatedWorkspace, scenario: str, condition: str) -> harness.RunResult:

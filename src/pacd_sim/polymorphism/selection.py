@@ -5,7 +5,12 @@ from typing import Final, cast
 
 from pydantic import TypeAdapter
 
-from pacd_sim.evidence.context import MAX_AGE_TICKS, MAX_READINGS, EvidenceReading, evidence_trace
+from pacd_sim.evidence.context import (
+    MAX_AGE_TICKS,
+    MAX_READINGS,
+    EvidenceReading,
+    evidence_trace_with_readings,
+)
 from pacd_sim.schema import Probability
 
 CONTEXTUAL: Final = "sensing_contextual_v1"
@@ -26,7 +31,7 @@ def select_profile(
     switch_cost = _PROBABILITY.validate_python(switch_cost, strict=True)
     budget = _PROBABILITY.validate_python(budget, strict=True)
 
-    trace = evidence_trace(prefix)
+    prefix, trace = evidence_trace_with_readings(prefix)
     current = prefix[-1]
     step = cast(list[dict[str, object]], trace["decisions"])[-1]
     age = cast(int, step["age_ticks"])
