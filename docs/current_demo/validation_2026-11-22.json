@@ -1,0 +1,118 @@
+{
+  "format": "pacd-public-documentation-validation-v1",
+  "date": "2026-11-22",
+  "sanitized_summary": true,
+  "evidence_label": "NON_REPORTABLE_DIAGNOSTIC",
+  "reportable": false,
+  "producer_commit": "31c1645ee28a7bbd2488dfb2d354be1fdea3fd25",
+  "producer_dirty": false,
+  "python_version": "3.13.15",
+  "environment_installer_uv_version": "0.13.9",
+  "helper_sha256": "5eb37dbea1c136e3c95869801c0f7f380df45bfff6e89e34f43f549a34026cfe",
+  "lockfile_sha256": "2ed6b7134df13ce28adaed91bbed4198251fb98e46618f98608cfb8db6047b69",
+  "public_cli_walkthrough": {
+    "status": "BLOCKED_AT_DOCTOR",
+    "helper_exit_code": 1,
+    "doctor_exit_code": 1,
+    "doctor_checks": [
+      {
+        "name": "repository_workspace_boundary",
+        "passed": true
+      },
+      {
+        "name": "interpreter_compatibility",
+        "passed": true
+      },
+      {
+        "name": "dependency_lock",
+        "passed": true
+      },
+      {
+        "name": "workspace_write_boundary",
+        "passed": true
+      },
+      {
+        "name": "protected_paths_not_work_roots",
+        "passed": true
+      },
+      {
+        "name": "host_resources",
+        "passed": false
+      },
+      {
+        "name": "git_state",
+        "passed": true
+      },
+      {
+        "name": "configuration_schema",
+        "passed": true
+      },
+      {
+        "name": "raw_output_and_hash_manifest",
+        "passed": true
+      },
+      {
+        "name": "simulation_only_network_disabled",
+        "passed": true
+      },
+      {
+        "name": "reportable_mode_interlock",
+        "passed": true
+      },
+      {
+        "name": "assurance_commands",
+        "passed": true
+      }
+    ],
+    "free_disk_bytes": 4509523968,
+    "minimum_free_disk_bytes": 21474836480,
+    "native_home_filesystem_total_bytes": 5225713664,
+    "doctor_stdout_sha256": "d868ede3fd21deef5cfbd8897a6c81c38a84c3f599b78ffd4470c561f5b1b656",
+    "attempt_register_created": false,
+    "diagnostic_cases_launched": 0,
+    "success_summary_created": false,
+    "failure_record_retained": true,
+    "raw_records_public": false
+  },
+  "focused_unit_tests": {
+    "files": [
+      "tests/unit/test_review_brief.py",
+      "tests/unit/test_approval_burden.py",
+      "tests/unit/test_mission_impact.py",
+      "tests/unit/test_review_routing.py"
+    ],
+    "exit_code": 0,
+    "passed": 49,
+    "pytest_reported_duration_seconds": 0.53,
+    "log_sha256": "1005d2c9e8805da3c289968c57bef4ba55c47ab39a3fe0cbc86c899d609d986b"
+  },
+  "documentation_checks": {
+    "syntax": "PASS",
+    "ruff_lint": "PASS",
+    "ruff_format": "PASS",
+    "source_reconciliation": "PASS",
+    "source_units": 558,
+    "metric_ids": 47,
+    "workstreams": 18,
+    "work_packages": 16,
+    "requirement_status_counts": {
+      "partial": 261,
+      "context": 97,
+      "accepted complete": 27,
+      "draft methodology": 119,
+      "source-explicitly deferred": 3,
+      "open": 50,
+      "not yet evidenced": 1
+    },
+    "historical_ledger_sha256": "f05ab2dfe7fc1273fc26c73b40462171107a06ae778c84ce13aabbc1438a44b8",
+    "validator_log_sha256": "b9780a972a51f7c2ed0cfd372379b656db61b4d3db0852c77207bb9c7979e40a"
+  },
+  "limits": [
+    "No fresh four-case CLI results were produced.",
+    "Expected numeric observations in the guide come from merged source and tests.",
+    "Focused unit tests do not substitute for public CLI reproduction.",
+    "The source ledger is not a completion-percentage denominator.",
+    "Historical full-suite figures remain attributed to their PR records.",
+    "The first free-space observation targeted a different filesystem; the actual native workspace did not satisfy installation preflight."
+  ]
+}

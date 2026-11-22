@@ -44,3 +44,7 @@
 ## 2026-11-21 · Phase 2 schema candidate
 
 Verified the accepted base, reconstructed the lock offline, reproduced the bootstrap control case, and added typed diagnostic input and output contracts. See [preflight and source reconciliation](PHASE2_INCREMENT1.md) and the [reviewer reproduction guide](../docs/application_demo/README.md). Dated evidence and exact-head review live in the bounded workspace under `review/phase2-i1-20261121`.
+
+## 2026-11-22 · Public demonstration and progress refresh through PR #22
+
+Updated the public introduction, architecture, current progress dashboard, source ledger and remaining-plan checkpoint at merged `31c1645ee28a7bbd2488dfb2d354be1fdea3fd25`. Preserved the previous ledger and handoff byte for byte; historical demo files and runtime inputs are unchanged. No scope or acceptance criterion was removed. The new guide/helper covers four bounded fixtures and a declared unlaunched slot. Source reconciliation and 49 existing focused unit tests passed. The actual helper retained a preflight failure at the unmodified doctor's 20 GiB resource gate; no diagnostic case was launched. See [validation](../docs/current_demo/VALIDATION.md), [current progress](CURRENT_PROGRESS.md) and [handoff](SESSION_HANDOFF.md). This increment remains subject to review and a separate merge decision.

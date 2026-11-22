@@ -59,3 +59,17 @@ Commands are recorded without credentials or unrelated environment data. State-c
 ## 2026-11-21 · Increment 1
 
 The workspace's `review/phase2-i1-20261121` directory retains individual command arguments, working directory, start/end times, exit codes and output hashes for the builder gates. The local reviewer packet contains a sanitized command log. Baseline discovery used `git status --short --branch`, `git ls-remote --heads --tags origin` and private `gh pr list --state all`. The offline lock check, frozen sync and baseline doctor returned 0. The fresh `pip-audit --local --skip-editable` returned 1. A new seed-424242 run from the accepted commit verified with matching retained raw and summary semantic hashes. The candidate guide provides commands for new run identities.
+
+## 2026-11-22 · Public documentation verification
+
+Commands ran in a separate, clean producer at merged PR #22 and an isolated documentation checkout. Full arguments and stdout/stderr remain in the local evidence record; [the public summary](../docs/current_demo/validation_2026-11-22.json) sanitizes host-local paths.
+
+| Command or check | Result |
+|---|---|
+| GitHub main/PR reads; Git commit, tree and working-tree checks | PR #22 merged; PR #23 open draft at inspection. Producer clean at `31c1645ee28a7bbd2488dfb2d354be1fdea3fd25`. |
+| Separate CPython 3.13.15 and `uv sync --frozen` | Environment prepared; native-workspace free-space preflight subsequently failed. See the installation-preflight correction in the validation record. |
+| `python docs/current_demo/run_demo.py --producer <clean-pinned-producer>` | Exit 1 at `doctor`: 11/12 checks passed, free disk below 20 GiB. Failure retained before register creation or diagnostic launch. |
+| Existing unit tests for review brief, approval burden, mission impact and review routing | 49 passed in 0.53 seconds. |
+| Ruff lint/format and helper syntax | Passed after formatting corrections. |
+| Original `check_reconciliation.py` against original handoff | Passed: 558 units, 47 metrics, 18 streams, 16 packages. |
+| Independent source/acceptance/history preservation review | Passed; no new accepted-complete promotion and no change to original scope or acceptance criteria. |

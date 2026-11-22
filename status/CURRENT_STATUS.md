@@ -1,3 +1,5 @@
+> Historical bootstrap checkpoint. For merged capabilities and residual work through PR #22, see [CURRENT_PROGRESS.md](CURRENT_PROGRESS.md).
+
 # Current PACD Bootstrap Status
 
 **Status date:** 2026-08-23  
