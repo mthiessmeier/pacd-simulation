@@ -18,6 +18,7 @@ from pacd_sim.defenders.baselines.static import (
 )
 from pacd_sim.defenders.observations import BaselineObservation
 from pacd_sim.defenders.pacd import corroboration
+from pacd_sim.evidence.context import evidence_trace
 from pacd_sim.harness.run import ConfigurationError, run_diagnostic
 from pacd_sim.metrics.dispositions import episode_dispositions
 from pacd_sim.metrics.registered import load_register, registered_metrics
@@ -145,6 +146,7 @@ def _parser() -> argparse.ArgumentParser:
     for name, description in (
         ("baseline", "replay the static human-review rule on verified observations"),
         ("defender-trace", "trace the PACD planner's review proposals on verified observations"),
+        ("evidence-trace", "inspect freshness and distinct sources of verified sensor readings"),
     ):
         replay = subparsers.add_parser(name, help=description)
         replay.add_argument("run_dir", type=Path)
@@ -283,7 +285,8 @@ def _verified_report_command(arguments: argparse.Namespace) -> int:
         arguments.run_dir,
         workspace_root=workspace,
         repo_root=repository,
-        include_observations=arguments.command != "metrics",
+        include_observations=arguments.command in ("baseline", "defender-trace"),
+        include_evidence_readings=arguments.command == "evidence-trace",
     )
     payload = verification.to_dict()
     if not verification.valid or material is None:
@@ -299,6 +302,8 @@ def _verified_report_command(arguments: argparse.Namespace) -> int:
         payload["metrics_sha256"] = canonical_sha256(metrics)
     elif arguments.command == "defender-trace":
         payload["defender_trace"] = _defender_trace(material.observations)
+    elif arguments.command == "evidence-trace":
+        payload["evidence_trace"] = evidence_trace(material.evidence_readings)
     else:
         payload["baseline"] = _static_report(material.observations)
     _emit_json(payload)
@@ -316,7 +321,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _diagnostic_command(arguments)
         if arguments.command == "verify":
             return _verify_command(arguments)
-        if arguments.command in ("baseline", "defender-trace", "metrics"):
+        if arguments.command in ("baseline", "defender-trace", "evidence-trace", "metrics"):
             return _verified_report_command(arguments)
     except ReportableModeDenied as error:
         _emit_json(

@@ -18,6 +18,7 @@ from pacd_sim.configuration import EventConfig, ScenarioConfig
 from pacd_sim.constants import EVIDENCE_LABEL
 from pacd_sim.defenders.base import BaselineObservation
 from pacd_sim.defenders.pacd import corroboration
+from pacd_sim.evidence.context import EvidenceReading
 from pacd_sim.metrics.dispositions import guarded_review_metrics
 from pacd_sim.metrics.summarize import EpisodeRecord, summary_from_raw_table
 from pacd_sim.reproducibility.canonical import canonical_sha256
@@ -146,6 +147,48 @@ class VerifiedSummary:
     observations: tuple[BaselineObservation, ...] = ()
     comparison_inputs: ComparisonInputs | None = None
     guarded_review: dict[str, object] | None = None
+    evidence_readings: tuple[EvidenceReading, ...] = ()
+
+
+def _delivered_reading(row: dict[str, object], signal: float) -> BaselineObservation:
+    # A literal subject with the v1 missing-subject spelling also abstains.
+    subject = cast(str, row["entity_id"])
+    return BaselineObservation(
+        tick=int(cast(float, row["tick"])),
+        subject_id=None if subject == "synthetic-unknown" else subject,
+        signal=signal,
+    )
+
+
+def _verified_evidence_readings(
+    raw_rows: tuple[dict[str, object], ...], scenario: ScenarioConfig
+) -> tuple[EvidenceReading, ...]:
+    """Project authenticated delivery rows and source ticks into an episode-local view."""
+    measured_ticks = {event.id: event.tick for event in scenario.events}
+    sources: dict[str, int] = {}
+    observations: dict[tuple[str, str], int] = {}
+    readings = []
+    for row in raw_rows:
+        if row["event_type"] != "observation":
+            continue
+        payload = json.loads(cast(str, row["payload_json"]))
+        reading = _delivered_reading(row, payload["signal"])
+        sensor_id, event_id = payload["sensor_id"], payload["event_id"]
+        # A v1 sensor generates one observation per event. Their identifiers
+        # can contain scenario labels, so only their equality is exposed.
+        key = observations.setdefault((sensor_id, event_id), len(observations) + 1)
+        source = sources.setdefault(sensor_id, len(sources) + 1)
+        readings.append(
+            EvidenceReading(
+                observation_key=key,
+                source_key=source,
+                subject_id=reading.subject_id,
+                measured_tick=measured_ticks[event_id],
+                delivered_tick=reading.tick,
+                signal=reading.signal,
+            )
+        )
+    return tuple(readings)
 
 
 @dataclass(frozen=True)
@@ -344,6 +387,7 @@ def _verify_run_impl(
     include_event_sequence: bool = False,
     include_observations: bool = False,
     include_comparison_inputs: bool = False,
+    include_evidence_readings: bool = False,
 ) -> tuple[VerificationResult, VerifiedSummary | None]:
     """Implement complete verification behind the public defensive boundary."""
     errors: list[str] = []
@@ -907,16 +951,8 @@ def _verify_run_impl(
             result = replace(result, event_sequence=sequence)
         observations: tuple[BaselineObservation, ...] = ()
         if include_observations:
-            # The v1 sensor writes this sentinel for a missing subject. A literal ID
-            # with the same spelling is indistinguishable on the wire and also abstains.
             observations = tuple(
-                BaselineObservation(
-                    tick=int(cast(float, row["tick"])),
-                    subject_id=None
-                    if row["entity_id"] == "synthetic-unknown"
-                    else cast(str, row["entity_id"]),
-                    signal=json.loads(cast(str, row["payload_json"]))["signal"],
-                )
+                _delivered_reading(row, json.loads(cast(str, row["payload_json"]))["signal"])
                 for row in raw_rows
                 if row["event_type"] == "observation"
             )
@@ -925,6 +961,11 @@ def _verify_run_impl(
             csv_sha256=artifact_snapshots["derived/episode_summary.csv"].sha256,
             parquet_sha256=artifact_snapshots["derived/episode_summary.parquet"].sha256,
             observations=observations,
+            evidence_readings=_verified_evidence_readings(
+                raw_rows, ScenarioConfig.model_validate(scenario)
+            )
+            if include_evidence_readings
+            else (),
             guarded_review=guarded_review_metrics(
                 raw_rows, ScenarioConfig.model_validate(scenario).sensing_operator
             )
@@ -947,6 +988,7 @@ def verify_run_with_summary(
     include_event_sequence: bool = False,
     include_observations: bool = False,
     include_comparison_inputs: bool = False,
+    include_evidence_readings: bool = False,
 ) -> tuple[VerificationResult, VerifiedSummary | None]:
     """Release the summary and requested sensor fields only after full local verification."""
 
@@ -958,6 +1000,7 @@ def verify_run_with_summary(
             include_event_sequence=include_event_sequence,
             include_observations=include_observations,
             include_comparison_inputs=include_comparison_inputs,
+            include_evidence_readings=include_evidence_readings,
         )
     except RecursionError as error:
         return VerificationResult(
