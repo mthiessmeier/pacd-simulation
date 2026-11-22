@@ -139,6 +139,7 @@ def _final_outcome(
     include_sensing_freshness: bool,
     include_mission_impact: bool,
     include_mission_recovery: bool,
+    include_critical_outage: bool,
     include_review_routing: bool,
     include_approval_burden: bool,
 ) -> Outcome:
@@ -151,6 +152,7 @@ def _final_outcome(
             include_sensing_freshness=include_sensing_freshness,
             include_mission_impact=include_mission_impact,
             include_mission_recovery=include_mission_recovery,
+            include_critical_outage=include_critical_outage,
             include_review_routing=include_review_routing,
             include_approval_burden=include_approval_burden,
         )
@@ -214,6 +216,7 @@ def _observe(
     include_sensing_freshness: bool,
     include_mission_impact: bool,
     include_mission_recovery: bool,
+    include_critical_outage: bool,
     include_review_routing: bool,
     include_approval_burden: bool,
 ) -> Outcome:
@@ -255,6 +258,7 @@ def _observe(
                 include_sensing_freshness=include_sensing_freshness,
                 include_mission_impact=include_mission_impact,
                 include_mission_recovery=include_mission_recovery,
+                include_critical_outage=include_critical_outage,
                 include_review_routing=include_review_routing,
                 include_approval_burden=include_approval_burden,
             )
@@ -318,6 +322,7 @@ def registered_metrics(
     include_sensing_freshness: bool = False,
     include_mission_impact: bool = False,
     include_mission_recovery: bool = False,
+    include_critical_outage: bool = False,
     include_review_routing: bool = False,
     include_approval_burden: bool = False,
 ) -> dict[str, object]:
@@ -340,6 +345,7 @@ def registered_metrics(
                 include_sensing_freshness=include_sensing_freshness,
                 include_mission_impact=include_mission_impact,
                 include_mission_recovery=include_mission_recovery,
+                include_critical_outage=include_critical_outage,
                 include_review_routing=include_review_routing,
                 include_approval_burden=include_approval_burden,
             )

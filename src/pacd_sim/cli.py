@@ -176,6 +176,11 @@ def _parser() -> argparse.ArgumentParser:
         help="include per-mission outage and restoration times for guarded episodes",
     )
     metrics.add_argument(
+        "--critical-outage",
+        action="store_true",
+        help="include outage time for designated critical missions in guarded episodes",
+    )
+    metrics.add_argument(
         "--review-routing",
         action="store_true",
         help="include escalation routing and terminal review outcomes for guarded episodes",
@@ -302,6 +307,7 @@ def _verified_report_command(arguments: argparse.Namespace) -> int:
                     include_sensing_freshness=arguments.sensing_freshness,
                     include_mission_impact=arguments.mission_impact,
                     include_mission_recovery=arguments.mission_recovery,
+                    include_critical_outage=arguments.critical_outage,
                     include_review_routing=arguments.review_routing,
                     include_approval_burden=arguments.approval_burden,
                 )
@@ -316,6 +322,7 @@ def _verified_report_command(arguments: argparse.Namespace) -> int:
                 include_sensing_freshness=arguments.sensing_freshness,
                 include_mission_impact=arguments.mission_impact,
                 include_mission_recovery=arguments.mission_recovery,
+                include_critical_outage=arguments.critical_outage,
                 include_review_routing=arguments.review_routing,
                 include_approval_burden=arguments.approval_burden,
             )
@@ -332,6 +339,7 @@ def _verified_report_command(arguments: argparse.Namespace) -> int:
         include_sensing_freshness=arguments.command == "metrics" and arguments.sensing_freshness,
         include_mission_impact=arguments.command == "metrics" and arguments.mission_impact,
         include_mission_recovery=arguments.command == "metrics" and arguments.mission_recovery,
+        include_critical_outage=arguments.command == "metrics" and arguments.critical_outage,
         include_review_routing=arguments.command == "metrics" and arguments.review_routing,
         include_approval_burden=arguments.command == "metrics" and arguments.approval_burden,
     )
