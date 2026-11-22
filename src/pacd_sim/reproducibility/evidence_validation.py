@@ -762,6 +762,13 @@ def _expected_event_rows(
             },
         )
         evidence = normalize_observation(observation)
+        if guarded is not None and guarded.decision_brief is not None:
+            # Bind the independently regenerated post-profile delivery to its true position.
+            # The producer's evidence and the retained brief are checked against this input.
+            delivery_digest = canonical_sha256(
+                {"observation_key": ordinal, "observation": observation}
+            )
+            evidence = evidence.model_copy(update={"delivery_digest": delivery_digest})
         evidence_items.append(evidence)
         benign = evidence.category == "benign_context"
         classification = "benign_negative_control" if benign else "synthetic_adversary_indicator"

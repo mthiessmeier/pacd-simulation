@@ -10,6 +10,7 @@ import pytest
 from conftest import IsolatedWorkspace
 
 from pacd_sim.constants import REVIEW_BRIEF_ISOLATION_FILE, REVIEW_BRIEF_SENSING_FILE
+from pacd_sim.evidence import normalize
 from pacd_sim.harness import run as harness
 from pacd_sim.oversight import guarded
 from pacd_sim.oversight.review_brief import operator_brief
@@ -251,3 +252,23 @@ def test_replay_withholds_authentic_but_false_preview(
     assert command("verify", str(run), code=1)["status"] == "INVALID"
     result = command("metrics", str(run), "--review-routing", code=1)
     assert result["status"] == "INVALID" and "metrics" not in result
+
+
+@pytest.mark.reproducibility
+def test_replay_reconstructs_evidence_commitment_when_the_producer_hash_is_wrong(
+    isolated_workspace: IsolatedWorkspace, command: Command, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ws = isolated_workspace
+    scenario = ws.config_root / "scenarios" / REVIEW_BRIEF_ISOLATION_FILE
+    # Allocation and queue admission agree on an incorrect commitment. This fault remains
+    # present during verification, which must use the governed post-profile observation.
+    monkeypatch.setattr(normalize, "canonical_sha256", lambda _: "0" * 64)
+    run = _launch(ws, command, scenario, "static_review")
+    _pending(_reviews(run))
+    assert verify_execution_receipt(
+        workspace_root=ws.root,
+        run_dir=run,
+        manifest=json.loads((run / "manifest.json").read_bytes()),
+    ).identity_assured
+    assert command("verify", str(run), code=1)["status"] == "INVALID"
+    assert "metrics" not in command("metrics", str(run), "--review-routing", code=1)

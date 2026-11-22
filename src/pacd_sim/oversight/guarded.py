@@ -271,7 +271,7 @@ class GuardedReviewQueue:
                 type(ordinal) is not int
                 or not 1 <= ordinal <= MAX_READINGS
                 or ordinal in self._used_readings
-                or normalize_observation(observation) != evidence
+                or normalize_observation(observation, delivery_ordinal=ordinal) != evidence
             ):
                 return reject("refused", "review brief delivery does not match unused evidence")
             self._used_readings.add(ordinal)

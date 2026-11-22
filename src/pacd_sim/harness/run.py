@@ -1566,7 +1566,12 @@ def _run_diagnostic_worker(
                     **sensing_fields,
                 },
             )
-            evidence = normalize_observation(observation)
+            evidence = normalize_observation(
+                observation,
+                delivery_ordinal=ordinal
+                if guarded is not None and guarded.decision_brief is not None
+                else None,
+            )
             evidence_items.append(evidence)
             benign = evidence.category == "benign_context"
             classification = (

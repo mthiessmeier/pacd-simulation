@@ -12,7 +12,7 @@ from pacd_sim.evidence.normalize import normalize_observation
 from pacd_sim.execution.broker import SimulatedExecutionBroker
 from pacd_sim.governance.governor import SafetyGovernor, SafetyPolicy
 from pacd_sim.oversight.guarded import GuardedReviewQueue, ReviewEvent
-from pacd_sim.reproducibility.canonical import canonical_json_bytes
+from pacd_sim.reproducibility.canonical import canonical_json_bytes, canonical_sha256
 from pacd_sim.schema import MAX_AUDIT_PAYLOAD_BYTES
 from pacd_sim.state.snapshot import create_snapshot
 from pacd_sim.telemetry.generator import Observation
@@ -48,13 +48,8 @@ def _observation(key: str) -> Observation:
     )
 
 
-def _submit(
-    queue: GuardedReviewQueue,
-    state: EnvironmentState,
-    observation: Observation,
-    delivery: tuple[int, Observation] | None,
-) -> ReviewEvent:
-    broker = SimulatedExecutionBroker(
+def _broker() -> SimulatedExecutionBroker:
+    return SimulatedExecutionBroker(
         SafetyGovernor(
             SafetyPolicy(
                 allowed_action_types=("isolate_session",),
@@ -63,9 +58,37 @@ def _submit(
             )
         )
     )
+
+
+def test_evidence_commitment_preserves_legacy_bytes_and_binds_the_original_delivery() -> None:
+    observation = _observation("legacy").model_copy(update={"signal": 0.75})
+    # Canonical bytes from the accepted GOV-002 revision, before evidence commitments.
+    expected = (
+        b'{"category":"benign_context","confidence":0.25,"configuration_version":"BOOTSTRAP_DRAFT_v1",'
+        b'"id":"evidence-legacy","integrity":1.0,"observation_ids":["legacy"],'
+        b'"provenance":["legacy","sensor-private"],"schema_version":"1.0",'
+        b'"source":"synthetic","subject_id":"u","tick":4}'
+    )
+    assert canonical_json_bytes(normalize_observation(observation)) == expected
+    issued = normalize_observation(observation, delivery_ordinal=1)
+    assert issued.delivery_digest == canonical_sha256(
+        {"observation_key": 1, "observation": observation}
+    )
+    assert canonical_json_bytes(issued) != expected
+
+
+def _submit(
+    queue: GuardedReviewQueue,
+    state: EnvironmentState,
+    observation: Observation,
+    delivery: tuple[int, Observation] | None,
+    *,
+    original_ordinal: int | None = 1,
+) -> ReviewEvent:
+    broker = _broker()
     action = DefensiveAction(
         id="review-" + observation.id,
-        tick=4,
+        tick=state.tick,
         action_type="require_human_review",
         target_id="u",
         requested_authority="human",
@@ -73,7 +96,12 @@ def _submit(
     )
     decision = broker.governor.evaluate(action, mission_state=create_snapshot(state))
     step = queue.submit(
-        action, decision, normalize_observation(observation), state, broker, delivery=delivery
+        action,
+        decision,
+        normalize_observation(observation, delivery_ordinal=original_ordinal),
+        state,
+        broker,
+        delivery=delivery,
     )
     assert step.state is state
     (row,) = step.events
@@ -100,6 +128,43 @@ def test_second_record_cannot_reuse_an_opaque_delivery_key(state: EnvironmentSta
     first, second = _observation("a"), _observation("b")
     assert _submit(queue, state, first, (1, first)).outcome == "pending"
     assert _submit(queue, state, second, (1, second)).outcome == "refused"
+
+
+@pytest.mark.parametrize("cross", ["clock", "ordinal", "mirrored_signal", "missing_commitment"])
+def test_only_original_delivery_can_admit_or_dispatch(state: EnvironmentState, cross: str) -> None:
+    original = _observation("committed").model_copy(
+        update={"event_kind": "unknown", "signal": 0.25}
+    )
+    supplied = original
+    ordinal = 1
+    if cross == "clock":
+        supplied = original.model_copy(update={"event_tick": 0})
+    elif cross == "ordinal":
+        ordinal = 2
+    elif cross == "mirrored_signal":
+        supplied = original.model_copy(update={"signal": 0.75})
+    # In each case the previous normalized fields and eligibility are identical.
+    assert normalize_observation(original) == normalize_observation(supplied)
+    queue = GuardedReviewQueue(
+        capacity=1, delay_ticks=1, ttl_ticks=4, approve=True, rollback=False, include_brief=True
+    )
+    rejected = _submit(
+        queue,
+        state,
+        original,
+        (ordinal, supplied),
+        original_ordinal=None if cross == "missing_commitment" else 1,
+    )
+    assert rejected.outcome == "refused" and "request_digest" not in rejected.payload
+    resolution = queue.advance(5, state, _broker())
+    assert not resolution.events and resolution.state == state.at_tick(5)
+    fresh = _observation("fresh").model_copy(update={"tick": 5, "event_tick": 4})
+    # A rejected substitution cannot reserve the free slot or dispatch any action.
+    admitted = _submit(queue, resolution.state, fresh, (2, fresh), original_ordinal=2)
+    assert admitted.outcome == "pending"
+    assert "executed" in [
+        event.outcome for event in queue.advance(6, resolution.state, _broker()).events
+    ]
 
 
 def test_pending_payload_uses_the_inclusive_utf8_byte_limit(state: EnvironmentState) -> None:
