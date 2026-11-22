@@ -176,6 +176,9 @@ class ScenarioConfig(DiagnosticRecord):
     sessions: NonemptyArray[SessionConfig]
     services: NonemptyArray[ServiceConfig]
     missions: NonemptyArray[MissionConfig]
+    critical_mission_ids: NonemptyArray[StableId] | SkipJsonSchema[None] = Field(
+        default_factory=lambda: None, validate_default=False, exclude_if=lambda value: value is None
+    )
     # An omitted field has no wire representation. An explicit empty array is retained.
     dependencies: DependencyRows | SkipJsonSchema[None] = Field(
         default_factory=lambda: None, validate_default=False, exclude_if=lambda value: value is None
@@ -203,6 +206,8 @@ class ScenarioConfig(DiagnosticRecord):
     @model_validator(mode="after")
     def _validate_review_scenario(self) -> Self:
         if self.guarded_review is None:
+            if self.critical_mission_ids is not None:
+                raise ValueError("critical mission designation requires guarded review")
             if self.sensing_operator is not None:
                 raise ValueError("sensing operator requires guarded review")
             if not self.actions:
@@ -212,6 +217,12 @@ class ScenarioConfig(DiagnosticRecord):
             raise ValueError("guarded review requires an empty list of scripted actions")
         if self.availability_model is None:
             raise ValueError("guarded review requires a mission availability model")
+        if self.critical_mission_ids is not None:
+            selected = set(self.critical_mission_ids)
+            if len(selected) != len(self.critical_mission_ids):
+                raise ValueError("critical mission IDs must be unique")
+            if not selected.issubset(mission.id for mission in self.missions):
+                raise ValueError("critical mission IDs must name configured missions")
         if any(
             event.tick + self.telemetry.delay_ticks > self.guarded_review.end_tick
             for event in self.events
@@ -220,7 +231,12 @@ class ScenarioConfig(DiagnosticRecord):
         return self
 
     @field_validator(
-        "dependencies", "availability_model", "guarded_review", "sensing_operator", mode="before"
+        "dependencies",
+        "availability_model",
+        "guarded_review",
+        "sensing_operator",
+        "critical_mission_ids",
+        mode="before",
     )
     @classmethod
     def _reject_explicit_null(cls, value: object) -> object:
