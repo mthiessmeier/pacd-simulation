@@ -28,6 +28,13 @@ _PACKAGE_FIELDS = {
     "due_tick",
     "expires_tick",
 }
+_BRIEF_PACKAGE_FIELDS = _PACKAGE_FIELDS | {"operator_brief"}
+_CONTRACT_FIELDS = {
+    "guarded-review-isolation-v1": _PACKAGE_FIELDS,
+    "guarded-review-sensing-v1": _PACKAGE_FIELDS,
+    "guarded-review-isolation-v2": _BRIEF_PACKAGE_FIELDS,
+    "guarded-review-sensing-v2": _BRIEF_PACKAGE_FIELDS,
+}
 
 
 @dataclass
@@ -42,10 +49,12 @@ class _Escalation:
 def _bound_package(binding: object, digest: object, subject: str, escalation: _Escalation) -> bool:
     # Independent replay already verified each field against the scenario, evidence,
     # governor and concrete action. Link that package to this particular escalation.
+    if not isinstance(binding, dict):
+        return False
+    contract = binding.get("contract")
     return (
-        isinstance(binding, dict)
-        and binding.keys() == _PACKAGE_FIELDS
-        and binding["contract"] in ("guarded-review-isolation-v1", "guarded-review-sensing-v1")
+        isinstance(contract, str)
+        and binding.keys() == _CONTRACT_FIELDS.get(contract)
         and binding["subject_id"] == subject
         and binding["referral_digest"] == escalation.referral_digest
         and binding["policy_digest"] == escalation.policy_digest

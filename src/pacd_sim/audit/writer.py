@@ -16,6 +16,7 @@ from pacd_sim.reproducibility.canonical import canonical_json_bytes
 from pacd_sim.reproducibility.manifest import validate_retained_json_text_depth
 from pacd_sim.reproducibility.paths import assert_write_path
 from pacd_sim.schema import (
+    MAX_AUDIT_PAYLOAD_BYTES,
     DiagnosticRecord,
     NonNegativeFloat,
     Sha256Digest,
@@ -56,7 +57,7 @@ class AuditEvent(DiagnosticRecord):
     disposition: str
     outcome: str
     config_hash: Sha256Digest
-    payload_json: Annotated[str, Field(max_length=64 * 1024)]
+    payload_json: Annotated[str, Field(max_length=MAX_AUDIT_PAYLOAD_BYTES)]
 
     @field_validator("entity_id", "action_id", "disposition", "outcome")
     @classmethod
@@ -67,7 +68,7 @@ class AuditEvent(DiagnosticRecord):
     @classmethod
     def _canonical_payload(cls, value: str) -> str:
         data = value.encode("utf-8")
-        if len(data) > 64 * 1024:
+        if len(data) > MAX_AUDIT_PAYLOAD_BYTES:
             raise ValueError("Audit payload exceeds the 64 KiB diagnostic cap")
         validate_retained_json_text_depth(value, source="audit payload_json")
         decoded = json.loads(value)

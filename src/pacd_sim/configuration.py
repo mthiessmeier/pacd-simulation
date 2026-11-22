@@ -133,6 +133,16 @@ class GuardedReviewConfig(StrictFrozenModel):
     response: Literal["approve", "deny", "no_response"]
     rollback: bool
     matched_signal_mean: Probability
+    decision_brief: Literal["operator-preview-v1"] | SkipJsonSchema[None] = Field(
+        default_factory=lambda: None, validate_default=False, exclude_if=lambda value: value is None
+    )
+
+    @field_validator("decision_brief", mode="before")
+    @classmethod
+    def _reject_null_brief(cls, value: object) -> object:
+        if value is None:
+            raise ValueError("explicit null is invalid for decision_brief")
+        return value
 
 
 class SensingOperatorConfig(StrictFrozenModel):

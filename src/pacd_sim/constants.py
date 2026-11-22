@@ -15,11 +15,14 @@ SENSING_BASELINE_FILES: Final = (
     "sensing_disabled.yaml",
     *SELECTION_BASELINE_FILES,
 )
-SENSING_SCENARIO_FILES: Final = (
+SENSING_V1_SCENARIO_FILES: Final = (
     "diagnostic_sensing_nominal.yaml",
     "diagnostic_sensing_costly.yaml",
     "diagnostic_sensing_delayed.yaml",
 )
+REVIEW_BRIEF_SENSING_FILE: Final = "diagnostic_review_brief_sensing.yaml"
+REVIEW_BRIEF_ISOLATION_FILE: Final = "diagnostic_review_brief_isolation.yaml"
+SENSING_SCENARIO_FILES: Final = (*SENSING_V1_SCENARIO_FILES, REVIEW_BRIEF_SENSING_FILE)
 DIAGNOSTIC_BASELINE_FILES: Final = (
     DEFAULT_BASELINE_FILE,
     "static_review.yaml",
@@ -40,9 +43,11 @@ DIAGNOSTIC_SCENARIO_FILES: Final = (
     "diagnostic_maintenance_window.yaml",
     "diagnostic_repeated_readings.yaml",
     *GUARDED_SCENARIO_FILES,
-    *SENSING_SCENARIO_FILES,
+    *SENSING_V1_SCENARIO_FILES,
     *MISSION_WEIGHT_SCENARIO_FILES,
     REVIEW_CONTENTION_FILE,
+    REVIEW_BRIEF_ISOLATION_FILE,
+    REVIEW_BRIEF_SENSING_FILE,
 )
 
 
@@ -67,5 +72,6 @@ def diagnostic_pair_supported(scenario_file: str, defender_file: str) -> bool:
             *GUARDED_SCENARIO_FILES,
             *MISSION_WEIGHT_SCENARIO_FILES,
             REVIEW_CONTENTION_FILE,
+            REVIEW_BRIEF_ISOLATION_FILE,
         )
     return True

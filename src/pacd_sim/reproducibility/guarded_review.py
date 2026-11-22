@@ -10,6 +10,7 @@ from pacd_sim.environment.availability import (
     evaluate_availability,
 )
 from pacd_sim.environment.model import EnvironmentState
+from pacd_sim.evidence.context import MAX_AGE_TICKS, EvidenceReading
 from pacd_sim.evidence.normalize import EvidenceItem
 from pacd_sim.execution.verification import (
     RollbackRecord,
@@ -19,8 +20,14 @@ from pacd_sim.execution.verification import (
 )
 from pacd_sim.governance.governor import PolicyDecision, SafetyGovernor
 from pacd_sim.metrics.mission_impact import MissionSnapshot
-from pacd_sim.reproducibility.canonical import canonical_sha256
-from pacd_sim.schema import PolicyDisposition, RollbackDisposition, VerificationDisposition
+from pacd_sim.oversight.review_brief import IMPACT_ASSUMPTION
+from pacd_sim.reproducibility.canonical import canonical_json_bytes, canonical_sha256
+from pacd_sim.schema import (
+    MAX_AUDIT_PAYLOAD_BYTES,
+    PolicyDisposition,
+    RollbackDisposition,
+    VerificationDisposition,
+)
 from pacd_sim.state.snapshot import create_snapshot
 
 
@@ -78,6 +85,51 @@ class _ExpectedRequest:
     policy_digest: str
 
 
+def _expected_operator_brief(
+    decision: PolicyDecision,
+    action: DefensiveAction,
+    reading: EvidenceReading,
+    submitted: EnvironmentState,
+) -> dict[str, object]:
+    """Reconstruct the admission-time brief from replay inputs before resolving any review."""
+    project = (
+        expected_sensing_profile
+        if action.action_type == "switch_sensing_profile"
+        else expected_isolation
+    )
+    hypothetical = project(submitted, action.target_id, action.tick)
+    before = evaluate_availability(submitted)
+    after = evaluate_availability(hypothetical)
+    previous = set(before.operational_mission_ids)
+    projected = set(after.operational_mission_ids)
+    age = reading.delivered_tick - reading.measured_tick
+    return {
+        "format": "operator-preview-v1",
+        "rationale": decision.reason,
+        "action_type": action.action_type,
+        "target_id": action.target_id,
+        "expected_effect": action.expected_effect,
+        "triggering_reading": reading.model_dump(mode="json"),
+        "uncertainty": {
+            "age_ticks": age,
+            "freshness": "fresh" if age <= MAX_AGE_TICKS else "stale",
+            "compromise_probability": None,
+        },
+        "impact_preview": {
+            "assumption": IMPACT_ASSUMPTION,
+            "mission_cost": action.mission_cost,
+            "missions": [
+                {
+                    "mission_id": mission,
+                    "operational_before": mission in previous,
+                    "operational_if_applied": mission in projected,
+                }
+                for mission in sorted(before.mission_ids)
+            ],
+        },
+    }
+
+
 class ExpectedReviewQueue:
     """Derive expected audit rows from controlled inputs, without invoking the broker or queue."""
 
@@ -133,7 +185,19 @@ class ExpectedReviewQueue:
         state: EnvironmentState,
         *,
         sensing_cost: float | None = None,
+        reading: EvidenceReading | None = None,
     ) -> None:
+        def rejected(outcome: str, reason: str) -> None:
+            self._emit(
+                referral,
+                state.tick,
+                outcome,
+                reason=reason,
+                referral_digest=canonical_sha256(referral),
+                evidence_digest=canonical_sha256(evidence),
+                state_digest=canonical_sha256(state),
+            )
+
         sessions = [
             s
             for s in state.sessions
@@ -163,15 +227,7 @@ class ExpectedReviewQueue:
             reason = "simulated review queue is full"
             outcome = "capacity"
         if reason is not None:
-            self._emit(
-                referral,
-                state.tick,
-                outcome,
-                reason=reason,
-                referral_digest=canonical_sha256(referral),
-                evidence_digest=canonical_sha256(evidence),
-                state_digest=canonical_sha256(state),
-            )
+            rejected(outcome, reason)
             return
         due = state.tick + self.config.delay_ticks
         expiry = state.tick + self.config.validity_ticks
@@ -202,7 +258,7 @@ class ExpectedReviewQueue:
             ),
             rollback="restore the exact immutable dispatch pre-state",
         )
-        binding = {
+        binding: dict[str, object] = {
             "contract": "guarded-review-sensing-v1" if sensing else "guarded-review-isolation-v1",
             "referral_digest": referral_digest,
             "referral_decision_digest": canonical_sha256(decision),
@@ -217,12 +273,25 @@ class ExpectedReviewQueue:
             "due_tick": due,
             "expires_tick": expiry,
         }
+        if self.config.decision_brief is not None:
+            if reading is None:
+                raise ValueError("guarded review replay requires the delivered reading")
+            binding["contract"] = (
+                "guarded-review-sensing-v2" if sensing else "guarded-review-isolation-v2"
+            )
+            binding["operator_brief"] = _expected_operator_brief(decision, action, reading, state)
         digest = canonical_sha256(binding)
+        admission_payload = {"request_digest": digest, "binding": binding}
+        if self.config.decision_brief is not None and (
+            len(canonical_json_bytes(admission_payload)) > MAX_AUDIT_PAYLOAD_BYTES
+        ):
+            rejected("refused", "review brief exceeds the audit payload limit")
+            return
         wake = expiry + 1 if self.config.response == "no_response" else min(due, expiry + 1)
         self.pending.append(
             _ExpectedRequest(referral, action, state, digest, expiry, wake, decision.policy_digest)
         )
-        self._emit(referral, state.tick, "pending", request_digest=digest, binding=binding)
+        self._emit(referral, state.tick, "pending", **admission_payload)
 
     def advance(self, horizon: int, state: EnvironmentState) -> EnvironmentState:
         # Sort stably so equal deadlines preserve the governed observation order.
