@@ -72,7 +72,7 @@ from pacd_sim.reproducibility.manifest import (
 )
 from pacd_sim.reproducibility.paths import path_has_symlink_or_reparse
 from pacd_sim.reproducibility.reportable import git_commit, git_is_dirty
-from pacd_sim.schema import PolicyDisposition
+from pacd_sim.schema import MAX_AUDIT_PAYLOAD_BYTES, PolicyDisposition
 from pacd_sim.state.snapshot import create_snapshot
 from pacd_sim.telemetry.generator import DetectorProfile, Sensor, SyntheticTelemetryGenerator
 
@@ -90,7 +90,6 @@ _MAX_PARQUET_COLUMN_CHUNKS = 4096
 _MAX_PARQUET_THRIFT_STRING_BYTES = 1024 * 1024
 _MAX_PARQUET_THRIFT_CONTAINER_ITEMS = 8192
 _MAX_RAW_LINE_BYTES = 128 * 1024
-_MAX_RAW_PAYLOAD_BYTES = 64 * 1024
 _MAX_RAW_IDENTIFIER_BYTES = 500
 _MAX_SUMMARY_STRING_BYTES = 1024
 _RAW_KEYS = frozenset(field.name for field in EVENT_SCHEMA)
@@ -1094,12 +1093,24 @@ def _expected_event_rows(
                 payload={"candidate_and_decision_retained": True},
             )
             if queue is not None:
+                reading = None
+                if queue.config.decision_brief is not None:
+                    # The signal reflects the sensing profile in effect at delivery.
+                    reading = EvidenceReading(
+                        observation_key=ordinal,
+                        source_key=1,
+                        subject_id=evidence.subject_id,
+                        measured_tick=observation.event_tick,
+                        delivered_tick=observation.tick,
+                        signal=observation.signal,
+                    )
                 queue.submit(
                     action,
                     decision,
                     evidence,
                     state,
                     sensing_cost=sensing.switch_cost if sensing is not None else None,
+                    reading=reading,
                 )
                 state = queue.advance(observation.tick, state)
         actions_processed = True
@@ -1469,7 +1480,7 @@ def _ingest_bounded_parquet(
                     "disposition": _MAX_RAW_IDENTIFIER_BYTES,
                     "outcome": _MAX_RAW_IDENTIFIER_BYTES,
                     "config_hash": _MAX_RAW_IDENTIFIER_BYTES,
-                    "payload_json": _MAX_RAW_PAYLOAD_BYTES,
+                    "payload_json": MAX_AUDIT_PAYLOAD_BYTES,
                 },
                 errors=errors,
             )
@@ -1608,7 +1619,7 @@ def _validate_raw_events(
             payload_text = row.get("payload_json")
             if not isinstance(payload_text, str):
                 errors.append(f"Raw JSONL row {line_number} payload_json is not a string")
-            elif len(payload_text.encode("utf-8")) > _MAX_RAW_PAYLOAD_BYTES:
+            elif len(payload_text.encode("utf-8")) > MAX_AUDIT_PAYLOAD_BYTES:
                 errors.append(f"Raw JSONL row {line_number} payload_json exceeds its bounded cap")
             else:
                 payload = strict_json_loads(

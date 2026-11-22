@@ -159,6 +159,29 @@ def test_adjudication_cannot_cross_request_subject_or_referral() -> None:
     assert report["outcome_counts"]["pending_at_horizon"] == report["package_count"] == 1
 
 
+@pytest.mark.parametrize("action", ["isolation", "sensing"])
+@pytest.mark.parametrize(
+    ("version", "brief_present", "expected"),
+    [("v1", False, 1), ("v1", True, 0), ("v2", False, 0), ("v2", True, 1), ("v3", True, 0)],
+)
+def test_routing_uses_the_fields_of_the_declared_contract(
+    action: str, version: str, brief_present: bool, expected: int
+) -> None:
+    binding = _binding("r")
+    binding["contract"] = f"guarded-review-{action}-{version}"
+    if brief_present:
+        # Full brief content is checked upstream, when the verifier replays the admission.
+        binding["operator_brief"] = {"format": "operator-preview-v1"}
+    rows = [
+        _decision("r"),
+        _pending("r", binding),
+        _review("r", "denied", canonical_sha256(binding)),
+    ]
+    report: dict[str, Any] = review_routing_metrics(rows)
+    assert report["routing_completeness"]["denominator"] == 1
+    assert report["package_count"] == report["routing_completeness"]["numerator"] == expected
+
+
 def test_no_escalation_has_no_measured_fraction() -> None:
     binding = _binding("r")
     rows = [

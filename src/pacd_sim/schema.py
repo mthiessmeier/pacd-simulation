@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 from pacd_sim.constants import DEFAULT_PROTOCOL_VERSION, SCHEMA_VERSION
 
 STABLE_ID_MAX_LENGTH: Final = 256
+MAX_AUDIT_PAYLOAD_BYTES: Final = 64 * 1024
 
 type StableId = Annotated[
     str,

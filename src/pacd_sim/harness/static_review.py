@@ -62,6 +62,7 @@ def review_queue(
         ttl_ticks=config.validity_ticks,
         approve={"approve": True, "deny": False, "no_response": None}[config.response],
         rollback=config.rollback,
+        include_brief=config.decision_brief is not None,
         observe=observe,
     )
 

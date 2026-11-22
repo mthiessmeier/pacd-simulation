@@ -1931,6 +1931,9 @@ def _run_diagnostic_worker(
                             state,
                             broker,
                             sensing_cost=sensing.switch_cost if sensing is not None else None,
+                            delivery=(ordinal, observation)
+                            if guarded is not None and guarded.decision_brief is not None
+                            else None,
                         )
                     )
                     state = _checked_review_state(queue.advance(action.tick, state, broker))

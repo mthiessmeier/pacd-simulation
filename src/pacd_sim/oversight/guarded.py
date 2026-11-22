@@ -6,13 +6,21 @@ from dataclasses import dataclass
 from pacd_sim.actions.models import DefensiveAction
 from pacd_sim.environment.availability import continuity_transition, evaluate_availability
 from pacd_sim.environment.model import EnvironmentState
-from pacd_sim.evidence.normalize import EvidenceItem
+from pacd_sim.evidence.context import MAX_READINGS, EvidenceReading
+from pacd_sim.evidence.normalize import EvidenceItem, normalize_observation
 from pacd_sim.execution.broker import ExecutionResult, SimulatedExecutionBroker
 from pacd_sim.execution.verification import rollback_execution, verify_execution
 from pacd_sim.governance.governor import PolicyDecision
-from pacd_sim.reproducibility.canonical import canonical_sha256
-from pacd_sim.schema import PolicyDisposition, RollbackDisposition, VerificationDisposition
+from pacd_sim.oversight.review_brief import operator_brief
+from pacd_sim.reproducibility.canonical import canonical_json_bytes, canonical_sha256
+from pacd_sim.schema import (
+    MAX_AUDIT_PAYLOAD_BYTES,
+    PolicyDisposition,
+    RollbackDisposition,
+    VerificationDisposition,
+)
 from pacd_sim.state.snapshot import create_snapshot
+from pacd_sim.telemetry.generator import Observation
 
 
 @dataclass(frozen=True)
@@ -183,6 +191,7 @@ class GuardedReviewQueue:
         ttl_ticks: int,
         approve: bool | None,
         rollback: bool,
+        include_brief: bool = False,
         observe: Callable[[ReviewEvent], None] | None = None,
     ) -> None:
         for limit in (capacity, delay_ticks, ttl_ticks):
@@ -196,6 +205,8 @@ class GuardedReviewQueue:
         self._approve = approve
         self._observe = observe
         self._rollback = rollback
+        self._include_brief = include_brief
+        self._used_readings: set[int] = set()
         self._now = 0
         self._seen_referrals: set[str] = set()
         self._seen_evidence: set[str] = set()
@@ -218,6 +229,7 @@ class GuardedReviewQueue:
         broker: SimulatedExecutionBroker,
         *,
         sensing_cost: float | None = None,
+        delivery: tuple[int, Observation] | None = None,
     ) -> ReviewStep:
         """Reserve exactly one governed referral, delivered evidence and eligible session."""
         if state.tick < self._now:
@@ -250,6 +262,29 @@ class GuardedReviewQueue:
             return reject("refused", "underlying observation already consumed")
         self._seen_evidence.add(evidence.id)
         self._seen_observations.update(evidence.observation_ids)
+        reading = None
+        if self._include_brief:
+            if delivery is None:
+                return reject("refused", "review brief requires the original delivered observation")
+            ordinal, observation = delivery
+            if (
+                type(ordinal) is not int
+                or not 1 <= ordinal <= MAX_READINGS
+                or ordinal in self._used_readings
+                or normalize_observation(observation) != evidence
+            ):
+                return reject("refused", "review brief delivery does not match unused evidence")
+            self._used_readings.add(ordinal)
+            # The governed full-coverage harness has one source. Keep event and sensor
+            # names and all evaluator-only labels outside the operator presentation.
+            reading = EvidenceReading(
+                observation_key=ordinal,
+                source_key=1,
+                subject_id=evidence.subject_id,
+                measured_tick=observation.event_tick,
+                delivered_tick=observation.tick,
+                signal=observation.signal,
+            )
         if self._quarantined:
             return reject("refused", "episode guarded dispatch is suspended")
         if (
@@ -290,13 +325,25 @@ class GuardedReviewQueue:
         else:
             action = reviewed_sensing_switch(referral, eligible[0].id, due_tick, sensing_cost)
         binding = review_binding(referral, decision, evidence, state, action, expiry)
+        if reading is not None:
+            binding["contract"] = (
+                "guarded-review-isolation-v2"
+                if sensing_cost is None
+                else "guarded-review-sensing-v2"
+            )
+            binding["operator_brief"] = operator_brief(decision, reading, state, action)
+        digest = canonical_sha256(binding)
+        if reading is not None:
+            pending_payload = {"binding": binding, "request_digest": digest}
+            if len(canonical_json_bytes(pending_payload)) > MAX_AUDIT_PAYLOAD_BYTES:
+                return reject("refused", "review brief exceeds the audit payload limit")
         wake = expiry + 1 if self._approve is None else min(due_tick, expiry + 1)
         request = _Pending(
             referral,
             action,
             state,
             decision.policy_digest,
-            canonical_sha256(binding),
+            digest,
             expiry,
             wake,
             self._record,
