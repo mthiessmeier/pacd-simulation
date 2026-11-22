@@ -166,6 +166,11 @@ def _parser() -> argparse.ArgumentParser:
         help="include candidate and execution evidence ages for verified WP08 sensing episodes",
     )
     metrics.add_argument(
+        "--function-availability",
+        action="store_true",
+        help="include time-weighted availability of each mission in verified guarded episodes",
+    )
+    metrics.add_argument(
         "--mission-impact",
         action="store_true",
         help="include time-integrated mission loss weighted by criticality for guarded episodes",
@@ -305,6 +310,7 @@ def _verified_report_command(arguments: argparse.Namespace) -> int:
                     arguments.plan_sha256,
                     planned=True,
                     include_sensing_freshness=arguments.sensing_freshness,
+                    include_function_availability=arguments.function_availability,
                     include_mission_impact=arguments.mission_impact,
                     include_mission_recovery=arguments.mission_recovery,
                     include_critical_outage=arguments.critical_outage,
@@ -320,6 +326,7 @@ def _verified_report_command(arguments: argparse.Namespace) -> int:
                 repository,
                 arguments.register_sha256,
                 include_sensing_freshness=arguments.sensing_freshness,
+                include_function_availability=arguments.function_availability,
                 include_mission_impact=arguments.mission_impact,
                 include_mission_recovery=arguments.mission_recovery,
                 include_critical_outage=arguments.critical_outage,
@@ -338,6 +345,8 @@ def _verified_report_command(arguments: argparse.Namespace) -> int:
         include_evidence_readings=arguments.command == "evidence-trace",
         include_sensing_freshness=arguments.command == "metrics" and arguments.sensing_freshness,
         include_mission_impact=arguments.command == "metrics" and arguments.mission_impact,
+        include_function_availability=arguments.command == "metrics"
+        and arguments.function_availability,
         include_mission_recovery=arguments.command == "metrics" and arguments.mission_recovery,
         include_critical_outage=arguments.command == "metrics" and arguments.critical_outage,
         include_review_routing=arguments.command == "metrics" and arguments.review_routing,

@@ -61,7 +61,12 @@ from pacd_sim.harness.static_review import (
     static_review_candidate,
 )
 from pacd_sim.hypotheses.update import BeliefState, update_beliefs
-from pacd_sim.metrics.mission_impact import MissionSnapshot, critical_outage, mission_loss
+from pacd_sim.metrics.mission_impact import (
+    MissionSnapshot,
+    critical_outage,
+    function_availability,
+    mission_loss,
+)
 from pacd_sim.metrics.mission_recovery import mission_recovery
 from pacd_sim.metrics.summarize import SUMMARY_SCHEMA
 from pacd_sim.reproducibility.canonical import canonical_json_bytes, canonical_sha256
@@ -1156,6 +1161,7 @@ class RetainedEvidenceValidation:
     mission_impact: dict[str, object] | None = None
     mission_recovery: dict[str, object] | None = None
     critical_outage: dict[str, object] | None = None
+    function_availability: dict[str, object] | None = None
 
 
 @dataclass(frozen=True)
@@ -1721,6 +1727,7 @@ def validate_retained_evidence(
     workspace: Path,
     *,
     repo_root: Path | str | None,
+    include_function_availability: bool = False,
     include_mission_impact: bool = False,
     include_mission_recovery: bool = False,
     include_critical_outage: bool = False,
@@ -1743,6 +1750,7 @@ def validate_retained_evidence(
     impact = None
     recovery = None
     outage = None
+    availability = None
     try:
         repository = _resolve_repository(workspace, repo_root)
         document_names = (
@@ -1817,7 +1825,12 @@ def validate_retained_evidence(
                 document_identities=document_identities,
             )
         snapshots: list[MissionSnapshot] = []
-        if include_mission_impact or include_mission_recovery or include_critical_outage:
+        if (
+            include_function_availability
+            or include_mission_impact
+            or include_mission_recovery
+            or include_critical_outage
+        ):
             expected_rows = _expected_event_rows(
                 expected_config, cast(int, seed), mission_snapshots=snapshots
             )
@@ -1872,6 +1885,9 @@ def validate_retained_evidence(
                 and scenario.availability_model == "required_dependencies_v1"
             ):
                 horizon = scenario.guarded_review.end_tick
+                mission_ids = [mission.id for mission in scenario.missions]
+                if include_function_availability:
+                    availability = function_availability(mission_ids, snapshots, horizon)
                 if include_mission_impact:
                     impact = mission_loss(
                         {mission.id: mission.criticality for mission in scenario.missions},
@@ -1879,12 +1895,10 @@ def validate_retained_evidence(
                         horizon,
                     )
                 if include_mission_recovery:
-                    recovery = mission_recovery(
-                        [mission.id for mission in scenario.missions], snapshots, horizon
-                    )
+                    recovery = mission_recovery(mission_ids, snapshots, horizon)
                 if include_critical_outage and scenario.critical_mission_ids is not None:
                     outage = critical_outage(
-                        [mission.id for mission in scenario.missions],
+                        mission_ids,
                         scenario.critical_mission_ids,
                         snapshots,
                         horizon,
@@ -1922,4 +1936,5 @@ def validate_retained_evidence(
         mission_impact=impact,
         mission_recovery=recovery,
         critical_outage=outage,
+        function_availability=availability,
     )

@@ -1,4 +1,4 @@
-"""Time integrals of binary mission loss and designated critical-function outages."""
+"""Time integrals of binary mission availability, loss and critical-function outages."""
 
 from collections.abc import Collection, Iterator, Mapping, Sequence
 from fractions import Fraction
@@ -8,28 +8,68 @@ type MissionSnapshot = tuple[int, tuple[str, ...]]
 
 
 def _mission_intervals(
-    snapshots: Sequence[MissionSnapshot], horizon: int
-) -> Iterator[tuple[int, tuple[str, ...]]]:
+    mission_ids: Collection[str], snapshots: Sequence[MissionSnapshot], horizon: int
+) -> Iterator[tuple[int, set[str]]]:
+    missions = set(mission_ids)
+    if len(missions) != len(mission_ids):
+        raise ValueError("duplicate governed mission")
     if not snapshots or snapshots[0][0] != 0:
         raise ValueError("mission measure requires initial availability at tick zero")
     # The end marker closes the last interval without supplying a new measurement.
     for (start, operational), (stop, _) in pairwise(chain(snapshots, [(horizon, ())])):
-        if stop < start:
+        if type(start) is not int or type(stop) is not int or stop < start:
             raise ValueError("invalid replayed mission clock")
-        yield stop - start, operational
+        up = set(operational)
+        if len(up) != len(operational) or not up.issubset(missions):
+            raise ValueError("invalid replayed mission membership")
+        yield stop - start, up
+
+
+def _unavailable_ticks(
+    mission_ids: Collection[str], snapshots: Sequence[MissionSnapshot], horizon: int
+) -> dict[str, int]:
+    unavailable = dict.fromkeys(mission_ids, 0)
+    for duration, up in _mission_intervals(mission_ids, snapshots, horizon):
+        for mission in unavailable.keys() - up:
+            unavailable[mission] += duration
+    return unavailable
+
+
+def function_availability(
+    mission_ids: Collection[str], snapshots: Sequence[MissionSnapshot], horizon: int
+) -> dict[str, object]:
+    """Measure the operational share of the observed clock for each governed mission."""
+    if not mission_ids:
+        raise ValueError("mission availability requires at least one governed mission")
+    unavailable = _unavailable_ticks(mission_ids, snapshots, horizon)
+    possible = horizon * len(unavailable)
+    available = possible - sum(unavailable.values())
+    return {
+        "format": "pacd-function-availability-v1",
+        "metric_id": "MIS-001",
+        "clock_unit": "simulation_ticks",
+        "dependency_model": "required_dependencies_v1",
+        "horizon_ticks": horizon,
+        "per_mission": [
+            {
+                "mission_id": mission,
+                "available_ticks": horizon - down,
+                "possible_ticks": horizon,
+                "availability_fraction": (horizon - down) / horizon if horizon else None,
+            }
+            for mission, down in sorted(unavailable.items())
+        ],
+        "available_function_ticks": available,
+        "possible_function_ticks": possible,
+        "availability_fraction": available / possible if possible else None,
+    }
 
 
 def mission_loss(
     weights: Mapping[str, float], snapshots: Sequence[MissionSnapshot], horizon: int
 ) -> dict[str, object]:
     """Integrate the membership in force on each half-open interval from tick zero."""
-    unavailable = dict.fromkeys(weights, 0)
-    for duration, operational in _mission_intervals(snapshots, horizon):
-        up = set(operational)
-        if not up.issubset(weights):
-            raise ValueError("invalid replayed mission membership")
-        for mission in weights.keys() - up:
-            unavailable[mission] += duration
+    unavailable = _unavailable_ticks(weights, snapshots, horizon)
 
     per_mission = []
     total_loss = Fraction()
@@ -69,17 +109,12 @@ def critical_outage(
     """Measure time below operational state for the scenario's designated missions."""
     missions = set(mission_ids)
     critical = set(critical_ids)
-    if len(missions) != len(mission_ids):
-        raise ValueError("duplicate governed mission")
     if not critical or len(critical) != len(critical_ids) or not critical.issubset(missions):
         raise ValueError("critical missions must be a nonempty, unique set of governed missions")
 
     ticks = dict.fromkeys(critical, 0)
     any_outage = 0
-    for duration, operational in _mission_intervals(snapshots, horizon):
-        up = set(operational)
-        if len(up) != len(operational) or not up.issubset(missions):
-            raise ValueError("invalid replayed mission membership")
+    for duration, up in _mission_intervals(mission_ids, snapshots, horizon):
         down = critical - up
         if down:
             any_outage += duration
