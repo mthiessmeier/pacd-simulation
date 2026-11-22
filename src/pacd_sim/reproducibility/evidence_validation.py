@@ -62,6 +62,7 @@ from pacd_sim.harness.static_review import (
 )
 from pacd_sim.hypotheses.update import BeliefState, update_beliefs
 from pacd_sim.metrics.mission_impact import MissionSnapshot, mission_loss
+from pacd_sim.metrics.mission_recovery import mission_recovery
 from pacd_sim.metrics.summarize import SUMMARY_SCHEMA
 from pacd_sim.reproducibility.canonical import canonical_json_bytes, canonical_sha256
 from pacd_sim.reproducibility.guarded_review import ExpectedReviewQueue, expected_availability
@@ -1153,6 +1154,7 @@ class RetainedEvidenceValidation:
     document_ingestion_failed: bool = False
     parquet_ingestion_failed: bool = False
     mission_impact: dict[str, object] | None = None
+    mission_recovery: dict[str, object] | None = None
 
 
 @dataclass(frozen=True)
@@ -1719,6 +1721,7 @@ def validate_retained_evidence(
     *,
     repo_root: Path | str | None,
     include_mission_impact: bool = False,
+    include_mission_recovery: bool = False,
 ) -> RetainedEvidenceValidation:
     """Validate retained evidence and return the sole bounded Parquet materialization."""
     errors: list[str] = []
@@ -1736,6 +1739,7 @@ def validate_retained_evidence(
     document_ingestion_failed = False
     parquet_ingestion_failed = False
     impact = None
+    recovery = None
     try:
         repository = _resolve_repository(workspace, repo_root)
         document_names = (
@@ -1810,7 +1814,7 @@ def validate_retained_evidence(
                 document_identities=document_identities,
             )
         snapshots: list[MissionSnapshot] = []
-        if include_mission_impact:
+        if include_mission_impact or include_mission_recovery:
             expected_rows = _expected_event_rows(
                 expected_config, cast(int, seed), mission_snapshots=snapshots
             )
@@ -1864,11 +1868,17 @@ def validate_retained_evidence(
                 scenario.guarded_review is not None
                 and scenario.availability_model == "required_dependencies_v1"
             ):
-                impact = mission_loss(
-                    {mission.id: mission.criticality for mission in scenario.missions},
-                    snapshots,
-                    scenario.guarded_review.end_tick,
-                )
+                horizon = scenario.guarded_review.end_tick
+                if include_mission_impact:
+                    impact = mission_loss(
+                        {mission.id: mission.criticality for mission in scenario.missions},
+                        snapshots,
+                        horizon,
+                    )
+                if include_mission_recovery:
+                    recovery = mission_recovery(
+                        [mission.id for mission in scenario.missions], snapshots, horizon
+                    )
     except (
         ConfigurationError,
         OSError,
@@ -1900,4 +1910,5 @@ def validate_retained_evidence(
         document_ingestion_failed=document_ingestion_failed,
         parquet_ingestion_failed=parquet_ingestion_failed,
         mission_impact=impact,
+        mission_recovery=recovery,
     )

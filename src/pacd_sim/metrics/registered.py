@@ -138,6 +138,7 @@ def _final_outcome(
     *,
     include_sensing_freshness: bool,
     include_mission_impact: bool,
+    include_mission_recovery: bool,
     include_review_routing: bool,
     include_approval_burden: bool,
 ) -> Outcome:
@@ -149,6 +150,7 @@ def _final_outcome(
             include_comparison_inputs=isinstance(attempt, PlannedAttempt),
             include_sensing_freshness=include_sensing_freshness,
             include_mission_impact=include_mission_impact,
+            include_mission_recovery=include_mission_recovery,
             include_review_routing=include_review_routing,
             include_approval_burden=include_approval_burden,
         )
@@ -211,6 +213,7 @@ def _observe(
     *,
     include_sensing_freshness: bool,
     include_mission_impact: bool,
+    include_mission_recovery: bool,
     include_review_routing: bool,
     include_approval_burden: bool,
 ) -> Outcome:
@@ -251,6 +254,7 @@ def _observe(
                 repo,
                 include_sensing_freshness=include_sensing_freshness,
                 include_mission_impact=include_mission_impact,
+                include_mission_recovery=include_mission_recovery,
                 include_review_routing=include_review_routing,
                 include_approval_burden=include_approval_burden,
             )
@@ -313,6 +317,7 @@ def registered_metrics(
     planned: bool = False,
     include_sensing_freshness: bool = False,
     include_mission_impact: bool = False,
+    include_mission_recovery: bool = False,
     include_review_routing: bool = False,
     include_approval_burden: bool = False,
 ) -> dict[str, object]:
@@ -334,6 +339,7 @@ def registered_metrics(
                 digest if planned else None,
                 include_sensing_freshness=include_sensing_freshness,
                 include_mission_impact=include_mission_impact,
+                include_mission_recovery=include_mission_recovery,
                 include_review_routing=include_review_routing,
                 include_approval_burden=include_approval_burden,
             )

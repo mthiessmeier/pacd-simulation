@@ -393,6 +393,7 @@ def _verify_run_impl(
     include_evidence_readings: bool = False,
     include_sensing_freshness: bool = False,
     include_mission_impact: bool = False,
+    include_mission_recovery: bool = False,
     include_review_routing: bool = False,
     include_approval_burden: bool = False,
 ) -> tuple[VerificationResult, VerifiedSummary | None]:
@@ -504,6 +505,7 @@ def _verify_run_impl(
         workspace,
         repo_root=repo_root,
         include_mission_impact=include_mission_impact,
+        include_mission_recovery=include_mission_recovery,
     )
     errors.extend(retained_validation.errors)
     if retained_validation.errors:
@@ -970,6 +972,8 @@ def _verify_run_impl(
             guarded_review = guarded_review_metrics(raw_rows, governed.sensing_operator)
             if include_mission_impact and retained_validation.mission_impact is not None:
                 guarded_review["mission_impact"] = retained_validation.mission_impact
+            if include_mission_recovery and retained_validation.mission_recovery is not None:
+                guarded_review["mission_recovery"] = retained_validation.mission_recovery
             if include_review_routing or include_approval_burden:
                 guarded_review.update(
                     guarded_review_projections(
@@ -1020,6 +1024,7 @@ def verify_run_with_summary(
     include_evidence_readings: bool = False,
     include_sensing_freshness: bool = False,
     include_mission_impact: bool = False,
+    include_mission_recovery: bool = False,
     include_review_routing: bool = False,
     include_approval_burden: bool = False,
 ) -> tuple[VerificationResult, VerifiedSummary | None]:
@@ -1036,6 +1041,7 @@ def verify_run_with_summary(
             include_evidence_readings=include_evidence_readings,
             include_sensing_freshness=include_sensing_freshness,
             include_mission_impact=include_mission_impact,
+            include_mission_recovery=include_mission_recovery,
             include_review_routing=include_review_routing,
             include_approval_burden=include_approval_burden,
         )
