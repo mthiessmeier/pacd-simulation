@@ -39,6 +39,10 @@ MISSION_WEIGHT_SCENARIO_FILES: Final = (
 )
 REVIEW_CONTENTION_FILE: Final = "diagnostic_review_contention.yaml"
 REVIEW_BURDEN_FILE: Final = "diagnostic_review_burden.yaml"
+REVIEW_OVERRIDE_FILES: Final = (
+    "diagnostic_review_override_retain.yaml",
+    "diagnostic_review_override_veto.yaml",
+)
 DIAGNOSTIC_SCENARIO_FILES: Final = (
     DEFAULT_SCENARIO_FILE,
     "diagnostic_maintenance_window.yaml",
@@ -50,6 +54,7 @@ DIAGNOSTIC_SCENARIO_FILES: Final = (
     REVIEW_BRIEF_ISOLATION_FILE,
     REVIEW_BRIEF_SENSING_FILE,
     REVIEW_BURDEN_FILE,
+    *REVIEW_OVERRIDE_FILES,
 )
 
 
@@ -76,5 +81,6 @@ def diagnostic_pair_supported(scenario_file: str, defender_file: str) -> bool:
             REVIEW_CONTENTION_FILE,
             REVIEW_BRIEF_ISOLATION_FILE,
             REVIEW_BURDEN_FILE,
+            *REVIEW_OVERRIDE_FILES,
         )
     return True

@@ -63,6 +63,7 @@ def review_queue(
         approve={"approve": True, "deny": False, "no_response": None}[config.response],
         rollback=config.rollback,
         include_brief=config.decision_brief is not None,
+        override_policy=config.override_policy,
         observe=observe,
     )
 

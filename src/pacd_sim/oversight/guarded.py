@@ -4,6 +4,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from pacd_sim.actions.models import DefensiveAction
+from pacd_sim.configuration import ReviewOverridePolicy
 from pacd_sim.environment.availability import continuity_transition, evaluate_availability
 from pacd_sim.environment.model import EnvironmentState
 from pacd_sim.evidence.context import MAX_READINGS, EvidenceReading
@@ -192,6 +193,7 @@ class GuardedReviewQueue:
         approve: bool | None,
         rollback: bool,
         include_brief: bool = False,
+        override_policy: ReviewOverridePolicy | None = None,
         observe: Callable[[ReviewEvent], None] | None = None,
     ) -> None:
         for limit in (capacity, delay_ticks, ttl_ticks):
@@ -199,6 +201,8 @@ class GuardedReviewQueue:
                 raise ValueError("review limits must be nonnegative integers")
         if (approve is not None and type(approve) is not bool) or type(rollback) is not bool:
             raise ValueError("invalid simulated reviewer or recovery setting")
+        if override_policy not in (None, "retain_approval", "veto_approval"):
+            raise ValueError("invalid simulated override policy")
         self._capacity = capacity
         self._delay = delay_ticks
         self._ttl = ttl_ticks
@@ -206,6 +210,7 @@ class GuardedReviewQueue:
         self._observe = observe
         self._rollback = rollback
         self._include_brief = include_brief
+        self._override_policy = override_policy
         self._used_readings: set[int] = set()
         self._now = 0
         self._seen_referrals: set[str] = set()
@@ -392,14 +397,32 @@ class GuardedReviewQueue:
         if not self._approve:
             return ReviewStep(state, (req.event(tick, "denied"),))
 
-        events = [req.event(tick, "approved")]
+        events = []
+        timely = tick == req.action.tick
+        if timely and self._override_policy is not None:
+            veto = self._override_policy == "veto_approval"
+            events.append(
+                req.event(
+                    tick,
+                    "override_assessment",
+                    override_policy=self._override_policy,
+                    original_response="approve",
+                    final_response="deny" if veto else "approve",
+                    direction="approve_to_deny" if veto else "none",
+                    rationale="preserve_mission_continuity" if veto else "retain_planned_response",
+                )
+            )
+            if veto:
+                events.append(req.event(tick, "denied"))
+                return ReviewStep(state, tuple(events))
+
+        events.append(req.event(tick, "approved"))
         governor = broker.governor
         try:
             decision = governor.evaluate(req.action, mission_state=create_snapshot(state))
         except Exception as exc:
             events.append(req.event(tick, "authorization_failed", error_type=type(exc).__name__))
             return ReviewStep(state, tuple(events))
-        timely = tick == req.action.tick
         unchanged = canonical_sha256(req.state.at_tick(tick)) == canonical_sha256(state)
         if (
             self._quarantined
