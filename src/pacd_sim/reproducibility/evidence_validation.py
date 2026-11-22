@@ -12,6 +12,7 @@ import stat
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from fractions import Fraction
 from pathlib import Path
 from typing import Any, BinaryIO, cast
 
@@ -574,19 +575,23 @@ def _expected_profile_selection(
     current = prefix[-1]
     trace = evidence_trace(tuple(prefix))
     step = cast(list[dict[str, object]], trace["decisions"])[-1]
-    age = current.delivered_tick - current.measured_tick
+    clock = cast(int, step["as_of_tick"])
+    age = clock - current.measured_tick
     reference_tick = None
     reference_signal = None
     benefit = None
     utility = None
+    utility_exact = None
     if len(prefix) != 3:
         reason = "outside_opportunity"
-    elif current.subject_id is None:
+    elif current.subject_id in (None, "synthetic-unknown"):
         reason = "no_subject"
     elif age > MAX_AGE_TICKS:
         reason = "stale_evidence"
     elif cost > budget:
         reason = "over_budget"
+    elif step["source_relation"] == "duplicate":
+        reason = "duplicate_evidence"
     elif condition == "sensing_scheduled_v1":
         reason = "proposed"
     else:
@@ -594,20 +599,18 @@ def _expected_profile_selection(
             prior
             for prior in prefix[:-1]
             if prior.subject_id == current.subject_id
-            and current.delivered_tick - MAX_AGE_TICKS
-            <= prior.measured_tick
-            < current.measured_tick
+            and clock - MAX_AGE_TICKS <= prior.measured_tick < current.measured_tick
         ]
         if eligible:
             latest = max(eligible, key=lambda prior: (prior.measured_tick, -prior.signal))
             reference_tick, reference_signal = latest.measured_tick, latest.signal
-            benefit = (
-                min(current.signal, reference_signal)
-                * (MAX_AGE_TICKS + 1 - age)
-                / (MAX_AGE_TICKS + 1)
-            )
-            utility = benefit - cost
-            reason = "proposed" if utility > 0 else "no_positive_gain"
+            window = MAX_AGE_TICKS + 1
+            weight = Fraction(window - age, window)
+            weighted_signal = weight * Fraction(str(min(current.signal, reference_signal)))
+            margin = weighted_signal - Fraction(str(cost))
+            benefit, utility = float(weighted_signal), float(margin)
+            utility_exact = str(margin)
+            reason = "proposed" if margin > 0 else "no_positive_gain"
         else:
             reason = "insufficient_history"
     selected_profile = None
@@ -622,6 +625,7 @@ def _expected_profile_selection(
         "reference_signal": reference_signal,
         "benefit": benefit,
         "utility": utility,
+        "utility_exact": utility_exact,
         "selected_profile": selected_profile,
         "selection_reason": reason,
     }

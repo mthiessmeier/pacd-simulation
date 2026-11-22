@@ -1,6 +1,7 @@
 """Development sensing selections at the third delivered observation."""
 
-from math import nextafter
+from fractions import Fraction
+from math import copysign, nextafter
 from typing import cast
 
 import pytest
@@ -40,6 +41,7 @@ def test_prefix_digest_persistence_discount_and_schedule() -> None:
         "reference_signal": 0.5,
         "benefit": 0.375,
         "utility": 0.125,
+        "utility_exact": "1/8",
         "selected_profile": "alternate",
         "selection_reason": "proposed",
     }
@@ -48,6 +50,7 @@ def test_prefix_digest_persistence_discount_and_schedule() -> None:
         assert outcome == "outside_opportunity" and detail["selected_profile"] is None
         assert detail["prefix_trace_sha256"] == evidence_trace(prefix)["trace_sha256"]
         assert detail["utility"] is None and detail["reference_signal"] is None
+        assert detail["utility_exact"] is None
 
 
 def test_reference_uses_newest_eligible_measurement_and_current_subject() -> None:
@@ -83,6 +86,7 @@ def test_only_contextual_requires_earlier_fresh_attributable_history(
     outcome, detail = select_profile(SCHEDULED, items, 0.0, 0.0)
     assert outcome == "proposed" and detail["selected_profile"] == "alternate"
     assert detail["reference_measured_tick"] is None and detail["utility"] is None
+    assert detail["utility_exact"] is None
 
 
 def test_equal_utility_falls_back_and_positive_margin_refers() -> None:
@@ -93,6 +97,37 @@ def test_equal_utility_falls_back_and_positive_margin_refers() -> None:
         assert detail["benefit"] == 0.25 and detail["utility"] == 0.25 - cost
         assert select_profile(SCHEDULED, items, cost, 1.0)[0] == "proposed"
     assert select_profile(CONTEXTUAL, items, nextafter(0.25, 0.0), 1.0)[0] == "proposed"
+
+
+@pytest.mark.parametrize(
+    ("cost", "outcome", "margin"),
+    [
+        (nextafter(0.075, 0.0), "proposed", "1/50000000000000000"),
+        (0.075, "no_positive_gain", "0"),
+        (nextafter(0.075, 1.0), "no_positive_gain", "-1/100000000000000000"),
+    ],
+)
+def test_decimal_tie_and_adjacent_costs(cost: float, outcome: str, margin: str) -> None:
+    inputs = (reading(1, 1, 2, 0.1), reading(2, 1, 2, 0.9), reading(3, 2, 3, 0.4))
+    actual, detail = select_profile(CONTEXTUAL, inputs, cost, 1.0)
+    assert actual == outcome
+    assert detail["benefit"] == 0.075
+    assert detail["utility_exact"] == margin and detail["utility"] == float(Fraction(margin))
+
+
+@pytest.mark.parametrize(
+    ("signal", "cost", "outcome", "sign"),
+    [(1.5e-323, 1e-323, "proposed", 1), (5e-324, 5e-324, "no_positive_gain", -1)],
+)
+def test_exact_audit_preserves_sign_when_numeric_display_underflows(
+    signal: float, cost: float, outcome: str, sign: int
+) -> None:
+    inputs = (reading(1, 1, 2), reading(2, 1, 2), reading(3, 2, 3, signal))
+    actual, detail = select_profile(CONTEXTUAL, inputs, cost, 1.0)
+    assert actual == outcome
+    assert detail["utility_exact"] == str(Fraction(sign, 8 * 10**323))
+    display = cast(float, detail["utility"])
+    assert display == 0.0 and copysign(1.0, display) == sign
 
 
 @pytest.mark.parametrize("condition", [CONTEXTUAL, SCHEDULED])

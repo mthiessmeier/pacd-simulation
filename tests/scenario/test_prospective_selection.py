@@ -14,8 +14,32 @@ from pacd_sim.harness import run as harness
 from pacd_sim.metrics.registered import AttemptRegister, registered_metrics
 from pacd_sim.polymorphism.selection import select_profile
 from pacd_sim.reproducibility.canonical import canonical_json_bytes, canonical_sha256
+from pacd_sim.reproducibility.evidence_validation import _expected_profile_selection
 from pacd_sim.reproducibility.receipts import verify_execution_receipt
 from pacd_sim.reproducibility.verify import verify_run_with_summary
+
+
+@pytest.mark.parametrize("condition", ["sensing_contextual_v1", "sensing_scheduled_v1"])
+def test_replay_handles_repeated_delivery_and_unknown_subject(condition: str) -> None:
+    first = EvidenceReading(
+        observation_key=1,
+        source_key=1,
+        subject_id="session",
+        measured_tick=1,
+        delivered_tick=2,
+        signal=0.9,
+    )
+    second = first.model_copy(update={"observation_key": 2})
+    late = second.model_copy(update={"measured_tick": 5, "delivered_tick": 6})
+    unknown = late.model_copy(update={"observation_key": 3, "subject_id": "synthetic-unknown"})
+    for prefix, reason, age in (
+        ((first, second, first), "duplicate_evidence", 1),
+        ((first, late, first), "stale_evidence", 5),
+        ((first, second, unknown), "no_subject", 1),
+    ):
+        observed = _expected_profile_selection(condition, list(prefix), 0.25, 1.0)
+        assert observed[0] == reason and observed[1]["age_ticks"] == age
+        assert observed == select_profile(condition, prefix, 0.25, 1.0)
 
 
 def _launch(ws: IsolatedWorkspace, scenario: str, condition: str) -> harness.RunResult:
@@ -119,25 +143,13 @@ def test_third_delivery_uses_only_its_verified_prefix_and_governed_opportunity(
     assert metrics["alternate_profile_ticks"] == (3 if switched else 0)
 
 
-@pytest.mark.scenario
-@pytest.mark.parametrize(
-    ("old", "new", "reason", "terminal"),
-    [
-        ("tick: 2\n    kind:", "tick: 1\n    kind:", "insufficient_history", None),
-        ("switch_cost: 0.25", "switch_cost: 0.675", "no_positive_gain", None),
-        ("budget: 1.0", "budget: 0.0", "over_budget", None),
-        ("response: approve", "response: deny", "proposed", "denied"),
-        ("rollback: false", "rollback: true", "proposed", "rolled_back"),
-    ],
-)
-def test_safe_fallback_and_review_outcomes_keep_the_observed_default(
-    isolated_workspace: IsolatedWorkspace, old: str, new: str, reason: str, terminal: str | None
-) -> None:
-    ws = isolated_workspace
+def _pin_nominal_fixture(ws: IsolatedWorkspace, changes: dict[str, str]) -> None:
     scenario = ws.config_root / "scenarios/diagnostic_sensing_nominal.yaml"
     data = scenario.read_text(encoding="utf-8")
-    assert data.count(old) == 1
-    scenario.write_text(data.replace(old, new), encoding="utf-8")
+    for old, new in changes.items():
+        assert data.count(old) == 1
+        data = data.replace(old, new)
+    scenario.write_text(data, encoding="utf-8")
     subprocess.run(
         [
             "git",
@@ -154,6 +166,24 @@ def test_safe_fallback_and_review_outcomes_keep_the_observed_default(
         cwd=ws.repo_root,
         check=True,
     )
+
+
+@pytest.mark.scenario
+@pytest.mark.parametrize(
+    ("old", "new", "reason", "terminal"),
+    [
+        ("tick: 2\n    kind:", "tick: 1\n    kind:", "insufficient_history", None),
+        ("switch_cost: 0.25", "switch_cost: 0.675", "no_positive_gain", None),
+        ("budget: 1.0", "budget: 0.0", "over_budget", None),
+        ("response: approve", "response: deny", "proposed", "denied"),
+        ("rollback: false", "rollback: true", "proposed", "rolled_back"),
+    ],
+)
+def test_safe_fallback_and_review_outcomes_keep_the_observed_default(
+    isolated_workspace: IsolatedWorkspace, old: str, new: str, reason: str, terminal: str | None
+) -> None:
+    ws = isolated_workspace
+    _pin_nominal_fixture(ws, {old: new})
     run = _launch(ws, "nominal", "contextual")
     verification, material = verify_run_with_summary(
         run.run_dir, ws.root, repo_root=ws.repo_root, include_evidence_readings=True
@@ -175,12 +205,55 @@ def test_safe_fallback_and_review_outcomes_keep_the_observed_default(
     assert metrics["switch_cost_spent"] == (0.25 if terminal == "rolled_back" else 0)
 
 
+@pytest.mark.scenario
+@pytest.mark.parametrize(
+    ("signal", "cost", "reason", "margin"),
+    [
+        ("0.1", "0.07499999999999998", "proposed", "1/50000000000000000"),
+        ("0.1", "0.075", "no_positive_gain", "0"),
+        ("0.1", "0.07500000000000001", "no_positive_gain", "-1/100000000000000000"),
+        ("0.7", "0.5249999999999999", "proposed", "1/10000000000000000"),
+    ],
+)
+def test_exact_decimal_margin_controls_the_verified_switch(
+    isolated_workspace: IsolatedWorkspace, signal: str, cost: str, reason: str, margin: str
+) -> None:
+    ws = isolated_workspace
+    _pin_nominal_fixture(
+        ws,
+        {
+            "matched_signal_mean: 0.86": f"matched_signal_mean: {signal}",
+            "switch_cost: 0.25": f"switch_cost: {cost}",
+        },
+    )
+    run = _launch(ws, "nominal", "contextual")
+    verified, material = verify_run_with_summary(run.run_dir, ws.root, repo_root=ws.repo_root)
+    assert verified.valid and material is not None and material.guarded_review is not None
+    row = next(
+        r
+        for r in _rows(run.run_dir)
+        if r["event_type"] == "baseline_decision" and r["payload"]["opportunity"]
+    )
+    assert row["outcome"] == reason and row["payload"]["selection"]["utility_exact"] == margin
+    operator = material.guarded_review["sensing_operator"]
+    assert isinstance(operator, dict)
+    assert operator["verified_switch_count"] == int(reason == "proposed")
+
+
 @pytest.mark.negative
-@pytest.mark.parametrize("fault", ["prefix", "utility", "choice"])
+@pytest.mark.parametrize("fault", ["prefix", "utility", "choice", "rounded_tie", "exact_margin"])
 def test_semantic_replay_withholds_receipted_incorrect_selection(
     isolated_workspace: IsolatedWorkspace, monkeypatch: pytest.MonkeyPatch, fault: str
 ) -> None:
     ws = isolated_workspace
+    if fault == "rounded_tie":
+        _pin_nominal_fixture(
+            ws,
+            {
+                "matched_signal_mean: 0.86": "matched_signal_mean: 0.1",
+                "switch_cost: 0.25": "switch_cost: 0.075",
+            },
+        )
 
     def corrupt(
         policy: str, prefix: tuple[EvidenceReading, ...], cost: float, budget: float
@@ -191,6 +264,13 @@ def test_semantic_replay_withholds_receipted_incorrect_selection(
                 detail["prefix_trace_sha256"] = evidence_trace(prefix[:2])["trace_sha256"]
             elif fault == "utility":
                 detail["utility"] = 0.89
+            elif fault == "exact_margin":
+                detail["utility_exact"] = "1/3"
+            elif fault == "rounded_tie":
+                reason = "proposed"
+                detail.update(
+                    selection_reason=reason, selected_profile="alternate", utility=0.1 * 0.75 - cost
+                )
             else:
                 reason = "no_positive_gain"
                 detail.update(selection_reason=reason, selected_profile="default", utility=0.0)

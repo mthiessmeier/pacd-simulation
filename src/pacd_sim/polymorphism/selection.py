@@ -1,5 +1,6 @@
 """Prospective selection between the default and alternate synthetic sensing profiles."""
 
+from fractions import Fraction
 from typing import Final, cast
 
 from pydantic import TypeAdapter
@@ -34,6 +35,7 @@ def select_profile(
     reference_signal = None
     benefit = None
     utility = None
+    utility_exact = None
 
     if len(prefix) != 3:
         outcome = "outside_opportunity"
@@ -62,9 +64,14 @@ def select_profile(
                 prior.signal for prior in history if prior.measured_tick == reference_tick
             )
             window = MAX_AGE_TICKS + 1
-            benefit = min(current.signal, reference_signal) * ((window - age) / window)
-            utility = benefit - switch_cost
-            outcome = "proposed" if utility > 0 else "no_positive_gain"
+            # Score the canonical decimal inputs before converting the audit displays to floats.
+            signal = Fraction(str(min(current.signal, reference_signal)))
+            exact_benefit = signal * (window - age) / window
+            exact_utility = exact_benefit - Fraction(str(switch_cost))
+            outcome = "proposed" if exact_utility > 0 else "no_positive_gain"
+            benefit = float(exact_benefit)
+            utility = float(exact_utility)
+            utility_exact = str(exact_utility)
         else:
             outcome = "insufficient_history"
 
@@ -80,6 +87,7 @@ def select_profile(
         "reference_signal": reference_signal,
         "benefit": benefit,
         "utility": utility,
+        "utility_exact": utility_exact,
         "selected_profile": selected_profile,
         "selection_reason": outcome,
     }
