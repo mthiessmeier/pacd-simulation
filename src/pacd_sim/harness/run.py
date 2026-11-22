@@ -57,15 +57,18 @@ from pacd_sim.environment.model import (
     Service,
     Session,
 )
+from pacd_sim.evidence.context import EvidenceReading
 from pacd_sim.evidence.normalize import EvidenceItem, normalize_observation
 from pacd_sim.execution.broker import SimulatedExecutionBroker
 from pacd_sim.execution.verification import verify_execution
 from pacd_sim.governance.governor import GovernanceContext, SafetyGovernor, SafetyPolicy
 from pacd_sim.harness.static_review import (
+    SELECTION_OPPORTUNITY,
     ReviewEpisodeGate,
     review_action,
     review_detector_options,
     review_queue,
+    sensing_opportunity_ordinal,
     sensing_referral_rejection,
     sensor_reading,
     static_review_candidate,
@@ -73,6 +76,7 @@ from pacd_sim.harness.static_review import (
 from pacd_sim.hypotheses.update import BeliefState, update_beliefs
 from pacd_sim.metrics.summarize import summarize_raw_events
 from pacd_sim.oversight.guarded import ReviewEvent, ReviewStep
+from pacd_sim.polymorphism.selection import select_profile
 from pacd_sim.polymorphism.sensing import project_sensing_observation, sensing_decision
 from pacd_sim.reproducibility.canonical import canonical_json_bytes, canonical_sha256
 from pacd_sim.reproducibility.manifest import (
@@ -381,6 +385,7 @@ def _validate_sensing_sources(
         or baseline_file != configs / "defenders" / baseline_file.name
         or baseline.get("name") != f"{baseline_file.stem}_v1"
         or policy_file != configs / "policies" / SENSING_POLICY_FILE
+        or not diagnostic_pair_supported(scenario_file.name, baseline_file.name)
     ):
         raise ConfigurationError(
             "Sensing inputs must match their governed filenames, roles and identities"
@@ -1529,6 +1534,7 @@ def _run_diagnostic_worker(
         episode_gate = ReviewEpisodeGate() if queue is not None and sensing is None else None
         defender = DiagnosticPACDDefender(compromise_threshold=0.5)
         evidence_items: list[EvidenceItem] = []
+        selection_readings: list[EvidenceReading] = []
         belief_state = BeliefState(configuration_version=protocol_version)
         state = environment
         actions_processed = False
@@ -1626,14 +1632,57 @@ def _run_diagnostic_worker(
                     reading = sensor_reading(observation)
                     defender_id = _expect_string(baseline_definition["name"], "defender name")
                     decision_type = "baseline_decision"
-                    outcome = sensing_decision(
-                        defender_id, reading, ordinal, sensing.switch_cost, sensing.budget
-                    )
+                    opportunity = sensing_opportunity_ordinal(defender_id)
+                    detail = {
+                        "operator_class": "sensing",
+                        "variant": "alternate",
+                        "switch_cost": sensing.switch_cost,
+                        "budget": sensing.budget,
+                        "detectability": sensing.detectability,
+                        "signal": reading.signal,
+                        "opportunity": ordinal == opportunity,
+                    }
+                    if opportunity == SELECTION_OPPORTUNITY:
+                        # Each unique event in the v1 script yields exactly one delivery
+                        # from a single sensor. Opaque keys match the verified WP03 view.
+                        selection_readings.append(
+                            EvidenceReading(
+                                observation_key=ordinal,
+                                source_key=1,
+                                subject_id=reading.subject_id,
+                                measured_tick=observation.event_tick,
+                                delivered_tick=reading.tick,
+                                signal=reading.signal,
+                            )
+                        )
+                        outcome, selection_detail = select_profile(
+                            defender_id,
+                            tuple(selection_readings),
+                            sensing.switch_cost,
+                            sensing.budget,
+                        )
+                        detail["selection"] = selection_detail
+                    else:
+                        outcome = sensing_decision(
+                            defender_id, reading, ordinal, sensing.switch_cost, sensing.budget
+                        )
                     rejection = (
-                        sensing_referral_rejection(sensing, defender_id, ordinal, reading)
+                        sensing_referral_rejection(
+                            sensing, defender_id, ordinal, reading, observation.event_tick
+                        )
                         if outcome == "proposed"
                         else None
                     )
+                    if (
+                        opportunity == SELECTION_OPPORTUNITY
+                        and outcome == "proposed"
+                        and rejection is None
+                        and (
+                            selection_detail.get("selected_profile") != "alternate"
+                            or selection_detail.get("selection_reason") != outcome
+                        )
+                    ):
+                        rejection = "selection does not identify the proposed profile"
                     if rejection is not None:
                         outcome = "inadmissible_proposal"
                     proposal = (
@@ -1644,15 +1693,6 @@ def _run_diagnostic_worker(
                     candidate = review_action(
                         reading, proposal, f"action-sensing-review-{ordinal}", protocol_version
                     )
-                    detail = {
-                        "operator_class": "sensing",
-                        "variant": "alternate",
-                        "switch_cost": sensing.switch_cost,
-                        "budget": sensing.budget,
-                        "detectability": sensing.detectability,
-                        "signal": reading.signal,
-                        "opportunity": ordinal == 1,
-                    }
                     if rejection is not None:
                         detail["reason"] = rejection
                 elif planner is None:

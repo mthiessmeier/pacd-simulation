@@ -19,7 +19,7 @@ benefit = q × (4 − age) / 4
 utility = benefit − switch_cost
 ```
 
-The weights on benefit and cost are both one. Only strictly positive utility requests alternate precision. Ties select default. The benefit is a development proxy for prioritizing sustained signals while they are fresh. The cost is the configured switching burden. Unscored decisions have null reference/score fields as applicable. The existing governor, queue, denial, failure and rollback paths determine the actual outcome. Reliability, conflict between sources, measured information gain and broader security/mission utility require additional mechanics.
+The weights on benefit and cost are both one. Only strictly positive utility requests alternate precision. Ties select default. The benefit is a development proxy for prioritizing sustained signals while they are fresh. The cost is the configured switching burden. Unscored decisions have null reference/score fields as applicable. The selection window applies at referral. At dispatch the queue rechecks current authority, action validity and pre-state. The existing denial, failure and rollback paths determine the actual outcome. Separate attribution of stale evidence at execution remains part of CAL-006. Reliability, conflict between sources, measured information gain and broader security/mission utility require additional mechanics.
 
 ## Acceptance
 

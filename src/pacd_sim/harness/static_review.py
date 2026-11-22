@@ -7,12 +7,14 @@ from pacd_sim.actions.models import DefensiveAction
 from pacd_sim.configuration import GuardedReviewConfig, SensingOperatorConfig
 from pacd_sim.defenders.baselines.static import propose_review
 from pacd_sim.defenders.observations import BaselineObservation, ReviewProposal
+from pacd_sim.evidence.context import MAX_AGE_TICKS
 from pacd_sim.oversight.guarded import GuardedReviewQueue, ReviewEvent
 from pacd_sim.telemetry.generator import Observation
 
 # These evaluator settings define the same referral episode in every guarded condition.
 _ELEVATED_SIGNAL: Final = 0.75
 _MAX_REFERRAL_GAP_TICKS: Final = 3
+SELECTION_OPPORTUNITY: Final = 3
 
 
 class ReviewEpisodeGate:
@@ -73,11 +75,23 @@ def sensor_reading(observation: Observation) -> BaselineObservation:
     )
 
 
+def sensing_opportunity_ordinal(condition: str) -> int:
+    """The evaluator fixes one matched opportunity for each comparison."""
+    if condition in ("sensing_contextual_v1", "sensing_scheduled_v1"):
+        return SELECTION_OPPORTUNITY
+    return 1
+
+
 def sensing_referral_rejection(
-    config: SensingOperatorConfig, condition: str, ordinal: int, reading: BaselineObservation
+    config: SensingOperatorConfig,
+    condition: str,
+    ordinal: int,
+    reading: BaselineObservation,
+    measured_tick: int | None = None,
 ) -> str | None:
     """Check the evaluator's resource and ablation limits independently of the selector."""
-    if ordinal != 1:
+    opportunity = sensing_opportunity_ordinal(condition)
+    if ordinal != opportunity:
         return "decision opportunity consumed"
     if condition == "sensing_disabled_v1":
         return "operator disabled by ablation"
@@ -85,6 +99,10 @@ def sensing_referral_rejection(
         return "switch cost exceeds the episode budget"
     if reading.subject_id is None:
         return "no observed subject"
+    if opportunity == SELECTION_OPPORTUNITY and (
+        measured_tick is None or not 0 <= reading.tick - measured_tick <= MAX_AGE_TICKS
+    ):
+        return "evidence is outside the selection freshness window"
     return None
 
 

@@ -8,14 +8,17 @@ DEFAULT_PROTOCOL_VERSION: Final = "BOOTSTRAP_DRAFT_v1"
 DEFAULT_SCENARIO_FILE: Final = "diagnostic_identity_smoke.yaml"
 DEFAULT_BASELINE_FILE: Final = "diagnostic_baseline.yaml"
 SENSING_POLICY_FILE: Final = "diagnostic_sensing.yaml"
+SELECTION_BASELINE_FILES: Final = ("sensing_contextual.yaml", "sensing_scheduled.yaml")
 SENSING_BASELINE_FILES: Final = (
     "sensing_fixed.yaml",
     "sensing_adaptive.yaml",
     "sensing_disabled.yaml",
+    *SELECTION_BASELINE_FILES,
 )
 SENSING_SCENARIO_FILES: Final = (
     "diagnostic_sensing_nominal.yaml",
     "diagnostic_sensing_costly.yaml",
+    "diagnostic_sensing_delayed.yaml",
 )
 DIAGNOSTIC_BASELINE_FILES: Final = (
     DEFAULT_BASELINE_FILE,
@@ -50,4 +53,6 @@ def diagnostic_pair_supported(scenario_file: str, defender_file: str) -> bool:
         return False
     if (scenario_file in SENSING_SCENARIO_FILES) != (defender_file in SENSING_BASELINE_FILES):
         return False
+    if scenario_file == "diagnostic_sensing_delayed.yaml":
+        return defender_file in SELECTION_BASELINE_FILES
     return not (scenario_file in GUARDED_SCENARIO_FILES and defender_file == DEFAULT_BASELINE_FILE)

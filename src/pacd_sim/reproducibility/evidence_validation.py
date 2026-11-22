@@ -37,6 +37,7 @@ from pacd_sim.defenders.pacd import corroboration
 from pacd_sim.defenders.pacd.diagnostic import DiagnosticPACDDefender
 from pacd_sim.engine.scheduler import DeterministicScheduler
 from pacd_sim.environment.availability import continuity_transition, evaluate_availability
+from pacd_sim.evidence.context import MAX_AGE_TICKS, EvidenceReading, evidence_trace
 from pacd_sim.evidence.normalize import EvidenceItem, normalize_observation
 from pacd_sim.execution.verification import expected_isolation
 from pacd_sim.governance.governor import GovernanceContext, SafetyGovernor
@@ -566,6 +567,66 @@ def _validate_document_shapes(
                 errors.append("Manifest seed is inconsistent with the diagnostic run ID")
 
 
+def _expected_profile_selection(
+    condition: str, prefix: list[EvidenceReading], cost: float, budget: float
+) -> tuple[str, dict[str, object]]:
+    """Reconstruct the choice from replayed deliveries, independent of the proposing policy."""
+    current = prefix[-1]
+    trace = evidence_trace(tuple(prefix))
+    step = cast(list[dict[str, object]], trace["decisions"])[-1]
+    age = current.delivered_tick - current.measured_tick
+    reference_tick = None
+    reference_signal = None
+    benefit = None
+    utility = None
+    if len(prefix) != 3:
+        reason = "outside_opportunity"
+    elif current.subject_id is None:
+        reason = "no_subject"
+    elif age > MAX_AGE_TICKS:
+        reason = "stale_evidence"
+    elif cost > budget:
+        reason = "over_budget"
+    elif condition == "sensing_scheduled_v1":
+        reason = "proposed"
+    else:
+        eligible = [
+            prior
+            for prior in prefix[:-1]
+            if prior.subject_id == current.subject_id
+            and current.delivered_tick - MAX_AGE_TICKS
+            <= prior.measured_tick
+            < current.measured_tick
+        ]
+        if eligible:
+            latest = max(eligible, key=lambda prior: (prior.measured_tick, -prior.signal))
+            reference_tick, reference_signal = latest.measured_tick, latest.signal
+            benefit = (
+                min(current.signal, reference_signal)
+                * (MAX_AGE_TICKS + 1 - age)
+                / (MAX_AGE_TICKS + 1)
+            )
+            utility = benefit - cost
+            reason = "proposed" if utility > 0 else "no_positive_gain"
+        else:
+            reason = "insufficient_history"
+    selected_profile = None
+    if len(prefix) == 3:
+        selected_profile = "alternate" if reason == "proposed" else "default"
+    return reason, {
+        "selection_version": "sensing_selection_v1",
+        "prefix_trace_sha256": trace["trace_sha256"],
+        "age_ticks": age,
+        "eligible_distinct_source_count": step["eligible_distinct_source_count"],
+        "reference_measured_tick": reference_tick,
+        "reference_signal": reference_signal,
+        "benefit": benefit,
+        "utility": utility,
+        "selected_profile": selected_profile,
+        "selection_reason": reason,
+    }
+
+
 def _expected_event_rows(
     canonical_config: Mapping[str, object], seed: int
 ) -> list[dict[str, object]]:
@@ -647,6 +708,7 @@ def _expected_event_rows(
         },
     )
     evidence_items: list[EvidenceItem] = []
+    selection_prefix: list[EvidenceReading] = []
     belief_state = BeliefState(configuration_version=protocol_version)
     state = environment
     actions_processed = False
@@ -750,7 +812,25 @@ def _expected_event_rows(
                     subject_id=None if subject == "synthetic-unknown" else subject,
                 )
                 candidate = None
-                if ordinal != 1:
+                selection = None
+                opportunity = ordinal == 1
+                if defender_id in ("sensing_contextual_v1", "sensing_scheduled_v1"):
+                    opportunity = ordinal == 3
+                    # This single-sensor, full-coverage script has unique event IDs.
+                    selection_prefix.append(
+                        EvidenceReading(
+                            observation_key=ordinal,
+                            source_key=1,
+                            subject_id=projected.subject_id,
+                            measured_tick=observation.event_tick,
+                            delivered_tick=projected.tick,
+                            signal=projected.signal,
+                        )
+                    )
+                    outcome, selection = _expected_profile_selection(
+                        defender_id, selection_prefix, sensing.switch_cost, sensing.budget
+                    )
+                elif not opportunity:
                     outcome = "outside_opportunity"
                 elif defender_id == "sensing_disabled_v1":
                     outcome = "disabled"
@@ -764,6 +844,7 @@ def _expected_event_rows(
                     outcome = "no_positive_gain"
                 else:
                     outcome = "proposed"
+                if outcome == "proposed" and projected.subject_id is not None:
                     candidate = DefensiveAction(
                         id=f"action-sensing-review-{ordinal}",
                         tick=observation.tick,
@@ -781,8 +862,10 @@ def _expected_event_rows(
                     "budget": sensing.budget,
                     "detectability": sensing.detectability,
                     "signal": projected.signal,
-                    "opportunity": ordinal == 1,
+                    "opportunity": opportunity,
                 }
+                if selection is not None:
+                    decision_payload["selection"] = selection
             elif planner is None:
                 defender_id = STATIC_REVIEW_VERSION
                 projected, candidate = static_review_candidate(

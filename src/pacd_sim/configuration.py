@@ -228,6 +228,8 @@ class BaselineConfig(DiagnosticRecord):
             "sensing_fixed_v1",
             "sensing_adaptive_v1",
             "sensing_disabled_v1",
+            "sensing_contextual_v1",
+            "sensing_scheduled_v1",
         }:
             raise ValueError(f"{value} requires the human-review action")
         return value
@@ -246,7 +248,13 @@ class CorroboratedReviewConfig(DiagnosticRecord):
 
 
 class SensingReviewConfig(DiagnosticRecord):
-    name: Literal["sensing_fixed_v1", "sensing_adaptive_v1", "sensing_disabled_v1"]
+    name: Literal[
+        "sensing_fixed_v1",
+        "sensing_adaptive_v1",
+        "sensing_disabled_v1",
+        "sensing_contextual_v1",
+        "sensing_scheduled_v1",
+    ]
     observations: Literal["synthetic_only"]
     actions: Literal["require_human_review"]
 
