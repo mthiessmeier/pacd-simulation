@@ -137,6 +137,7 @@ def _final_outcome(
     repo: Path,
     *,
     include_sensing_freshness: bool,
+    include_mission_impact: bool,
 ) -> Outcome:
     if receipt:
         verified, summary = verify_run_with_summary(
@@ -145,6 +146,7 @@ def _final_outcome(
             repo_root=repo,
             include_comparison_inputs=isinstance(attempt, PlannedAttempt),
             include_sensing_freshness=include_sensing_freshness,
+            include_mission_impact=include_mission_impact,
         )
         if verified.valid and summary is not None and summary.episode.seed == attempt.seed:
             return Outcome(
@@ -204,6 +206,7 @@ def _observe(
     plan_digest: str | None,
     *,
     include_sensing_freshness: bool,
+    include_mission_impact: bool,
 ) -> Outcome:
     key = attempt.invocation_id
     marker_path = assert_exact_control_path(
@@ -241,6 +244,7 @@ def _observe(
                 workspace,
                 repo,
                 include_sensing_freshness=include_sensing_freshness,
+                include_mission_impact=include_mission_impact,
             )
         elif receipt or final:
             outcome = Outcome("INVALID", "conflicting_run_locations", run.run_id)
@@ -300,6 +304,7 @@ def registered_metrics(
     *,
     planned: bool = False,
     include_sensing_freshness: bool = False,
+    include_mission_impact: bool = False,
 ) -> dict[str, object]:
     """Account for each declared attempt once, releasing counts only for verified completions."""
     register: ComparisonPlan | AttemptRegister
@@ -318,6 +323,7 @@ def registered_metrics(
                 repo,
                 digest if planned else None,
                 include_sensing_freshness=include_sensing_freshness,
+                include_mission_impact=include_mission_impact,
             )
         except (OSError, ValueError, RecursionError):
             outcome = Outcome("INVALID", "invalid_invocation_evidence")
