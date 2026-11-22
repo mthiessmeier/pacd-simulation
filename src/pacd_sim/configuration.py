@@ -3,7 +3,14 @@
 from sys import float_info
 from typing import Annotated, Literal, Self
 
-from pydantic import AfterValidator, BeforeValidator, Field, field_validator, model_validator
+from pydantic import (
+    AfterValidator,
+    BeforeValidator,
+    Field,
+    ValidationInfo,
+    field_validator,
+    model_validator,
+)
 from pydantic.json_schema import SkipJsonSchema
 
 from pacd_sim.actions.models import RequestedAuthority
@@ -123,6 +130,9 @@ class ActionConfig(StrictFrozenModel):
     requested_authority: RequestedAuthority
 
 
+type ReviewOverridePolicy = Literal["retain_approval", "veto_approval"]
+
+
 class GuardedReviewConfig(StrictFrozenModel):
     """Evaluator-owned timing, review response and matched sensor settings."""
 
@@ -136,12 +146,15 @@ class GuardedReviewConfig(StrictFrozenModel):
     decision_brief: Literal["operator-preview-v1"] | SkipJsonSchema[None] = Field(
         default_factory=lambda: None, validate_default=False, exclude_if=lambda value: value is None
     )
+    override_policy: ReviewOverridePolicy | SkipJsonSchema[None] = Field(
+        default_factory=lambda: None, validate_default=False, exclude_if=lambda value: value is None
+    )
 
-    @field_validator("decision_brief", mode="before")
+    @field_validator("decision_brief", "override_policy", mode="before")
     @classmethod
-    def _reject_null_brief(cls, value: object) -> object:
+    def _reject_explicit_null(cls, value: object, info: ValidationInfo) -> object:
         if value is None:
-            raise ValueError("explicit null is invalid for decision_brief")
+            raise ValueError(f"explicit null is invalid for {info.field_name}")
         return value
 
 

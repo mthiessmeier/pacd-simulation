@@ -4,8 +4,9 @@ import json
 from collections import Counter
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from typing import cast
+from typing import TypedDict, cast
 
+from pacd_sim.configuration import ReviewOverridePolicy
 from pacd_sim.metrics.dispositions import fraction
 from pacd_sim.reproducibility.canonical import canonical_sha256
 from pacd_sim.schema import PolicyDisposition
@@ -13,6 +14,18 @@ from pacd_sim.schema import PolicyDisposition
 _TERMINAL = ("approved", "denied", "expired")
 _ADMISSION_FAILURE = ("capacity", "refused")
 _OUTCOMES = (*_TERMINAL, *_ADMISSION_FAILURE, "pending_at_horizon", "unrouted")
+_AFTER_ASSESSMENT = (
+    "approved",
+    "denied",
+    "unauthorized",
+    "authorization_failed",
+    "executed",
+    "execution_failed",
+    "verified",
+    "verification_failed",
+    "rolled_back",
+    "rollback_failed",
+)
 _PACKAGE_FIELDS = {
     "contract",
     "referral_digest",
@@ -37,6 +50,18 @@ _CONTRACT_FIELDS = {
 }
 
 
+class _OverrideOpportunity(TypedDict):
+    referral_id: str
+    subject_id: str
+    request_digest: str
+    assessment_tick: int
+    original_response: str
+    final_response: str
+    direction: str
+    rationale: str
+    downstream_events: list[str]
+
+
 @dataclass
 class _Escalation:
     referral_id: str
@@ -48,6 +73,30 @@ class _Escalation:
     outcome: str = "unrouted"
     request_digest: str | None = None
     terminal_tick: int | None = None
+    opportunity: _OverrideOpportunity | None = None
+
+    def observe(self, outcome: str, tick: int, payload: dict[str, str]) -> None:
+        if outcome == "override_assessment":
+            if self.terminal_tick is None and self.opportunity is None:
+                self.opportunity = _OverrideOpportunity(
+                    referral_id=self.referral_id,
+                    subject_id=self.subject_id,
+                    request_digest=payload["request_digest"],
+                    assessment_tick=tick,
+                    original_response=payload["original_response"],
+                    final_response=payload["final_response"],
+                    direction=payload["direction"],
+                    rationale=payload["rationale"],
+                    downstream_events=[],
+                )
+            return
+        if outcome in _TERMINAL:
+            if self.terminal_tick is not None:
+                return
+            self.outcome = outcome
+            self.terminal_tick = tick
+        if self.opportunity is not None and outcome in _AFTER_ASSESSMENT:
+            self.opportunity["downstream_events"].append(outcome)
 
 
 def _bound_package(binding: object, digest: object, subject: str, escalation: _Escalation) -> bool:
@@ -76,7 +125,7 @@ def _match_reviews(
     admissions: list[_Escalation] = []
     horizon: int | None = None
     awaiting: dict[tuple[str, str], _Escalation] = {}
-    pending: dict[tuple[str, str, str], _Escalation] = {}
+    by_request: dict[tuple[str, str, str], _Escalation] = {}
     for row in raw_rows:
         kind = row["event_type"]
         if kind == "manifest":
@@ -102,15 +151,13 @@ def _match_reviews(
             continue
 
         outcome = cast(str, row["outcome"])
-        if outcome not in ("pending", *_TERMINAL, *_ADMISSION_FAILURE):
-            continue
-        payload = json.loads(cast(str, row["payload_json"]))
-        if outcome in _TERMINAL:
-            entry = pending.pop((referral, subject, payload["request_digest"]), None)
+        if outcome in ("override_assessment", "expired", *_AFTER_ASSESSMENT):
+            payload = json.loads(cast(str, row["payload_json"]))
+            entry = by_request.get((referral, subject, payload["request_digest"]))
             if entry is not None:
-                entry.outcome = outcome
-                entry.terminal_tick = int(cast(float, row["tick"]))
-        elif (entry := awaiting.get(key)) is not None:
+                entry.observe(outcome, int(cast(float, row["tick"])), payload)
+        elif outcome in ("pending", *_ADMISSION_FAILURE) and (entry := awaiting.get(key)):
+            payload = json.loads(cast(str, row["payload_json"]))
             if (
                 outcome in _ADMISSION_FAILURE
                 and payload["referral_digest"] == entry.referral_digest
@@ -123,7 +170,7 @@ def _match_reviews(
                 entry.outcome = "pending_at_horizon"
                 entry.request_digest = payload["request_digest"]
                 admissions.append(entry)
-                pending[referral, subject, payload["request_digest"]] = entry
+                by_request[referral, subject, payload["request_digest"]] = entry
                 del awaiting[key]
 
     return escalations, admissions, horizon
@@ -196,6 +243,7 @@ def guarded_review_projections(
     *,
     include_review_routing: bool,
     include_approval_burden: bool,
+    override_policy: ReviewOverridePolicy | None = None,
 ) -> dict[str, dict[str, object]]:
     """Compute the requested projections using the same matched review lifecycles."""
     escalations, admissions, horizon = _match_reviews(raw_rows)
@@ -204,7 +252,23 @@ def guarded_review_projections(
     if include_review_routing:
         projections["review_routing"] = _routing(counts)
     if include_approval_burden:
-        projections["approval_burden"] = _approval_burden(counts, admissions, horizon)
+        burden = _approval_burden(counts, admissions, horizon)
+        projections["approval_burden"] = burden
+        if override_policy is not None:
+            opportunities = [r.opportunity for r in admissions if r.opportunity is not None]
+            vetoes = sum(o["direction"] == "approve_to_deny" for o in opportunities)
+            events = Counter(event for o in opportunities for event in o["downstream_events"])
+            burden.update(override_count=vetoes, override_status="measured")
+            projections["review_overrides"] = {
+                "format": "pacd-review-overrides-v1",
+                "metric_id": "GOV-003",
+                "override_policy": override_policy,
+                "override_rate": fraction(
+                    vetoes, len(opportunities), "fraction_of_timely_planned_approvals"
+                ),
+                "downstream_event_counts": {event: events[event] for event in _AFTER_ASSESSMENT},
+                "opportunities": opportunities,
+            }
     return projections
 
 

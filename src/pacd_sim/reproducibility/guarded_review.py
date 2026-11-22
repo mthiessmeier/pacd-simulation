@@ -304,12 +304,29 @@ class ExpectedReviewQueue:
             elif self.config.response == "deny":
                 self._emit(req.referral, req.wake, "denied", request_digest=req.digest)
             else:
-                state = self._approved(req, state)
+                state = self._planned_approval(req, state)
         return state.at_tick(horizon)
 
-    def _approved(self, req: _ExpectedRequest, before: EnvironmentState) -> EnvironmentState:
+    def _planned_approval(
+        self, req: _ExpectedRequest, before: EnvironmentState
+    ) -> EnvironmentState:
         def record(outcome: str, **payload: object) -> None:
             self._emit(req.referral, before.tick, outcome, request_digest=req.digest, **payload)
+
+        override_policy = self.config.override_policy
+        if override_policy is not None and before.tick == req.action.tick:
+            veto = override_policy == "veto_approval"
+            record(
+                "override_assessment",
+                override_policy=override_policy,
+                original_response="approve",
+                final_response="deny" if veto else "approve",
+                direction="approve_to_deny" if veto else "none",
+                rationale="preserve_mission_continuity" if veto else "retain_planned_response",
+            )
+            if veto:
+                record("denied")
+                return before
 
         record("approved")
         action = req.action
