@@ -38,6 +38,7 @@ MISSION_WEIGHT_SCENARIO_FILES: Final = (
     "diagnostic_mission_core_low.yaml",
 )
 REVIEW_CONTENTION_FILE: Final = "diagnostic_review_contention.yaml"
+REVIEW_BURDEN_FILE: Final = "diagnostic_review_burden.yaml"
 DIAGNOSTIC_SCENARIO_FILES: Final = (
     DEFAULT_SCENARIO_FILE,
     "diagnostic_maintenance_window.yaml",
@@ -48,6 +49,7 @@ DIAGNOSTIC_SCENARIO_FILES: Final = (
     REVIEW_CONTENTION_FILE,
     REVIEW_BRIEF_ISOLATION_FILE,
     REVIEW_BRIEF_SENSING_FILE,
+    REVIEW_BURDEN_FILE,
 )
 
 
@@ -73,5 +75,6 @@ def diagnostic_pair_supported(scenario_file: str, defender_file: str) -> bool:
             *MISSION_WEIGHT_SCENARIO_FILES,
             REVIEW_CONTENTION_FILE,
             REVIEW_BRIEF_ISOLATION_FILE,
+            REVIEW_BURDEN_FILE,
         )
     return True
