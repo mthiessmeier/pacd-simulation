@@ -392,6 +392,7 @@ def _verify_run_impl(
     include_comparison_inputs: bool = False,
     include_evidence_readings: bool = False,
     include_sensing_freshness: bool = False,
+    include_function_availability: bool = False,
     include_mission_impact: bool = False,
     include_mission_recovery: bool = False,
     include_critical_outage: bool = False,
@@ -506,6 +507,7 @@ def _verify_run_impl(
         workspace,
         repo_root=repo_root,
         include_mission_impact=include_mission_impact,
+        include_function_availability=include_function_availability,
         include_mission_recovery=include_mission_recovery,
         include_critical_outage=include_critical_outage,
     )
@@ -972,6 +974,11 @@ def _verify_run_impl(
         if isinstance(scenario, Mapping) and "guarded_review" in scenario:
             governed = ScenarioConfig.model_validate(scenario)
             guarded_review = guarded_review_metrics(raw_rows, governed.sensing_operator)
+            if (
+                include_function_availability
+                and retained_validation.function_availability is not None
+            ):
+                guarded_review["function_availability"] = retained_validation.function_availability
             if include_mission_impact and retained_validation.mission_impact is not None:
                 guarded_review["mission_impact"] = retained_validation.mission_impact
             if include_mission_recovery and retained_validation.mission_recovery is not None:
@@ -1027,6 +1034,7 @@ def verify_run_with_summary(
     include_comparison_inputs: bool = False,
     include_evidence_readings: bool = False,
     include_sensing_freshness: bool = False,
+    include_function_availability: bool = False,
     include_mission_impact: bool = False,
     include_mission_recovery: bool = False,
     include_critical_outage: bool = False,
@@ -1045,6 +1053,7 @@ def verify_run_with_summary(
             include_comparison_inputs=include_comparison_inputs,
             include_evidence_readings=include_evidence_readings,
             include_sensing_freshness=include_sensing_freshness,
+            include_function_availability=include_function_availability,
             include_mission_impact=include_mission_impact,
             include_mission_recovery=include_mission_recovery,
             include_critical_outage=include_critical_outage,

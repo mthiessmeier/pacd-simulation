@@ -226,8 +226,9 @@ def test_pinned_readers_reject_count_preserving_mission_substitution(
         run_dir=invalid,
         manifest=json.loads((invalid / "manifest.json").read_bytes()),
     ).identity_assured
-    rejected = command("metrics", str(invalid), "--critical-outage", code=1)
-    assert rejected["status"] == "INVALID" and "metrics" not in rejected
+    for flag in ("--critical-outage", "--function-availability"):
+        rejected = command("metrics", str(invalid), flag, code=1)
+        assert rejected["status"] == "INVALID" and "metrics" not in rejected
     public = command("metrics", valid, "--critical-outage")
     assert public["metrics"]["guarded_review"]["critical_outage"]["outage_function_ticks"] == 2
     for args in (
