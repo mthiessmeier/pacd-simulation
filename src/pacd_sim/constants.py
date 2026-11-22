@@ -43,6 +43,7 @@ REVIEW_OVERRIDE_FILES: Final = (
     "diagnostic_review_override_retain.yaml",
     "diagnostic_review_override_veto.yaml",
 )
+MISSION_RECOVERY_ROLLBACK_FILE: Final = "diagnostic_mission_recovery_rollback.yaml"
 DIAGNOSTIC_SCENARIO_FILES: Final = (
     DEFAULT_SCENARIO_FILE,
     "diagnostic_maintenance_window.yaml",
@@ -55,6 +56,7 @@ DIAGNOSTIC_SCENARIO_FILES: Final = (
     REVIEW_BRIEF_SENSING_FILE,
     REVIEW_BURDEN_FILE,
     *REVIEW_OVERRIDE_FILES,
+    MISSION_RECOVERY_ROLLBACK_FILE,
 )
 
 
@@ -82,5 +84,6 @@ def diagnostic_pair_supported(scenario_file: str, defender_file: str) -> bool:
             REVIEW_BRIEF_ISOLATION_FILE,
             REVIEW_BURDEN_FILE,
             *REVIEW_OVERRIDE_FILES,
+            MISSION_RECOVERY_ROLLBACK_FILE,
         )
     return True
