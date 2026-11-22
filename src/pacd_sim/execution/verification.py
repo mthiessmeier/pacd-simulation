@@ -72,7 +72,7 @@ def _binding_error(
         return "execution record configuration does not match the candidate action"
     if canonical_sha256(decision) != record.policy_decision_digest:
         return "retained policy decision digest is invalid"
-    if decision != expected_decision:
+    if record.policy_decision_digest != canonical_sha256(expected_decision):
         return "retained policy decision is not a fresh trusted-governor authorization"
     if decision.id != record.policy_decision_id:
         return "execution record policy decision ID is invalid"
@@ -117,6 +117,22 @@ def _hashes_valid(result: ExecutionResult) -> bool:
     )
 
 
+def expected_isolation(before: EnvironmentState, target_id: str, tick: int) -> EnvironmentState:
+    """Project the isolation contract without calling the broker's transition primitives."""
+    target = before.get_session(target_id)
+    if target is None or not target.active or target.isolated:
+        raise ValueError("expected isolation requires an active, unisolated session")
+    if type(tick) is not int or tick < before.tick:
+        raise ValueError("expected isolation requires a nondecreasing simulation tick")
+    sessions = tuple(
+        session.model_copy(update={"active": False, "isolated": True})
+        if session.id == target_id
+        else session
+        for session in before.sessions
+    )
+    return before.model_copy(update={"tick": tick, "sessions": sessions})
+
+
 def verify_execution(
     action: DefensiveAction,
     result: ExecutionResult,
@@ -136,11 +152,8 @@ def verify_execution(
         effect_observed = False
         reason = "execution before/after state hashes did not validate"
     elif not record.executed:
-        unchanged = (
-            record.state_before == record.state_after
-            and result.state == record.state_after
-            and record.state_before_digest == record.state_after_digest
-        )
+        # Both retained states and the returned state already matched their canonical digests.
+        unchanged = record.state_before_digest == record.state_after_digest
         if unchanged:
             disposition = VerificationDisposition.NOT_APPLICABLE
             effect_observed = False
@@ -150,27 +163,12 @@ def verify_execution(
             effect_observed = False
             reason = "nonexecuted record contains an unauthorized state transition"
     elif action.action_type == "isolate_session":
-        before_session = record.state_before.get_session(action.target_id)
-        after_session = record.state_after.get_session(action.target_id)
-        effect_observed = (
-            before_session is not None
-            and after_session is not None
-            and before_session.active
-            and not before_session.isolated
-            and not after_session.active
-            and after_session.isolated
-        )
-        if effect_observed:
-            try:
-                expected_after = record.state_before.at_tick(record.tick).isolate_session(
-                    action.target_id
-                )
-            except (KeyError, ValueError):
-                effect_observed = False
-            else:
-                effect_observed = (
-                    record.state_after == expected_after and result.state == expected_after
-                )
+        try:
+            expected_after = expected_isolation(record.state_before, action.target_id, record.tick)
+        except ValueError:
+            effect_observed = False
+        else:
+            effect_observed = record.state_after_digest == canonical_sha256(expected_after)
         disposition = (
             VerificationDisposition.VERIFIED
             if hashes_valid and effect_observed

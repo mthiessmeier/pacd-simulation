@@ -144,7 +144,7 @@ def _final_outcome(
                 "COMPLETED",
                 "verified_completion",
                 run.run_id,
-                episode_dispositions(summary.episode),
+                episode_dispositions(summary.episode, summary.guarded_review),
                 observed=summary.comparison_inputs,
             )
         return Outcome("INVALID", "completion_verification_failed", run.run_id)

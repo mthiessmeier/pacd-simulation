@@ -291,7 +291,7 @@ def _verified_report_command(arguments: argparse.Namespace) -> int:
 
     payload["status"] = "VERIFIED"
     if arguments.command == "metrics":
-        metrics = episode_dispositions(material.episode)
+        metrics = episode_dispositions(material.episode, material.guarded_review)
         payload["run_id"] = verification.run_dir.name
         payload["metrics"] = metrics
         payload["metrics_sha256"] = canonical_sha256(metrics)

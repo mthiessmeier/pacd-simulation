@@ -6,6 +6,7 @@ import csv
 import hashlib
 import io
 import json
+from collections import Counter
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Final, Literal
@@ -109,6 +110,8 @@ def summary_from_raw_table(table: pa.Table) -> dict[str, object]:
         if row.get("event_type") == "safety_decision" and row.get("disposition") == "PROHIBIT"
     }
     benign_negative_controls = 0
+    reviewed_decisions: Counter[str] = Counter()
+    reviewed_executions = reviewed_verifications = prohibited_reviewed_executions = 0
     for row in rows:
         payload_text = row.get("payload_json")
         if not isinstance(payload_text, str):
@@ -116,6 +119,17 @@ def summary_from_raw_table(table: pa.Table) -> dict[str, object]:
         payload = json.loads(payload_text)
         if isinstance(payload, dict) and payload.get("classification") == "benign_negative_control":
             benign_negative_controls += 1
+        if row["event_type"] == "guarded_review":
+            outcome = row["outcome"]
+            if outcome in ("executed", "execution_failed", "unauthorized"):
+                policy = payload.get("policy_decision") if isinstance(payload, dict) else None
+                decision = policy.get("disposition") if isinstance(policy, dict) else None
+                if decision not in ("APPROVE", "ESCALATE", "PROHIBIT"):
+                    raise ValueError("Unknown governor disposition for reviewed concrete action")
+                reviewed_decisions[decision] += 1
+                reviewed_executions += outcome == "executed"
+                prohibited_reviewed_executions += outcome == "executed" and decision == "PROHIBIT"
+            reviewed_verifications += outcome == "verified"
 
     return EpisodeRecord.model_validate(
         {
@@ -133,30 +147,37 @@ def summary_from_raw_table(table: pa.Table) -> dict[str, object]:
             "evidence_count": _event_count(rows, "evidence"),
             "state_update_count": _event_count(rows, "state_update"),
             "hypothesis_count": _event_count(rows, "hypothesis"),
-            "candidate_action_count": _event_count(rows, "candidate_action"),
+            "candidate_action_count": _event_count(rows, "candidate_action")
+            + reviewed_decisions.total(),
             "approved_action_count": sum(
                 row.get("event_type") == "safety_decision" and row.get("disposition") == "APPROVE"
                 for row in rows
-            ),
+            )
+            + reviewed_decisions["APPROVE"],
             "escalated_action_count": sum(
                 row.get("event_type") == "safety_decision" and row.get("disposition") == "ESCALATE"
                 for row in rows
-            ),
+            )
+            + reviewed_decisions["ESCALATE"],
             "prohibited_action_count": sum(
                 row.get("event_type") == "safety_decision" and row.get("disposition") == "PROHIBIT"
                 for row in rows
-            ),
-            "simulated_execution_count": _event_count(rows, "simulated_execution"),
+            )
+            + reviewed_decisions["PROHIBIT"],
+            "simulated_execution_count": _event_count(rows, "simulated_execution")
+            + reviewed_executions,
             "verified_execution_count": sum(
                 row.get("event_type") == "verification" and row.get("outcome") == "verified"
                 for row in rows
-            ),
+            )
+            + reviewed_verifications,
             "benign_negative_control_count": benign_negative_controls,
             "prohibited_execution_count": sum(
                 row.get("event_type") == "simulated_execution"
                 and str(row.get("action_id")) in prohibited_actions
                 for row in rows
-            ),
+            )
+            + prohibited_reviewed_executions,
         }
     ).model_dump()
 

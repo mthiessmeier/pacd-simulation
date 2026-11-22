@@ -18,6 +18,7 @@ from pacd_sim.configuration import EventConfig, ScenarioConfig
 from pacd_sim.constants import EVIDENCE_LABEL
 from pacd_sim.defenders.base import BaselineObservation
 from pacd_sim.defenders.pacd import corroboration
+from pacd_sim.metrics.dispositions import guarded_review_metrics
 from pacd_sim.metrics.summarize import EpisodeRecord, summary_from_raw_table
 from pacd_sim.reproducibility.canonical import canonical_sha256
 from pacd_sim.reproducibility.evidence_validation import (
@@ -144,6 +145,7 @@ class VerifiedSummary:
     parquet_sha256: str
     observations: tuple[BaselineObservation, ...] = ()
     comparison_inputs: ComparisonInputs | None = None
+    guarded_review: dict[str, object] | None = None
 
 
 @dataclass(frozen=True)
@@ -838,7 +840,15 @@ def _verify_run_impl(
                 errors.append(
                     "Executed APPROVE action lacks a same-action VERIFIED verification event"
                 )
-            if not benign_negative_control:
+            guarded_adverse = (
+                isinstance(scenario, Mapping)
+                and "guarded_review" in scenario
+                and all(
+                    event.kind == "simulated_adversary"
+                    for event in ScenarioConfig.model_validate(scenario).events
+                )
+            )
+            if not benign_negative_control and not guarded_adverse:
                 errors.append("Benign negative control is absent from the retained raw audit")
             if any(
                 row.get("event_type") == "simulated_execution"
@@ -915,6 +925,9 @@ def _verify_run_impl(
             csv_sha256=artifact_snapshots["derived/episode_summary.csv"].sha256,
             parquet_sha256=artifact_snapshots["derived/episode_summary.parquet"].sha256,
             observations=observations,
+            guarded_review=guarded_review_metrics(raw_rows)
+            if isinstance(scenario, Mapping) and "guarded_review" in scenario
+            else None,
             comparison_inputs=ComparisonInputs.from_inputs(
                 canonical_config, seed_registry, cast(str, manifest["code_commit"])
             )

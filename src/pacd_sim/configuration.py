@@ -123,6 +123,18 @@ class ActionConfig(StrictFrozenModel):
     requested_authority: RequestedAuthority
 
 
+class GuardedReviewConfig(StrictFrozenModel):
+    """Evaluator-owned timing, review response and matched sensor settings."""
+
+    capacity: Annotated[int, Field(ge=0, le=100)]
+    delay_ticks: Annotated[int, Field(ge=0, le=10_000)]
+    validity_ticks: Annotated[int, Field(ge=0, le=10_000)]
+    end_tick: Annotated[int, Field(ge=0, le=20_000)]
+    response: Literal["approve", "deny", "no_response"]
+    rollback: bool
+    matched_signal_mean: Probability
+
+
 class ScenarioConfig(DiagnosticRecord):
     protocol_version: NonemptyText
     name: NonemptyText
@@ -141,7 +153,12 @@ class ScenarioConfig(DiagnosticRecord):
         default_factory=lambda: None, validate_default=False, exclude_if=lambda value: value is None
     )
     events: BoundedArray[EventConfig]
-    actions: BoundedArray[ActionConfig]
+    actions: Annotated[
+        tuple[ActionConfig, ...], Field(max_length=100), BeforeValidator(_freeze_array)
+    ]
+    guarded_review: GuardedReviewConfig | SkipJsonSchema[None] = Field(
+        default_factory=lambda: None, validate_default=False, exclude_if=lambda value: value is None
+    )
 
     @model_validator(mode="after")
     def _unique_event_ids(self) -> Self:
@@ -149,7 +166,24 @@ class ScenarioConfig(DiagnosticRecord):
             raise ValueError("diagnostic event IDs must be unique")
         return self
 
-    @field_validator("dependencies", "availability_model", mode="before")
+    @model_validator(mode="after")
+    def _validate_review_scenario(self) -> Self:
+        if self.guarded_review is None:
+            if not self.actions:
+                raise ValueError("legacy diagnostics require configured actions")
+            return self
+        if self.actions:
+            raise ValueError("guarded review requires an empty list of scripted actions")
+        if self.availability_model is None:
+            raise ValueError("guarded review requires a mission availability model")
+        if any(
+            event.tick + self.telemetry.delay_ticks > self.guarded_review.end_tick
+            for event in self.events
+        ):
+            raise ValueError("all guarded observations must arrive by end_tick")
+        return self
+
+    @field_validator("dependencies", "availability_model", "guarded_review", mode="before")
     @classmethod
     def _reject_explicit_null(cls, value: object) -> object:
         if value is None:
