@@ -1,0 +1,151 @@
+evidence_label: NON_REPORTABLE_DIAGNOSTIC
+schema_version: "1.0"
+protocol_version: BOOTSTRAP_DRAFT_v1
+name: diagnostic_enterprise_30
+synthetic: true
+default_seed: 424242
+telemetry:
+  noise_standard_deviation: 0.0
+  delay_ticks: 1
+guarded_review:
+  capacity: 2
+  delay_ticks: 4
+  validity_ticks: 4
+  end_tick: 8
+  response: approve
+  rollback: false
+  matched_signal_mean: 0.9
+  override_policy: retain_approval
+  decision_brief: operator-preview-v1
+availability_model: required_dependencies_v1
+identities:
+  - {id: identity-001, role: synthetic_user}
+  - {id: identity-002, role: synthetic_user}
+  - {id: identity-003, role: synthetic_user}
+  - {id: identity-004, role: synthetic_user}
+  - {id: identity-005, role: synthetic_user}
+  - {id: identity-006, role: synthetic_user}
+  - {id: identity-007, role: synthetic_user}
+  - {id: identity-008, role: synthetic_user}
+  - {id: identity-009, role: synthetic_user}
+  - {id: identity-010, role: synthetic_user}
+  - {id: identity-011, role: synthetic_user}
+  - {id: identity-012, role: synthetic_user}
+  - {id: identity-013, role: synthetic_user}
+  - {id: identity-014, role: synthetic_user}
+  - {id: identity-015, role: synthetic_user}
+  - {id: identity-016, role: synthetic_user}
+  - {id: identity-017, role: synthetic_user}
+  - {id: identity-018, role: synthetic_user}
+  - {id: identity-019, role: synthetic_user}
+  - {id: identity-020, role: synthetic_user}
+  - {id: identity-021, role: synthetic_user}
+  - {id: identity-022, role: synthetic_user}
+  - {id: identity-023, role: synthetic_user}
+  - {id: identity-024, role: synthetic_user}
+  - {id: identity-025, role: synthetic_user}
+  - {id: identity-026, role: synthetic_user}
+  - {id: identity-027, role: synthetic_user}
+  - {id: identity-028, role: synthetic_user}
+  - {id: identity-029, role: synthetic_user}
+  - {id: identity-030, role: synthetic_user}
+sessions:
+  - {id: session-001, identity_id: identity-001, service_id: service-001}
+  - {id: session-002, identity_id: identity-002, service_id: service-002}
+  - {id: session-003, identity_id: identity-003, service_id: service-003}
+  - {id: session-004, identity_id: identity-004, service_id: service-004}
+  - {id: session-005, identity_id: identity-005, service_id: service-005}
+  - {id: session-006, identity_id: identity-006, service_id: service-006}
+  - {id: session-007, identity_id: identity-007, service_id: service-007}
+  - {id: session-008, identity_id: identity-008, service_id: service-008}
+  - {id: session-009, identity_id: identity-009, service_id: service-009}
+  - {id: session-010, identity_id: identity-010, service_id: service-010}
+  - {id: session-011, identity_id: identity-011, service_id: service-011}
+  - {id: session-012, identity_id: identity-012, service_id: service-012}
+  - {id: session-013, identity_id: identity-013, service_id: service-013}
+  - {id: session-014, identity_id: identity-014, service_id: service-014}
+  - {id: session-015, identity_id: identity-015, service_id: service-015}
+  - {id: session-016, identity_id: identity-016, service_id: service-016}
+  - {id: session-017, identity_id: identity-017, service_id: service-017}
+  - {id: session-018, identity_id: identity-018, service_id: service-018}
+  - {id: session-019, identity_id: identity-019, service_id: service-019}
+  - {id: session-020, identity_id: identity-020, service_id: service-020}
+  - {id: session-021, identity_id: identity-021, service_id: service-021}
+  - {id: session-022, identity_id: identity-022, service_id: service-022}
+  - {id: session-023, identity_id: identity-023, service_id: service-023}
+  - {id: session-024, identity_id: identity-024, service_id: service-024}
+  - {id: session-025, identity_id: identity-025, service_id: service-025}
+  - {id: session-026, identity_id: identity-026, service_id: service-026}
+  - {id: session-027, identity_id: identity-027, service_id: service-027}
+  - {id: session-028, identity_id: identity-028, service_id: service-028}
+  - {id: session-029, identity_id: identity-029, service_id: service-029}
+  - {id: session-030, identity_id: identity-030, service_id: service-030}
+services:
+  - {id: service-001, mission_id: mission-reference}
+  - {id: service-002, mission_id: mission-reference}
+  - {id: service-003, mission_id: mission-reference}
+  - {id: service-004, mission_id: mission-reference}
+  - {id: service-005, mission_id: mission-reference}
+  - {id: service-006, mission_id: mission-reference}
+  - {id: service-007, mission_id: mission-reference}
+  - {id: service-008, mission_id: mission-reference}
+  - {id: service-009, mission_id: mission-reference}
+  - {id: service-010, mission_id: mission-reference}
+  - {id: service-011, mission_id: mission-reference}
+  - {id: service-012, mission_id: mission-reference}
+  - {id: service-013, mission_id: mission-reference}
+  - {id: service-014, mission_id: mission-reference}
+  - {id: service-015, mission_id: mission-reference}
+  - {id: service-016, mission_id: mission-reference}
+  - {id: service-017, mission_id: mission-reference}
+  - {id: service-018, mission_id: mission-reference}
+  - {id: service-019, mission_id: mission-reference}
+  - {id: service-020, mission_id: mission-reference}
+  - {id: service-021, mission_id: mission-reference}
+  - {id: service-022, mission_id: mission-reference}
+  - {id: service-023, mission_id: mission-reference}
+  - {id: service-024, mission_id: mission-reference}
+  - {id: service-025, mission_id: mission-reference}
+  - {id: service-026, mission_id: mission-reference}
+  - {id: service-027, mission_id: mission-reference}
+  - {id: service-028, mission_id: mission-reference}
+  - {id: service-029, mission_id: mission-reference}
+  - {id: service-030, mission_id: mission-target}
+missions:
+  - {id: mission-reference, criticality: 0.5}
+  - {id: mission-target, criticality: 0.5}
+dependencies:
+  - {id: dependency-001, upstream_id: session-001, downstream_id: service-001, weight: 1.0}
+  - {id: dependency-002, upstream_id: session-002, downstream_id: service-002, weight: 1.0}
+  - {id: dependency-003, upstream_id: session-003, downstream_id: service-003, weight: 1.0}
+  - {id: dependency-004, upstream_id: session-004, downstream_id: service-004, weight: 1.0}
+  - {id: dependency-005, upstream_id: session-005, downstream_id: service-005, weight: 1.0}
+  - {id: dependency-006, upstream_id: session-006, downstream_id: service-006, weight: 1.0}
+  - {id: dependency-007, upstream_id: session-007, downstream_id: service-007, weight: 1.0}
+  - {id: dependency-008, upstream_id: session-008, downstream_id: service-008, weight: 1.0}
+  - {id: dependency-009, upstream_id: session-009, downstream_id: service-009, weight: 1.0}
+  - {id: dependency-010, upstream_id: session-010, downstream_id: service-010, weight: 1.0}
+  - {id: dependency-011, upstream_id: session-011, downstream_id: service-011, weight: 1.0}
+  - {id: dependency-012, upstream_id: session-012, downstream_id: service-012, weight: 1.0}
+  - {id: dependency-013, upstream_id: session-013, downstream_id: service-013, weight: 1.0}
+  - {id: dependency-014, upstream_id: session-014, downstream_id: service-014, weight: 1.0}
+  - {id: dependency-015, upstream_id: session-015, downstream_id: service-015, weight: 1.0}
+  - {id: dependency-016, upstream_id: session-016, downstream_id: service-016, weight: 1.0}
+  - {id: dependency-017, upstream_id: session-017, downstream_id: service-017, weight: 1.0}
+  - {id: dependency-018, upstream_id: session-018, downstream_id: service-018, weight: 1.0}
+  - {id: dependency-019, upstream_id: session-019, downstream_id: service-019, weight: 1.0}
+  - {id: dependency-020, upstream_id: session-020, downstream_id: service-020, weight: 1.0}
+  - {id: dependency-021, upstream_id: session-021, downstream_id: service-021, weight: 1.0}
+  - {id: dependency-022, upstream_id: session-022, downstream_id: service-022, weight: 1.0}
+  - {id: dependency-023, upstream_id: session-023, downstream_id: service-023, weight: 1.0}
+  - {id: dependency-024, upstream_id: session-024, downstream_id: service-024, weight: 1.0}
+  - {id: dependency-025, upstream_id: session-025, downstream_id: service-025, weight: 1.0}
+  - {id: dependency-026, upstream_id: session-026, downstream_id: service-026, weight: 1.0}
+  - {id: dependency-027, upstream_id: session-027, downstream_id: service-027, weight: 1.0}
+  - {id: dependency-028, upstream_id: session-028, downstream_id: service-028, weight: 1.0}
+  - {id: dependency-029, upstream_id: session-029, downstream_id: service-029, weight: 1.0}
+  - {id: dependency-030, upstream_id: session-030, downstream_id: service-030, weight: 1.0}
+events:
+  - {id: event-a, tick: 1, kind: benign_administrative, identity_id: identity-030}
+  - {id: event-b, tick: 4, kind: benign_administrative, identity_id: identity-001}
+actions: []
