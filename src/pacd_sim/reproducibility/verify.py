@@ -20,6 +20,7 @@ from pacd_sim.defenders.base import BaselineObservation
 from pacd_sim.defenders.pacd import corroboration
 from pacd_sim.evidence.context import EvidenceReading
 from pacd_sim.metrics.dispositions import guarded_review_metrics
+from pacd_sim.metrics.review_routing import review_routing_metrics
 from pacd_sim.metrics.sensing_freshness import sensing_freshness_metrics
 from pacd_sim.metrics.summarize import EpisodeRecord, summary_from_raw_table
 from pacd_sim.polymorphism.selection import CONTEXTUAL, SCHEDULED
@@ -392,6 +393,7 @@ def _verify_run_impl(
     include_evidence_readings: bool = False,
     include_sensing_freshness: bool = False,
     include_mission_impact: bool = False,
+    include_review_routing: bool = False,
 ) -> tuple[VerificationResult, VerifiedSummary | None]:
     """Implement complete verification behind the public defensive boundary."""
     errors: list[str] = []
@@ -968,6 +970,8 @@ def _verify_run_impl(
             )
             if include_mission_impact and retained_validation.mission_impact is not None:
                 guarded_review["mission_impact"] = retained_validation.mission_impact
+            if include_review_routing:
+                guarded_review["review_routing"] = review_routing_metrics(raw_rows)
             if include_sensing_freshness and isinstance(baseline_definition, Mapping):
                 condition = baseline_definition.get("name")
                 if condition in (CONTEXTUAL, SCHEDULED):
@@ -1005,6 +1009,7 @@ def verify_run_with_summary(
     include_evidence_readings: bool = False,
     include_sensing_freshness: bool = False,
     include_mission_impact: bool = False,
+    include_review_routing: bool = False,
 ) -> tuple[VerificationResult, VerifiedSummary | None]:
     """Release the summary and requested sensor fields only after full local verification."""
 
@@ -1019,6 +1024,7 @@ def verify_run_with_summary(
             include_evidence_readings=include_evidence_readings,
             include_sensing_freshness=include_sensing_freshness,
             include_mission_impact=include_mission_impact,
+            include_review_routing=include_review_routing,
         )
     except RecursionError as error:
         return VerificationResult(

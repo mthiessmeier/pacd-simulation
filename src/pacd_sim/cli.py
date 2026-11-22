@@ -170,6 +170,11 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help="include time-integrated mission loss weighted by criticality for guarded episodes",
     )
+    metrics.add_argument(
+        "--review-routing",
+        action="store_true",
+        help="include escalation routing and terminal review outcomes for guarded episodes",
+    )
     metrics.add_argument("--workspace-root", type=Path)
     return parser
 
@@ -286,6 +291,7 @@ def _verified_report_command(arguments: argparse.Namespace) -> int:
                     planned=True,
                     include_sensing_freshness=arguments.sensing_freshness,
                     include_mission_impact=arguments.mission_impact,
+                    include_review_routing=arguments.review_routing,
                 )
             )
             return 0
@@ -297,6 +303,7 @@ def _verified_report_command(arguments: argparse.Namespace) -> int:
                 arguments.register_sha256,
                 include_sensing_freshness=arguments.sensing_freshness,
                 include_mission_impact=arguments.mission_impact,
+                include_review_routing=arguments.review_routing,
             )
             _emit_json(report)
             return 0
@@ -310,6 +317,7 @@ def _verified_report_command(arguments: argparse.Namespace) -> int:
         include_evidence_readings=arguments.command == "evidence-trace",
         include_sensing_freshness=arguments.command == "metrics" and arguments.sensing_freshness,
         include_mission_impact=arguments.command == "metrics" and arguments.mission_impact,
+        include_review_routing=arguments.command == "metrics" and arguments.review_routing,
     )
     payload = verification.to_dict()
     if not verification.valid or material is None:

@@ -138,6 +138,7 @@ def _final_outcome(
     *,
     include_sensing_freshness: bool,
     include_mission_impact: bool,
+    include_review_routing: bool,
 ) -> Outcome:
     if receipt:
         verified, summary = verify_run_with_summary(
@@ -147,6 +148,7 @@ def _final_outcome(
             include_comparison_inputs=isinstance(attempt, PlannedAttempt),
             include_sensing_freshness=include_sensing_freshness,
             include_mission_impact=include_mission_impact,
+            include_review_routing=include_review_routing,
         )
         if verified.valid and summary is not None and summary.episode.seed == attempt.seed:
             return Outcome(
@@ -207,6 +209,7 @@ def _observe(
     *,
     include_sensing_freshness: bool,
     include_mission_impact: bool,
+    include_review_routing: bool,
 ) -> Outcome:
     key = attempt.invocation_id
     marker_path = assert_exact_control_path(
@@ -245,6 +248,7 @@ def _observe(
                 repo,
                 include_sensing_freshness=include_sensing_freshness,
                 include_mission_impact=include_mission_impact,
+                include_review_routing=include_review_routing,
             )
         elif receipt or final:
             outcome = Outcome("INVALID", "conflicting_run_locations", run.run_id)
@@ -305,6 +309,7 @@ def registered_metrics(
     planned: bool = False,
     include_sensing_freshness: bool = False,
     include_mission_impact: bool = False,
+    include_review_routing: bool = False,
 ) -> dict[str, object]:
     """Account for each declared attempt once, releasing counts only for verified completions."""
     register: ComparisonPlan | AttemptRegister
@@ -324,6 +329,7 @@ def registered_metrics(
                 digest if planned else None,
                 include_sensing_freshness=include_sensing_freshness,
                 include_mission_impact=include_mission_impact,
+                include_review_routing=include_review_routing,
             )
         except (OSError, ValueError, RecursionError):
             outcome = Outcome("INVALID", "invalid_invocation_evidence")
