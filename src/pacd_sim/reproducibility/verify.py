@@ -20,7 +20,9 @@ from pacd_sim.defenders.base import BaselineObservation
 from pacd_sim.defenders.pacd import corroboration
 from pacd_sim.evidence.context import EvidenceReading
 from pacd_sim.metrics.dispositions import guarded_review_metrics
+from pacd_sim.metrics.sensing_freshness import sensing_freshness_metrics
 from pacd_sim.metrics.summarize import EpisodeRecord, summary_from_raw_table
+from pacd_sim.polymorphism.selection import CONTEXTUAL, SCHEDULED
 from pacd_sim.reproducibility.canonical import canonical_sha256
 from pacd_sim.reproducibility.evidence_validation import (
     strict_json_loads,
@@ -388,6 +390,7 @@ def _verify_run_impl(
     include_observations: bool = False,
     include_comparison_inputs: bool = False,
     include_evidence_readings: bool = False,
+    include_sensing_freshness: bool = False,
 ) -> tuple[VerificationResult, VerifiedSummary | None]:
     """Implement complete verification behind the public defensive boundary."""
     errors: list[str] = []
@@ -956,6 +959,17 @@ def _verify_run_impl(
                 for row in raw_rows
                 if row["event_type"] == "observation"
             )
+        guarded_review = None
+        if isinstance(scenario, Mapping) and "guarded_review" in scenario:
+            guarded_review = guarded_review_metrics(
+                raw_rows, ScenarioConfig.model_validate(scenario).sensing_operator
+            )
+            if include_sensing_freshness and isinstance(baseline_definition, Mapping):
+                condition = baseline_definition.get("name")
+                if condition in (CONTEXTUAL, SCHEDULED):
+                    guarded_review["sensing_freshness"] = sensing_freshness_metrics(
+                        raw_rows, condition
+                    )
         return result, VerifiedSummary(
             episode=EpisodeRecord.model_validate(expected_summary),
             csv_sha256=artifact_snapshots["derived/episode_summary.csv"].sha256,
@@ -966,11 +980,7 @@ def _verify_run_impl(
             )
             if include_evidence_readings
             else (),
-            guarded_review=guarded_review_metrics(
-                raw_rows, ScenarioConfig.model_validate(scenario).sensing_operator
-            )
-            if isinstance(scenario, Mapping) and "guarded_review" in scenario
-            else None,
+            guarded_review=guarded_review,
             comparison_inputs=ComparisonInputs.from_inputs(
                 canonical_config, seed_registry, cast(str, manifest["code_commit"])
             )
@@ -989,6 +999,7 @@ def verify_run_with_summary(
     include_observations: bool = False,
     include_comparison_inputs: bool = False,
     include_evidence_readings: bool = False,
+    include_sensing_freshness: bool = False,
 ) -> tuple[VerificationResult, VerifiedSummary | None]:
     """Release the summary and requested sensor fields only after full local verification."""
 
@@ -1001,6 +1012,7 @@ def verify_run_with_summary(
             include_observations=include_observations,
             include_comparison_inputs=include_comparison_inputs,
             include_evidence_readings=include_evidence_readings,
+            include_sensing_freshness=include_sensing_freshness,
         )
     except RecursionError as error:
         return VerificationResult(

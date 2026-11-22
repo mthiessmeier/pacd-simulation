@@ -160,6 +160,11 @@ def _parser() -> argparse.ArgumentParser:
     )
     metrics.add_argument("--plan-sha256", help="require the canonical plan digest")
     metrics.add_argument("--register-sha256", help="require the canonical register digest")
+    metrics.add_argument(
+        "--sensing-freshness",
+        action="store_true",
+        help="include candidate and execution evidence ages for verified WP08 sensing episodes",
+    )
     metrics.add_argument("--workspace-root", type=Path)
     return parser
 
@@ -269,13 +274,22 @@ def _verified_report_command(arguments: argparse.Namespace) -> int:
                 raise ValueError("--register-sha256 requires --register")
             _emit_json(
                 registered_metrics(
-                    arguments.plan, workspace, repository, arguments.plan_sha256, planned=True
+                    arguments.plan,
+                    workspace,
+                    repository,
+                    arguments.plan_sha256,
+                    planned=True,
+                    include_sensing_freshness=arguments.sensing_freshness,
                 )
             )
             return 0
         if arguments.register is not None:
             report = registered_metrics(
-                arguments.register, workspace, repository, arguments.register_sha256
+                arguments.register,
+                workspace,
+                repository,
+                arguments.register_sha256,
+                include_sensing_freshness=arguments.sensing_freshness,
             )
             _emit_json(report)
             return 0
@@ -287,6 +301,7 @@ def _verified_report_command(arguments: argparse.Namespace) -> int:
         repo_root=repository,
         include_observations=arguments.command in ("baseline", "defender-trace"),
         include_evidence_readings=arguments.command == "evidence-trace",
+        include_sensing_freshness=arguments.command == "metrics" and arguments.sensing_freshness,
     )
     payload = verification.to_dict()
     if not verification.valid or material is None:
