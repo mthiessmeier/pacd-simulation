@@ -146,13 +146,23 @@ def test_explicit_dependency_list_boundaries(
 
 def test_optional_fields_preserve_scenario_wire_hash_and_schema() -> None:
     original = load_yaml_config(controlled_config_files(CONFIG_ROOT)[0])
-    optional_fields = {"dependencies", "availability_model", "guarded_review", "sensing_operator"}
+    optional_fields = {
+        "dependencies",
+        "availability_model",
+        "guarded_review",
+        "sensing_operator",
+        "critical_mission_ids",
+    }
     for schema in (
         ScenarioConfig.model_json_schema(),
         ScenarioConfig.model_json_schema(mode="serialization"),
     ):
         assert set(original) | optional_fields == set(schema["properties"])
         assert optional_fields.isdisjoint(schema["required"])
+        selected_ref = schema["properties"]["critical_mission_ids"]["$ref"]
+        selected = schema["$defs"][selected_ref.rsplit("/", 1)[1]]
+        assert selected["type"] == "array" and selected["minItems"] == 1
+        assert selected["items"] == schema["$defs"]["MissionConfig"]["properties"]["id"]
         assert schema["properties"]["guarded_review"]["$ref"] == "#/$defs/GuardedReviewConfig"
         assert schema["properties"]["availability_model"]["const"] == "required_dependencies_v1"
     wire_hashes = set()
