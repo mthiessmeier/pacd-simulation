@@ -117,7 +117,7 @@ Codex may use the authenticated GitHub account for this task.
 - Do not merge the pull request.
 - Do not force-push, rewrite history, delete branches/tags/releases, delete a repository, or close unrelated issues/PRs.
 - Do not publish a release, package, container, site, gist, or DOI.
-- Do not select or add an open-source license on the author’s behalf. Keep the repository private and use `LICENSE_PENDING.md` until a separate decision is made.
+- Michael Thiessmeier approved Apache-2.0 with himself as licensor on November 21, 2026; follow `LICENSE`, `NOTICE`, `LICENSING.md`, and decision D-017. Do not request that settled license/authority decision again. Keep the repository private until public release is separately authorized, and do not broaden the grant to the separate works identified in `LICENSING.md` without an owner decision. `LICENSE_PENDING.md` is superseded historical context.
 - Never store tokens, passwords, cookies, API keys, private keys, or session material in files, logs, commits, issues, or PR text.
 - Prefer existing GitHub authentication through GitHub CLI or the signed-in browser. Escalate before creating a PAT, SSH key, deploy key, or new OAuth grant.
 

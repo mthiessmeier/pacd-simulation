@@ -1,0 +1,1121 @@
+{
+  "status": "PROPOSAL_ONLY_NOT_PUBLICATION_AUTHORITY",
+  "repository": "mthiessmeier/pacd-simulation",
+  "source_commit": "f881f6553e9210d84e8f009a9700c0ce65eceabd",
+  "current_tree_complete": true,
+  "scope": "Candidate dispositions for the reviewed main tree only. Other branches, PRs and history are not covered by this inventory; do not mirror the private repository.",
+  "rights_and_secrets_review": "PENDING_FOR_ACTUAL_EXPORT",
+  "runtime_validation": "UNEXECUTED",
+  "files": [
+    {
+      "path": ".editorconfig",
+      "git_blob_sha": "4de17ed2632a9abdc5323912c6488bff8c01cf11",
+      "bytes": 228,
+      "proposed_disposition": "CANDIDATE_BUILD_SUPPORT_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": ".gitattributes",
+      "git_blob_sha": "22c6d5d436c69f945421007095669eaaf8f31ffa",
+      "bytes": 102,
+      "proposed_disposition": "CANDIDATE_BUILD_SUPPORT_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": ".gitignore",
+      "git_blob_sha": "bab014002b688efcae59df1518b47205c3010052",
+      "bytes": 341,
+      "proposed_disposition": "CANDIDATE_BUILD_SUPPORT_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": ".pre-commit-config.yaml",
+      "git_blob_sha": "9f734aeb1bc94020bc7d4fc95f90a3f9f65dcd0a",
+      "bytes": 439,
+      "proposed_disposition": "CANDIDATE_BUILD_SUPPORT_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": ".python-version",
+      "git_blob_sha": "4de75f8d77a3e872d8883636a5d65deefb47fbe6",
+      "bytes": 8,
+      "proposed_disposition": "CANDIDATE_BUILD_SUPPORT_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "AGENTS.md",
+      "git_blob_sha": "92678b83f5cf21342811b1cbaaa84846b7a4b66e",
+      "bytes": 15353,
+      "proposed_disposition": "ADAPT_FOR_PUBLIC_READERS_AND_RETAIN_APPLICABLE_CONTROLS"
+    },
+    {
+      "path": "LICENSE_PENDING.md",
+      "git_blob_sha": "81631f5770df68438106ab0d7ecbb5964a7cd8a2",
+      "bytes": 317,
+      "proposed_disposition": "EXCLUDE_FROM_INITIAL_EXPORT_UNLESS_EXPLICITLY_INCLUDED"
+    },
+    {
+      "path": "README.md",
+      "git_blob_sha": "87fc6bf2f66eb036b65254835a18a24214d466de",
+      "bytes": 10787,
+      "proposed_disposition": "ADAPT_FOR_PUBLIC_READERS_AND_REVIEW"
+    },
+    {
+      "path": "configs/adversaries/README.md",
+      "git_blob_sha": "7668d75921cee5fb2f35253511791ec62bc00da6",
+      "bytes": 111,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "configs/defenders/diagnostic_baseline.yaml",
+      "git_blob_sha": "f5e87ff6874e41aaab9d026d44257d744625122e",
+      "bytes": 138,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "configs/defenders/pacd_corroborated_review.yaml",
+      "git_blob_sha": "e7be111348c5e1726fd908ec49619e76f6e88e72",
+      "bytes": 157,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "configs/defenders/static_review.yaml",
+      "git_blob_sha": "75ea9b624196dd7bc0b3e0a739598f970e2b217d",
+      "bytes": 153,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "configs/metrics/diagnostic_metrics.yaml",
+      "git_blob_sha": "54adbc5465630621aa98a2a944b16197e7b81269",
+      "bytes": 169,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "configs/missions/README.md",
+      "git_blob_sha": "880b61163c2f6a54264d9c93eea23631d13f9c15",
+      "bytes": 80,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "configs/policies/diagnostic_safety.yaml",
+      "git_blob_sha": "d2a4b228c6946b62d1f885b21dfdd36233c674e3",
+      "bytes": 263,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "configs/protocol/draft/README.md",
+      "git_blob_sha": "3aa7878e19f2382f088f684b096ebdf6fdf19b21",
+      "bytes": 179,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "configs/protocol/frozen/README.md",
+      "git_blob_sha": "404a3eef0a80bd3d459dba290ebd85f968669acd",
+      "bytes": 288,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "configs/scenarios/diagnostic_identity_smoke.yaml",
+      "git_blob_sha": "f4bf18c145d7c1d2e3a3bd40bf3b2fa7d6fd14aa",
+      "bytes": 1341,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "configs/scenarios/diagnostic_maintenance_window.yaml",
+      "git_blob_sha": "c4e460a4f3800b0e7a11920dc1d00e2dc2752553",
+      "bytes": 1546,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "configs/scenarios/diagnostic_repeated_readings.yaml",
+      "git_blob_sha": "6cefce0b55971d6f5e9ce2f4d5792468a3ce8042",
+      "bytes": 1722,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "configs/seeds/diagnostic_seeds.json",
+      "git_blob_sha": "62f92ed9ba8e16263f9324febf8959f4c86fd74e",
+      "bytes": 108,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "configs/topologies/README.md",
+      "git_blob_sha": "5e6ff7139a5c30d9e6f7592c58b52e73872516a8",
+      "bytes": 77,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "docs/ARCHITECTURE.md",
+      "git_blob_sha": "2c59c1a9856934bbe88c1492803ee3d34914da11",
+      "bytes": 6091,
+      "proposed_disposition": "ADAPT_FOR_PUBLIC_READERS_AND_REVIEW"
+    },
+    {
+      "path": "docs/EXECUTION_IDENTITY_ASSURANCE.md",
+      "git_blob_sha": "1056497779c0705c1762fd700211fe3f4046c027",
+      "bytes": 4138,
+      "proposed_disposition": "ADAPT_FOR_PUBLIC_READERS_AND_REVIEW"
+    },
+    {
+      "path": "docs/REMAINING_IMPLEMENTATION_PLAN.md",
+      "git_blob_sha": "d0685a3d230fdf6288ba3fafb0e5bd9549ffcd1c",
+      "bytes": 26847,
+      "proposed_disposition": "EXCLUDE_FROM_INITIAL_EXPORT_UNLESS_EXPLICITLY_INCLUDED"
+    },
+    {
+      "path": "docs/application_demo/README.md",
+      "git_blob_sha": "91ca83fe9f285a7cbe13846c013fd994a402fd3c",
+      "bytes": 21671,
+      "proposed_disposition": "ADAPT_FOR_PUBLIC_READERS_AND_REVIEW"
+    },
+    {
+      "path": "docs/application_demo/regenerate.py",
+      "git_blob_sha": "ebaa89267c30a6d22cf0859380858d816f97bfe1",
+      "bytes": 1924,
+      "proposed_disposition": "ADAPT_FOR_PUBLIC_READERS_AND_REVIEW"
+    },
+    {
+      "path": "docs/governance/PACD_Bootstrap_Acceptance_Tests_v1.0.md",
+      "git_blob_sha": "001998809ebb1f65b86fb2ab0221184a23732550",
+      "bytes": 7014,
+      "proposed_disposition": "ADAPT_FOR_PUBLIC_READERS_AND_RETAIN_APPLICABLE_CONTROLS"
+    },
+    {
+      "path": "docs/governance/PACD_Codex_Bootstrap_Work_Order_v1.0.md",
+      "git_blob_sha": "56cba02afb641a5ee38b880892d80197d790cb5b",
+      "bytes": 17752,
+      "proposed_disposition": "ADAPT_FOR_PUBLIC_READERS_AND_RETAIN_APPLICABLE_CONTROLS"
+    },
+    {
+      "path": "docs/governance/PACD_Host_Guardrails_v1.0.yaml",
+      "git_blob_sha": "3acae8ab496703a54f0c6af1a75d32f63e8ceb8a",
+      "bytes": 6380,
+      "proposed_disposition": "ADAPT_FOR_PUBLIC_READERS_AND_RETAIN_APPLICABLE_CONTROLS"
+    },
+    {
+      "path": "docs/governance/PACD_Local_Simulation_Environment_Architecture_v1.0.md",
+      "git_blob_sha": "27104d03887fdc75dbfc68080bd8dca3d86f4132",
+      "bytes": 14574,
+      "proposed_disposition": "ADAPT_FOR_PUBLIC_READERS_AND_RETAIN_APPLICABLE_CONTROLS"
+    },
+    {
+      "path": "docs/work_orders/DEVELOPMENT_COMPARISON_PLAN_v1.0.md",
+      "git_blob_sha": "f03b135d1c9121e4edca7e2b629ec2e8afe1013a",
+      "bytes": 8779,
+      "proposed_disposition": "EXCLUDE_FROM_INITIAL_EXPORT_UNLESS_EXPLICITLY_INCLUDED"
+    },
+    {
+      "path": "docs/work_orders/check_reconciliation.py",
+      "git_blob_sha": "ddfba63a4a4458d5f3785fc9fee3646813525d7e",
+      "bytes": 6336,
+      "proposed_disposition": "EXCLUDE_FROM_INITIAL_EXPORT_UNLESS_EXPLICITLY_INCLUDED"
+    },
+    {
+      "path": "pyproject.toml",
+      "git_blob_sha": "2c6e46830e75b25e014db019ddea1fa0ee39505c",
+      "bytes": 1819,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "schemas/README.md",
+      "git_blob_sha": "2ef2338d74f55b7926363ca8fd8fc58fdd22ea31",
+      "bytes": 7371,
+      "proposed_disposition": "ADAPT_FOR_PUBLIC_READERS_AND_REVIEW"
+    },
+    {
+      "path": "src/pacd_sim/__init__.py",
+      "git_blob_sha": "ef910095cd902c2523ee4d50c15b5fb71f951dd1",
+      "bytes": 163,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "src/pacd_sim/actions/__init__.py",
+      "git_blob_sha": "34686379cbc16c1c2c01fe6ef348f8c56a3f74c6",
+      "bytes": 39,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "src/pacd_sim/actions/models.py",
+      "git_blob_sha": "ab6ae4df493d31139658f898a37fa9178be362de",
+      "bytes": 965,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "src/pacd_sim/agents/__init__.py",
+      "git_blob_sha": "8934f2146d57c69e4668cc553b1e6dddf5a5b2fd",
+      "bytes": 35,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "src/pacd_sim/agents/red/__init__.py",
+      "git_blob_sha": "d22f2593f490ccf20189e186a3238660c6840789",
+      "bytes": 41,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "src/pacd_sim/agents/red/diagnostic.py",
+      "git_blob_sha": "fbe81af39063a78934e492450ac352ecd06ceeeb",
+      "bytes": 1251,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "src/pacd_sim/analysis/__init__.py",
+      "git_blob_sha": "b55746902a258952e4c45ee3ed1ca05c493b9e59",
+      "bytes": 50,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "src/pacd_sim/audit/__init__.py",
+      "git_blob_sha": "1def56fd6dba2d9599b66d5848741ace7cabf1a5",
+      "bytes": 44,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "src/pacd_sim/audit/writer.py",
+      "git_blob_sha": "e0e12c653d13d95e86f1f9a885dbc293a9840f8e",
+      "bytes": 7529,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "src/pacd_sim/cli.py",
+      "git_blob_sha": "d76404fb73402278d63f2027ab5cd838d943c902",
+      "bytes": 13945,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "src/pacd_sim/comparison.py",
+      "git_blob_sha": "21e51cc22cf585797e99cb37d4677bab3b2a2636",
+      "bytes": 3119,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "src/pacd_sim/configuration.py",
+      "git_blob_sha": "0074caafb9dbc592d20142f7ee8948389fbfff80",
+      "bytes": 7500,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "src/pacd_sim/constants.py",
+      "git_blob_sha": "d936a1a29b9d5c03ababc379850bc62a0b9408ad",
+      "bytes": 601,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "src/pacd_sim/defenders/__init__.py",
+      "git_blob_sha": "6e194d649d11316520466792745797003b4cf61f",
+      "bytes": 65,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "src/pacd_sim/defenders/base.py",
+      "git_blob_sha": "ad64c308535789e88ff925f2dca520aeaa44f7d2",
+      "bytes": 1855,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "src/pacd_sim/defenders/baselines/__init__.py",
+      "git_blob_sha": "ad13b9b39aad21c8c4fbbc758ac764540d560c68",
+      "bytes": 42,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "src/pacd_sim/defenders/baselines/null.py",
+      "git_blob_sha": "a00071a8161e438719747bfd2e7199b3d19c5d90",
+      "bytes": 770,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "src/pacd_sim/defenders/baselines/static.py",
+      "git_blob_sha": "e8760dfbff0ac23ad9da8d8232324edbe7994e8c",
+      "bytes": 668,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "src/pacd_sim/defenders/observations.py",
+      "git_blob_sha": "c83ba6cecc53e2dffbc70da1a1be9f1d4c722241",
+      "bytes": 682,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "src/pacd_sim/defenders/pacd/__init__.py",
+      "git_blob_sha": "729a99df2b51fba08ec27c386c5c8f047608716a",
+      "bytes": 66,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "src/pacd_sim/defenders/pacd/corroboration.py",
+      "git_blob_sha": "396e73ea66d75353239cf68c13229e95c212af45",
+      "bytes": 2704,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "src/pacd_sim/defenders/pacd/diagnostic.py",
+      "git_blob_sha": "be6c0269b7c9c08fc1d92becd7beb429cda7a50e",
+      "bytes": 2414,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "src/pacd_sim/engine/__init__.py",
+      "git_blob_sha": "dc5910e33489e597008973b7a2f6ef47dd109ba8",
+      "bytes": 43,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "src/pacd_sim/engine/scheduler.py",
+      "git_blob_sha": "4fc91be1d36bf321744d2ce4c2dc271f6bf057d6",
+      "bytes": 3097,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "src/pacd_sim/environment/__init__.py",
+      "git_blob_sha": "9bf19d87cbb19adba45a1e2f54d4e3e4618e576a",
+      "bytes": 53,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "src/pacd_sim/environment/availability.py",
+      "git_blob_sha": "2552771e44282a3eabdd6cdba58bfb5da4c157e9",
+      "bytes": 4832,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "src/pacd_sim/environment/model.py",
+      "git_blob_sha": "ed26ad2d136549211204ff104739f68cf68e7b85",
+      "bytes": 11147,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "src/pacd_sim/evidence/__init__.py",
+      "git_blob_sha": "c44a22563aa88920333665314f2fa26aafc0285f",
+      "bytes": 45,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "src/pacd_sim/evidence/normalize.py",
+      "git_blob_sha": "6940a2cbe584b348a0b236aedaa13a1e455082c7",
+      "bytes": 2046,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "src/pacd_sim/execution/__init__.py",
+      "git_blob_sha": "178832e3a2bb418634c35ab2a62185f1b57ac7d1",
+      "bytes": 49,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "src/pacd_sim/execution/broker.py",
+      "git_blob_sha": "93e6e398c35ff6f52ba48c569e53133f99f087f0",
+      "bytes": 6371,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "src/pacd_sim/execution/verification.py",
+      "git_blob_sha": "15829c4f06b11662ca60598dff20fa0967804f01",
+      "bytes": 9536,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "src/pacd_sim/governance/__init__.py",
+      "git_blob_sha": "d2d7b1d4251302481f304d4248307edb023b71fe",
+      "bytes": 49,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "src/pacd_sim/governance/governor.py",
+      "git_blob_sha": "5988c5b8cb1b1410e1bb26b918a97e36ce0a6c23",
+      "bytes": 7180,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "src/pacd_sim/harness/__init__.py",
+      "git_blob_sha": "3dfda9de729befa774012e6c4401ca318e27ec6b",
+      "bytes": 38,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "src/pacd_sim/harness/run.py",
+      "git_blob_sha": "061dcb6b4c391953317ba5f8233c3c6766bdfbf1",
+      "bytes": 100175,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "src/pacd_sim/harness/static_review.py",
+      "git_blob_sha": "e6aeddddff5dbb2175bf30681277273842531be7",
+      "bytes": 1491,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "src/pacd_sim/hypotheses/__init__.py",
+      "git_blob_sha": "a666b0adcc98c2a7d971a417110b7b078cc693ea",
+      "bytes": 46,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "src/pacd_sim/hypotheses/update.py",
+      "git_blob_sha": "29dae54577d8961153c475f727a819154a7e8167",
+      "bytes": 4997,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "src/pacd_sim/metrics/__init__.py",
+      "git_blob_sha": "e5ceec543da1267ff59a8ae521f3e9f02b6310df",
+      "bytes": 54,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "src/pacd_sim/metrics/dispositions.py",
+      "git_blob_sha": "28a93d9fc56c87ae03e90b801c82276c3f2851d4",
+      "bytes": 2089,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "src/pacd_sim/metrics/registered.py",
+      "git_blob_sha": "b91ad0fc09ca83609d65552c5b911f5495c751ec",
+      "bytes": 13700,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "src/pacd_sim/metrics/summarize.py",
+      "git_blob_sha": "397ea9c8e0148fbf55a3514da29af7abf274cc9b",
+      "bytes": 8917,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "src/pacd_sim/orchestration/__init__.py",
+      "git_blob_sha": "bfee64d051b886699a0b3c06e81326a0d8330529",
+      "bytes": 54,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "src/pacd_sim/orchestration/coordinator.py",
+      "git_blob_sha": "2d7832ba621a45cbff815aa4d3a1298673ab0943",
+      "bytes": 1862,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "src/pacd_sim/oversight/__init__.py",
+      "git_blob_sha": "c40d090c03e2b8de2774e32b5efe2cf99a7d04c5",
+      "bytes": 48,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "src/pacd_sim/oversight/approval.py",
+      "git_blob_sha": "c8d7b6a38ab9d5bc1788b37fc68522f1a53b623b",
+      "bytes": 2387,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "src/pacd_sim/polymorphism/__init__.py",
+      "git_blob_sha": "2180ee0414db83cfb0fe0b60ce8abb761da1b443",
+      "bytes": 48,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "src/pacd_sim/polymorphism/operators.py",
+      "git_blob_sha": "3e96888e25f76aad9c4cd65c945e885f8a85b0bc",
+      "bytes": 1676,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "src/pacd_sim/reproducibility/__init__.py",
+      "git_blob_sha": "8c57f924a8648b8bf593ae9ef5384118bdfc6688",
+      "bytes": 69,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "src/pacd_sim/reproducibility/canonical.py",
+      "git_blob_sha": "7eaff190df6db1f5e63eb085ef911251cd295a19",
+      "bytes": 3726,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "src/pacd_sim/reproducibility/doctor.py",
+      "git_blob_sha": "79a8509125a6f977dfdbe9f0a994036ae4ea325c",
+      "bytes": 17860,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "src/pacd_sim/reproducibility/evidence_validation.py",
+      "git_blob_sha": "1db8ee3bbf5e04ae068b167d948c450cdf3cd327",
+      "bytes": 66907,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "src/pacd_sim/reproducibility/manifest.py",
+      "git_blob_sha": "60e8a734c6250c1d4bfb8744317eeb6957a12411",
+      "bytes": 18365,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "src/pacd_sim/reproducibility/paths.py",
+      "git_blob_sha": "6972541bff943b13edd5a8886af7b27360a4e3b5",
+      "bytes": 10521,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "src/pacd_sim/reproducibility/receipts.py",
+      "git_blob_sha": "fbb7355b204c09f4dc23cd1384bf39d6568543a9",
+      "bytes": 31105,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "src/pacd_sim/reproducibility/reportable.py",
+      "git_blob_sha": "56f98f1c42af8012393208402a2845887f203811",
+      "bytes": 9980,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "src/pacd_sim/reproducibility/verify.py",
+      "git_blob_sha": "3095181d873b6c18a30c03d39031a1ff71bcc89b",
+      "bytes": 41809,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "src/pacd_sim/schema.py",
+      "git_blob_sha": "564445e40dee32a41c88c50da2228e5ed2cfc992",
+      "bytes": 2955,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "src/pacd_sim/state/__init__.py",
+      "git_blob_sha": "78b5b7a192cd44e8628e91bff299a828a37ae592",
+      "bytes": 49,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "src/pacd_sim/state/snapshot.py",
+      "git_blob_sha": "db55b6d0fbe5b12600e9680c3633ed544823e236",
+      "bytes": 1158,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "src/pacd_sim/telemetry/__init__.py",
+      "git_blob_sha": "0364ed572a3421631684c3b998ec6b03545056f4",
+      "bytes": 38,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "src/pacd_sim/telemetry/generator.py",
+      "git_blob_sha": "e43b5e55edd29e908f4547cf1cb048c99cefbdb1",
+      "bytes": 4039,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "status/COMMAND_LOG.md",
+      "git_blob_sha": "8e18a301d919a7d36ee83e9b7a87c1e3da133b0f",
+      "bytes": 14350,
+      "proposed_disposition": "EXCLUDE_FROM_INITIAL_EXPORT_UNLESS_EXPLICITLY_INCLUDED"
+    },
+    {
+      "path": "status/COVERAGE_SUMMARY.md",
+      "git_blob_sha": "be7a8cb88631e2df1454955b7789f03ad5e79091",
+      "bytes": 2258,
+      "proposed_disposition": "EXCLUDE_FROM_INITIAL_EXPORT_UNLESS_EXPLICITLY_INCLUDED"
+    },
+    {
+      "path": "status/CURRENT_STATUS.md",
+      "git_blob_sha": "a5d5ca7e663f88ac28bcd373320846fb6daad22b",
+      "bytes": 1607,
+      "proposed_disposition": "EXCLUDE_FROM_INITIAL_EXPORT_UNLESS_EXPLICITLY_INCLUDED"
+    },
+    {
+      "path": "status/CURRENT_STATUS_v1.1.md",
+      "git_blob_sha": "f2e90865824d57d6cf0cfb08279395755432dce4",
+      "bytes": 2846,
+      "proposed_disposition": "EXCLUDE_FROM_INITIAL_EXPORT_UNLESS_EXPLICITLY_INCLUDED"
+    },
+    {
+      "path": "status/CURRENT_STATUS_v1.2.md",
+      "git_blob_sha": "24cd7c0b560e1e7ba82d5a1c3346f10ae5e77639",
+      "bytes": 3626,
+      "proposed_disposition": "EXCLUDE_FROM_INITIAL_EXPORT_UNLESS_EXPLICITLY_INCLUDED"
+    },
+    {
+      "path": "status/DECISIONS.md",
+      "git_blob_sha": "ea02f26fc01495c6e6f51900b390d569a2fc064b",
+      "bytes": 5713,
+      "proposed_disposition": "EXCLUDE_FROM_INITIAL_EXPORT_UNLESS_EXPLICITLY_INCLUDED"
+    },
+    {
+      "path": "status/DELIVERY_REPORT.json",
+      "git_blob_sha": "225405db0a8070c949dfbbe1834fa007010b28ea",
+      "bytes": 1124,
+      "proposed_disposition": "EXCLUDE_FROM_INITIAL_EXPORT_UNLESS_EXPLICITLY_INCLUDED"
+    },
+    {
+      "path": "status/DEPENDENCY_INVENTORY.json",
+      "git_blob_sha": "b3f322db6960a169f694d9f6dca9e5fc686e8a86",
+      "bytes": 18710,
+      "proposed_disposition": "EXCLUDE_FROM_INITIAL_EXPORT_UNLESS_EXPLICITLY_INCLUDED"
+    },
+    {
+      "path": "status/DIAGNOSTIC_RUN_REPORT.json",
+      "git_blob_sha": "8ea8db6c8d931cc5fc09ac64121d05d41deb1459",
+      "bytes": 2051,
+      "proposed_disposition": "EXCLUDE_FROM_INITIAL_EXPORT_UNLESS_EXPLICITLY_INCLUDED"
+    },
+    {
+      "path": "status/DOCTOR_REPORT.json",
+      "git_blob_sha": "b8b4398fde77e570896ef04af75696083c6fff28",
+      "bytes": 1213,
+      "proposed_disposition": "EXCLUDE_FROM_INITIAL_EXPORT_UNLESS_EXPLICITLY_INCLUDED"
+    },
+    {
+      "path": "status/ESCALATIONS.md",
+      "git_blob_sha": "33f7ba122111ba918a30d6b5a8aa9760cd0b1cc9",
+      "bytes": 4349,
+      "proposed_disposition": "EXCLUDE_FROM_INITIAL_EXPORT_UNLESS_EXPLICITLY_INCLUDED"
+    },
+    {
+      "path": "status/FINAL_REPORT.md",
+      "git_blob_sha": "5926491328cc625cf039777a4666fe381abdbb31",
+      "bytes": 10176,
+      "proposed_disposition": "EXCLUDE_FROM_INITIAL_EXPORT_UNLESS_EXPLICITLY_INCLUDED"
+    },
+    {
+      "path": "status/INSTALLATION_PLAN.md",
+      "git_blob_sha": "ad33ad70bce4c8c58c359bc355da3dbf8cb86ec4",
+      "bytes": 5325,
+      "proposed_disposition": "EXCLUDE_FROM_INITIAL_EXPORT_UNLESS_EXPLICITLY_INCLUDED"
+    },
+    {
+      "path": "status/INSTALLED_COMPONENTS.json",
+      "git_blob_sha": "11ac4d7febb5fe98ad8e5c75a73774f19aa1ce3e",
+      "bytes": 5774,
+      "proposed_disposition": "EXCLUDE_FROM_INITIAL_EXPORT_UNLESS_EXPLICITLY_INCLUDED"
+    },
+    {
+      "path": "status/PHASE2_INCREMENT1.md",
+      "git_blob_sha": "e8a55c2683e97177768adf5c4e7f3e547dc4ee51",
+      "bytes": 8852,
+      "proposed_disposition": "EXCLUDE_FROM_INITIAL_EXPORT_UNLESS_EXPLICITLY_INCLUDED"
+    },
+    {
+      "path": "status/PHASE2_INCREMENT2.md",
+      "git_blob_sha": "b8374cb63d5afee02f4255fa0e9e38f1e03c1bc3",
+      "bytes": 1327,
+      "proposed_disposition": "EXCLUDE_FROM_INITIAL_EXPORT_UNLESS_EXPLICITLY_INCLUDED"
+    },
+    {
+      "path": "status/PHASE2_INCREMENT3.md",
+      "git_blob_sha": "cee157e1624c055834292d0717ae158f27551dad",
+      "bytes": 1091,
+      "proposed_disposition": "EXCLUDE_FROM_INITIAL_EXPORT_UNLESS_EXPLICITLY_INCLUDED"
+    },
+    {
+      "path": "status/PHASE2_INCREMENT4.md",
+      "git_blob_sha": "1a937eef2acecb67f53df1e5a645da0d140f29ea",
+      "bytes": 1442,
+      "proposed_disposition": "EXCLUDE_FROM_INITIAL_EXPORT_UNLESS_EXPLICITLY_INCLUDED"
+    },
+    {
+      "path": "status/PHASE2_INCREMENT5.md",
+      "git_blob_sha": "2fd43cfcbf747d8d49fb0d0b9c5a50ae67e8728c",
+      "bytes": 1376,
+      "proposed_disposition": "EXCLUDE_FROM_INITIAL_EXPORT_UNLESS_EXPLICITLY_INCLUDED"
+    },
+    {
+      "path": "status/PREFLIGHT.md",
+      "git_blob_sha": "9b9ea769201092fe3b1341bcfdf3cb604fcc5edf",
+      "bytes": 5877,
+      "proposed_disposition": "EXCLUDE_FROM_INITIAL_EXPORT_UNLESS_EXPLICITLY_INCLUDED"
+    },
+    {
+      "path": "status/QUALITY_GATES.json",
+      "git_blob_sha": "f20aa6cd394c819b8a1a1151fe16ada6151c7c2b",
+      "bytes": 1495,
+      "proposed_disposition": "EXCLUDE_FROM_INITIAL_EXPORT_UNLESS_EXPLICITLY_INCLUDED"
+    },
+    {
+      "path": "status/REMAINING_SCOPE_RECONCILIATION.csv",
+      "git_blob_sha": "ac34861797a65105637da582f81530747cdf5e6a",
+      "bytes": 715572,
+      "proposed_disposition": "EXCLUDE_FROM_INITIAL_EXPORT_UNLESS_EXPLICITLY_INCLUDED"
+    },
+    {
+      "path": "status/REMEDIATION_REPORT_v1.0.md",
+      "git_blob_sha": "3bd6e45c255334220e0c66416101e747d8a72b58",
+      "bytes": 13295,
+      "proposed_disposition": "EXCLUDE_FROM_INITIAL_EXPORT_UNLESS_EXPLICITLY_INCLUDED"
+    },
+    {
+      "path": "status/REMEDIATION_ROUND_2_REPORT_v1.0.md",
+      "git_blob_sha": "cc65f69e6db0614de0db781366be19a074c8a298",
+      "bytes": 10540,
+      "proposed_disposition": "EXCLUDE_FROM_INITIAL_EXPORT_UNLESS_EXPLICITLY_INCLUDED"
+    },
+    {
+      "path": "status/REMEDIATION_ROUND_2_VALIDATION_v1.0.md",
+      "git_blob_sha": "4087e21f67bd9a388a24b409be709e7eb2d35c11",
+      "bytes": 14710,
+      "proposed_disposition": "EXCLUDE_FROM_INITIAL_EXPORT_UNLESS_EXPLICITLY_INCLUDED"
+    },
+    {
+      "path": "status/REMEDIATION_ROUND_3_REPORT_v1.0.md",
+      "git_blob_sha": "8cab914173de9326fe8994545c11bb6eb3aa07a1",
+      "bytes": 9793,
+      "proposed_disposition": "EXCLUDE_FROM_INITIAL_EXPORT_UNLESS_EXPLICITLY_INCLUDED"
+    },
+    {
+      "path": "status/REMEDIATION_ROUND_3_VALIDATION_v1.0.md",
+      "git_blob_sha": "27d188f301e39fe157d10550b8d8128547c4e823",
+      "bytes": 10489,
+      "proposed_disposition": "EXCLUDE_FROM_INITIAL_EXPORT_UNLESS_EXPLICITLY_INCLUDED"
+    },
+    {
+      "path": "status/SANITIZATION_CORRECTION_A01_v1.0.md",
+      "git_blob_sha": "144a260d0b7c02fd4e0ba13472923df099519c2a",
+      "bytes": 2601,
+      "proposed_disposition": "EXCLUDE_FROM_INITIAL_EXPORT_UNLESS_EXPLICITLY_INCLUDED"
+    },
+    {
+      "path": "status/SECRET_SCAN.json",
+      "git_blob_sha": "7ad07af627dc18b3f08972fafd4ce36f1723edbf",
+      "bytes": 1587,
+      "proposed_disposition": "EXCLUDE_FROM_INITIAL_EXPORT_UNLESS_EXPLICITLY_INCLUDED"
+    },
+    {
+      "path": "status/SESSION_HANDOFF.md",
+      "git_blob_sha": "11a922f7c0d0070d3370a8752502d18e175bfd20",
+      "bytes": 7828,
+      "proposed_disposition": "EXCLUDE_FROM_INITIAL_EXPORT_UNLESS_EXPLICITLY_INCLUDED"
+    },
+    {
+      "path": "status/SOURCE_AND_DOWNLOAD_HASHES.txt",
+      "git_blob_sha": "7c6c21eb4aab99266f042f2da026ee8c865a9e88",
+      "bytes": 5416,
+      "proposed_disposition": "EXCLUDE_FROM_INITIAL_EXPORT_UNLESS_EXPLICITLY_INCLUDED"
+    },
+    {
+      "path": "status/STATIC_SECURITY_SCAN.json",
+      "git_blob_sha": "0507f064a65c16995410ee336d7e2d0676b7953b",
+      "bytes": 923,
+      "proposed_disposition": "EXCLUDE_FROM_INITIAL_EXPORT_UNLESS_EXPLICITLY_INCLUDED"
+    },
+    {
+      "path": "status/VALIDATION_REPORT.md",
+      "git_blob_sha": "e60ac557e87131603d6b38492e9c24f64279eb3d",
+      "bytes": 8157,
+      "proposed_disposition": "EXCLUDE_FROM_INITIAL_EXPORT_UNLESS_EXPLICITLY_INCLUDED"
+    },
+    {
+      "path": "status/VULNERABILITY_AUDIT.json",
+      "git_blob_sha": "b4803ce5bb7eaba540b37556b86be51cac253470",
+      "bytes": 6574,
+      "proposed_disposition": "EXCLUDE_FROM_INITIAL_EXPORT_UNLESS_EXPLICITLY_INCLUDED"
+    },
+    {
+      "path": "status/WORKLOG.md",
+      "git_blob_sha": "84398fe05fe125c52ba32cec5bd81d9f5d5f2e52",
+      "bytes": 10011,
+      "proposed_disposition": "EXCLUDE_FROM_INITIAL_EXPORT_UNLESS_EXPLICITLY_INCLUDED"
+    },
+    {
+      "path": "status/reviews/INDEPENDENT_BOOTSTRAP_FINAL_RECHALLENGE_REVIEW_4cba657.md",
+      "git_blob_sha": "f96633701e632aebbc25235097f36747da4582ca",
+      "bytes": 45534,
+      "proposed_disposition": "EXCLUDE_FROM_INITIAL_EXPORT_UNLESS_EXPLICITLY_INCLUDED"
+    },
+    {
+      "path": "status/reviews/INDEPENDENT_BOOTSTRAP_RECHALLENGE_REVIEW_613bc658.md",
+      "git_blob_sha": "245fd62554f814ec14f845718d6a3a31759f26d5",
+      "bytes": 43881,
+      "proposed_disposition": "EXCLUDE_FROM_INITIAL_EXPORT_UNLESS_EXPLICITLY_INCLUDED"
+    },
+    {
+      "path": "status/reviews/INDEPENDENT_BOOTSTRAP_RECHALLENGE_REVIEW_613bc658.md.sha256",
+      "git_blob_sha": "73d9683bcd6bf60eb5cf4144c6abf663b0cedb10",
+      "bytes": 119,
+      "proposed_disposition": "EXCLUDE_FROM_INITIAL_EXPORT_UNLESS_EXPLICITLY_INCLUDED"
+    },
+    {
+      "path": "tests/conftest.py",
+      "git_blob_sha": "9d9c95431048f1e467aadb3f7b47ee3fcecd1b56",
+      "bytes": 5918,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "tests/negative/__init__.py",
+      "git_blob_sha": "3ab84e54c80efa7c8868fff1fecb1dd74ea86d88",
+      "bytes": 22,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "tests/negative/test_cli_workspace_authority.py",
+      "git_blob_sha": "8457557100c84e46a2f9818c5537611308f705e1",
+      "bytes": 4212,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "tests/negative/test_control_store_lexical_paths.py",
+      "git_blob_sha": "e964bec9ed64683eba649b5f0cf951cf31a2c2e1",
+      "bytes": 13016,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "tests/negative/test_doctor_interlock.py",
+      "git_blob_sha": "1078b6a7df8c321e552887d29ea7b062e963062c",
+      "bytes": 2825,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "tests/negative/test_duplicate_action_ids.py",
+      "git_blob_sha": "ca3bc8e5ab96c6517550586705355d158ee2655d",
+      "bytes": 1299,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "tests/negative/test_harness_transaction_boundaries.py",
+      "git_blob_sha": "a31b7021e62512d0d2770992b57c1d6bf4612771",
+      "bytes": 17287,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "tests/negative/test_identity_assurance_contract.py",
+      "git_blob_sha": "3bc2a06d7325f33a647421f388bf30a80a11f99c",
+      "bytes": 9532,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "tests/negative/test_invocation_receipts.py",
+      "git_blob_sha": "a5ae30045de046a74c482c21c4e33618b12ea207",
+      "bytes": 18590,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "tests/negative/test_path_boundaries.py",
+      "git_blob_sha": "1cfc33352967cb135a7cdc4f8fc450b43e64b51d",
+      "bytes": 1865,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "tests/negative/test_reportable_interlock.py",
+      "git_blob_sha": "9cf8401317174c4ef54f67be44a601e07fd93b2c",
+      "bytes": 6386,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "tests/negative/test_simulation_execution_boundary.py",
+      "git_blob_sha": "1272e7391306bf23bea40103fcb6e8bda4d000bc",
+      "bytes": 3376,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "tests/property/__init__.py",
+      "git_blob_sha": "98ede1069ba6952a1b4604fce8859b12cf90c5bf",
+      "bytes": 22,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "tests/property/test_authorization_binding.py",
+      "git_blob_sha": "2343da7f8deb78c2a939119b765d6a7ebb4ba858",
+      "bytes": 4916,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "tests/property/test_canonical_hashing.py",
+      "git_blob_sha": "6e9cb87ee208321eee0b0e59a7dde2d33912ce98",
+      "bytes": 2120,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "tests/property/test_environment_invariants.py",
+      "git_blob_sha": "23a65fd63535618f0c64fc4a4e6c526ecee1d1fe",
+      "bytes": 2205,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "tests/property/test_governor_admissibility.py",
+      "git_blob_sha": "fcce264625b3b1ee1aed9e982681abbc0373f69b",
+      "bytes": 2208,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "tests/property/test_path_jail_properties.py",
+      "git_blob_sha": "76bc41f4680614f6a488637f20e5f9e8afc402a6",
+      "bytes": 1601,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "tests/property/test_schema_properties.py",
+      "git_blob_sha": "0a8b44a38d47874d037638affc781e538cded48e",
+      "bytes": 1743,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "tests/reproducibility/__init__.py",
+      "git_blob_sha": "c89dadd32c667ff676cb38f8ae024331d3ea210c",
+      "bytes": 29,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "tests/reproducibility/test_diagnostic_replay.py",
+      "git_blob_sha": "2389dc3e5636a76de13d3e921076f236aa57fcb8",
+      "bytes": 43575,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "tests/reproducibility/test_parquet_bounded_ingestion.py",
+      "git_blob_sha": "f1f17a4c06874de083174424ef15c1b4748a0c08",
+      "bytes": 13416,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "tests/reproducibility/test_retained_json_bounds.py",
+      "git_blob_sha": "55751f8710a8142cf247e769f7da8d1f9d75ad98",
+      "bytes": 4063,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "tests/reproducibility/test_terminal_retained_depth.py",
+      "git_blob_sha": "ce47092f046efe0e8b2e58d91f1aad1e4615ed99",
+      "bytes": 15980,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "tests/reproducibility/test_verified_regeneration.py",
+      "git_blob_sha": "260dc8f269e8e2d1adf7e73f6f4fa63747f069e0",
+      "bytes": 5039,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "tests/scenario/__init__.py",
+      "git_blob_sha": "f333031a6db919905b76477412e33b1b08906b3e",
+      "bytes": 22,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "tests/scenario/test_comparison_plan.py",
+      "git_blob_sha": "a19bb19d996c84f3e3f8405ae49f059b25a23601",
+      "bytes": 9379,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "tests/scenario/test_defender_trace.py",
+      "git_blob_sha": "285387ef04461b8715eda3a95f6a9866ce8e1553",
+      "bytes": 5384,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "tests/scenario/test_diagnostic_artifacts.py",
+      "git_blob_sha": "82a0951626996b621534366d75ad618ddbfb71ec",
+      "bytes": 9593,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "tests/scenario/test_environment_dependencies.py",
+      "git_blob_sha": "f6a2eb49ccb1caa637e5608935dfbddaa5899bd4",
+      "bytes": 9841,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "tests/scenario/test_episode_metrics.py",
+      "git_blob_sha": "5c7720e3b569a65c680511d4ff84e5a448e760c1",
+      "bytes": 6512,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "tests/scenario/test_prospective_planner.py",
+      "git_blob_sha": "cdc813c0e6cd414715621f4771a437fccd242b28",
+      "bytes": 8692,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "tests/scenario/test_prospective_static.py",
+      "git_blob_sha": "57a709d436afeacb77f0861b1851fd8e42dcb989",
+      "bytes": 7381,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "tests/scenario/test_registered_metrics.py",
+      "git_blob_sha": "52be05412c3708fcfde51fb0f67d0c03d2454fa8",
+      "bytes": 8189,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "tests/scenario/test_second_scripted_scenario.py",
+      "git_blob_sha": "22a478b91a57a618ed5db86cb9a4442992ae0a60",
+      "bytes": 5165,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "tests/scenario/test_static_baseline.py",
+      "git_blob_sha": "be40da76b8aaf9dc974c5f486ed638e67007a46b",
+      "bytes": 4771,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "tests/scenario/test_verified_event_sequence.py",
+      "git_blob_sha": "eba0f44236f502755eef231e589b7d3b669faff9",
+      "bytes": 3856,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "tests/unit/__init__.py",
+      "git_blob_sha": "d8e96c603fb3de18e36e66b45f5d71650e9b4063",
+      "bytes": 18,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "tests/unit/test_defender_contract_and_boundaries.py",
+      "git_blob_sha": "1a3cdbfc8ef69cfb8909f90828dcc963e6ba8219",
+      "bytes": 2963,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "tests/unit/test_dependency_policy.py",
+      "git_blob_sha": "318d938062b4fcfe21f862ba5ad2420754000b23",
+      "bytes": 1186,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "tests/unit/test_diagnostic_records.py",
+      "git_blob_sha": "a1cd253feed96325813afefa758d91db7caf9d8c",
+      "bytes": 6821,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "tests/unit/test_environment_availability.py",
+      "git_blob_sha": "9200c67c95f52c77be3e01fe8213358e3c88a98b",
+      "bytes": 7425,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "tests/unit/test_frozen_protocol_state.py",
+      "git_blob_sha": "60f5c7d1a3ba068bc95f949ffe2ca2bc0e0a1904",
+      "bytes": 496,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "tests/unit/test_governed_configuration.py",
+      "git_blob_sha": "6a111a267515e75bcb6a981b8363f3bb9899936f",
+      "bytes": 8828,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "tests/unit/test_metrics_isolation.py",
+      "git_blob_sha": "4d4da4946fd2edec085240b5af945989cc758aa6",
+      "bytes": 1492,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "tests/unit/test_safety_governor.py",
+      "git_blob_sha": "d1879b730eb69fac718b29c6d0eb7910d23905e3",
+      "bytes": 2333,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "tests/unit/test_schema_and_yaml.py",
+      "git_blob_sha": "a717fb9419bcbc64a13b934c6cd1cdd86f3036f0",
+      "bytes": 2482,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "tests/unit/test_simulated_execution.py",
+      "git_blob_sha": "f2d84faa3e8cebd6fb54969036bba798ac2dfabb",
+      "bytes": 16645,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    },
+    {
+      "path": "uv.lock",
+      "git_blob_sha": "9a030df64f4d6dbe960f1fa526a399b211b05e27",
+      "bytes": 291171,
+      "proposed_disposition": "CANDIDATE_CODE_TEST_CONFIG_REQUIRES_RELEASE_REVIEW"
+    }
+  ]
+}

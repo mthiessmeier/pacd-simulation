@@ -1,0 +1,14 @@
+cff-version: 1.2.0
+message: "If you use the PACD simulator in research, please cite this software."
+type: software
+title: "PACD Simulation"
+authors:
+  - family-names: "Thiessmeier"
+    given-names: "Michael"
+version: "0.1.0"
+license: Apache-2.0
+repository-code: "https://github.com/mthiessmeier/pacd-simulation"
+abstract: >-
+  A local-first, CPU-only simulator for developing and inspecting guarded-agency
+  and polymorphic cyberdefense mechanisms using synthetic diagnostic scenarios.
+  Development evidence remains NON_REPORTABLE_DIAGNOSTIC.
