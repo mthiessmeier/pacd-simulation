@@ -126,7 +126,7 @@ The independent governor, in-memory broker and exact-state verification support 
 
 Start dependencies: WP00, WP01, WP05. Workstreams: SC-02, SC-06, SC-10, SC-11, SC-12, SC-17. Sources: TM layers 3,8–11 and 5–6, EC 4, MD MIS,SAF,GOV,OPS.
 
-The accepted guarded queue binds review to a concrete simulated action and rechecks dispatch authority. The [GOV-002 work order](work_orders/ESCALATION_ROUTING_v1.0.md) measures which escalations reach a terminal review with a complete bound package. The [operator review brief](work_orders/OPERATOR_REVIEW_BRIEF_v1.0.md) adds a rationale and conditional mission preview at admission. Modifications, overrides and richer uncertainty models remain open.
+The accepted guarded queue binds review to a concrete simulated action and rechecks dispatch authority. The [GOV-002 work order](work_orders/ESCALATION_ROUTING_v1.0.md) measures which escalations reach a terminal review with a complete bound package. The [operator review brief](work_orders/OPERATOR_REVIEW_BRIEF_v1.0.md) adds a rationale and conditional mission preview at admission. The [approval burden work order](work_orders/APPROVAL_BURDEN_v1.0.md) accounts for resolved and censored queue time by admitted request. Modifications, overrides and richer uncertainty models remain open.
 
 - Model review arrivals, capacity, delay, approval/denial/modification/override, timeout and expiry, with rationale, uncertainty/impact package and mission-command envelope.
 - Reevaluate authority after relevant state or policy changes; connect one reversible simulated action to actual execution, verification and mission consequences.

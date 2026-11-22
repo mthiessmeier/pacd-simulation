@@ -175,6 +175,11 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help="include escalation routing and terminal review outcomes for guarded episodes",
     )
+    metrics.add_argument(
+        "--approval-burden",
+        action="store_true",
+        help="include admitted review requests, waiting time and timeouts for guarded episodes",
+    )
     metrics.add_argument("--workspace-root", type=Path)
     return parser
 
@@ -292,6 +297,7 @@ def _verified_report_command(arguments: argparse.Namespace) -> int:
                     include_sensing_freshness=arguments.sensing_freshness,
                     include_mission_impact=arguments.mission_impact,
                     include_review_routing=arguments.review_routing,
+                    include_approval_burden=arguments.approval_burden,
                 )
             )
             return 0
@@ -304,6 +310,7 @@ def _verified_report_command(arguments: argparse.Namespace) -> int:
                 include_sensing_freshness=arguments.sensing_freshness,
                 include_mission_impact=arguments.mission_impact,
                 include_review_routing=arguments.review_routing,
+                include_approval_burden=arguments.approval_burden,
             )
             _emit_json(report)
             return 0
@@ -318,6 +325,7 @@ def _verified_report_command(arguments: argparse.Namespace) -> int:
         include_sensing_freshness=arguments.command == "metrics" and arguments.sensing_freshness,
         include_mission_impact=arguments.command == "metrics" and arguments.mission_impact,
         include_review_routing=arguments.command == "metrics" and arguments.review_routing,
+        include_approval_burden=arguments.command == "metrics" and arguments.approval_burden,
     )
     payload = verification.to_dict()
     if not verification.valid or material is None:

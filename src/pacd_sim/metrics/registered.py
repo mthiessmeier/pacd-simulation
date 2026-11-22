@@ -139,6 +139,7 @@ def _final_outcome(
     include_sensing_freshness: bool,
     include_mission_impact: bool,
     include_review_routing: bool,
+    include_approval_burden: bool,
 ) -> Outcome:
     if receipt:
         verified, summary = verify_run_with_summary(
@@ -149,6 +150,7 @@ def _final_outcome(
             include_sensing_freshness=include_sensing_freshness,
             include_mission_impact=include_mission_impact,
             include_review_routing=include_review_routing,
+            include_approval_burden=include_approval_burden,
         )
         if verified.valid and summary is not None and summary.episode.seed == attempt.seed:
             return Outcome(
@@ -210,6 +212,7 @@ def _observe(
     include_sensing_freshness: bool,
     include_mission_impact: bool,
     include_review_routing: bool,
+    include_approval_burden: bool,
 ) -> Outcome:
     key = attempt.invocation_id
     marker_path = assert_exact_control_path(
@@ -249,6 +252,7 @@ def _observe(
                 include_sensing_freshness=include_sensing_freshness,
                 include_mission_impact=include_mission_impact,
                 include_review_routing=include_review_routing,
+                include_approval_burden=include_approval_burden,
             )
         elif receipt or final:
             outcome = Outcome("INVALID", "conflicting_run_locations", run.run_id)
@@ -310,6 +314,7 @@ def registered_metrics(
     include_sensing_freshness: bool = False,
     include_mission_impact: bool = False,
     include_review_routing: bool = False,
+    include_approval_burden: bool = False,
 ) -> dict[str, object]:
     """Account for each declared attempt once, releasing counts only for verified completions."""
     register: ComparisonPlan | AttemptRegister
@@ -330,6 +335,7 @@ def registered_metrics(
                 include_sensing_freshness=include_sensing_freshness,
                 include_mission_impact=include_mission_impact,
                 include_review_routing=include_review_routing,
+                include_approval_burden=include_approval_burden,
             )
         except (OSError, ValueError, RecursionError):
             outcome = Outcome("INVALID", "invalid_invocation_evidence")
