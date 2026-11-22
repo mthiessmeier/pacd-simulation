@@ -61,7 +61,7 @@ from pacd_sim.harness.static_review import (
     static_review_candidate,
 )
 from pacd_sim.hypotheses.update import BeliefState, update_beliefs
-from pacd_sim.metrics.mission_impact import MissionSnapshot, mission_loss
+from pacd_sim.metrics.mission_impact import MissionSnapshot, critical_outage, mission_loss
 from pacd_sim.metrics.mission_recovery import mission_recovery
 from pacd_sim.metrics.summarize import SUMMARY_SCHEMA
 from pacd_sim.reproducibility.canonical import canonical_json_bytes, canonical_sha256
@@ -1155,6 +1155,7 @@ class RetainedEvidenceValidation:
     parquet_ingestion_failed: bool = False
     mission_impact: dict[str, object] | None = None
     mission_recovery: dict[str, object] | None = None
+    critical_outage: dict[str, object] | None = None
 
 
 @dataclass(frozen=True)
@@ -1722,6 +1723,7 @@ def validate_retained_evidence(
     repo_root: Path | str | None,
     include_mission_impact: bool = False,
     include_mission_recovery: bool = False,
+    include_critical_outage: bool = False,
 ) -> RetainedEvidenceValidation:
     """Validate retained evidence and return the sole bounded Parquet materialization."""
     errors: list[str] = []
@@ -1740,6 +1742,7 @@ def validate_retained_evidence(
     parquet_ingestion_failed = False
     impact = None
     recovery = None
+    outage = None
     try:
         repository = _resolve_repository(workspace, repo_root)
         document_names = (
@@ -1814,7 +1817,7 @@ def validate_retained_evidence(
                 document_identities=document_identities,
             )
         snapshots: list[MissionSnapshot] = []
-        if include_mission_impact or include_mission_recovery:
+        if include_mission_impact or include_mission_recovery or include_critical_outage:
             expected_rows = _expected_event_rows(
                 expected_config, cast(int, seed), mission_snapshots=snapshots
             )
@@ -1879,6 +1882,13 @@ def validate_retained_evidence(
                     recovery = mission_recovery(
                         [mission.id for mission in scenario.missions], snapshots, horizon
                     )
+                if include_critical_outage and scenario.critical_mission_ids is not None:
+                    outage = critical_outage(
+                        [mission.id for mission in scenario.missions],
+                        scenario.critical_mission_ids,
+                        snapshots,
+                        horizon,
+                    )
     except (
         ConfigurationError,
         OSError,
@@ -1911,4 +1921,5 @@ def validate_retained_evidence(
         parquet_ingestion_failed=parquet_ingestion_failed,
         mission_impact=impact,
         mission_recovery=recovery,
+        critical_outage=outage,
     )
