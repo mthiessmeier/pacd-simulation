@@ -48,6 +48,10 @@ CRITICAL_OUTAGE_FILES: Final = (
     "diagnostic_critical_outage_a.yaml",
     "diagnostic_critical_outage_b.yaml",
 )
+ENTERPRISE_POPULATION_FILES: Final = (
+    "diagnostic_enterprise_30.yaml",
+    "diagnostic_enterprise_100.yaml",
+)
 DIAGNOSTIC_SCENARIO_FILES: Final = (
     DEFAULT_SCENARIO_FILE,
     "diagnostic_maintenance_window.yaml",
@@ -62,6 +66,7 @@ DIAGNOSTIC_SCENARIO_FILES: Final = (
     *REVIEW_OVERRIDE_FILES,
     MISSION_RECOVERY_ROLLBACK_FILE,
     *CRITICAL_OUTAGE_FILES,
+    *ENTERPRISE_POPULATION_FILES,
 )
 
 
@@ -91,5 +96,6 @@ def diagnostic_pair_supported(scenario_file: str, defender_file: str) -> bool:
             *REVIEW_OVERRIDE_FILES,
             MISSION_RECOVERY_ROLLBACK_FILE,
             *CRITICAL_OUTAGE_FILES,
+            *ENTERPRISE_POPULATION_FILES,
         )
     return True

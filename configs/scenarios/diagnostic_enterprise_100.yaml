@@ -1,0 +1,431 @@
+evidence_label: NON_REPORTABLE_DIAGNOSTIC
+schema_version: "1.0"
+protocol_version: BOOTSTRAP_DRAFT_v1
+name: diagnostic_enterprise_100
+synthetic: true
+default_seed: 424242
+telemetry:
+  noise_standard_deviation: 0.0
+  delay_ticks: 1
+guarded_review:
+  capacity: 2
+  delay_ticks: 4
+  validity_ticks: 4
+  end_tick: 8
+  response: approve
+  rollback: false
+  matched_signal_mean: 0.9
+  override_policy: retain_approval
+  decision_brief: operator-preview-v1
+availability_model: required_dependencies_v1
+identities:
+  - {id: identity-001, role: synthetic_user}
+  - {id: identity-002, role: synthetic_user}
+  - {id: identity-003, role: synthetic_user}
+  - {id: identity-004, role: synthetic_user}
+  - {id: identity-005, role: synthetic_user}
+  - {id: identity-006, role: synthetic_user}
+  - {id: identity-007, role: synthetic_user}
+  - {id: identity-008, role: synthetic_user}
+  - {id: identity-009, role: synthetic_user}
+  - {id: identity-010, role: synthetic_user}
+  - {id: identity-011, role: synthetic_user}
+  - {id: identity-012, role: synthetic_user}
+  - {id: identity-013, role: synthetic_user}
+  - {id: identity-014, role: synthetic_user}
+  - {id: identity-015, role: synthetic_user}
+  - {id: identity-016, role: synthetic_user}
+  - {id: identity-017, role: synthetic_user}
+  - {id: identity-018, role: synthetic_user}
+  - {id: identity-019, role: synthetic_user}
+  - {id: identity-020, role: synthetic_user}
+  - {id: identity-021, role: synthetic_user}
+  - {id: identity-022, role: synthetic_user}
+  - {id: identity-023, role: synthetic_user}
+  - {id: identity-024, role: synthetic_user}
+  - {id: identity-025, role: synthetic_user}
+  - {id: identity-026, role: synthetic_user}
+  - {id: identity-027, role: synthetic_user}
+  - {id: identity-028, role: synthetic_user}
+  - {id: identity-029, role: synthetic_user}
+  - {id: identity-030, role: synthetic_user}
+  - {id: identity-031, role: synthetic_user}
+  - {id: identity-032, role: synthetic_user}
+  - {id: identity-033, role: synthetic_user}
+  - {id: identity-034, role: synthetic_user}
+  - {id: identity-035, role: synthetic_user}
+  - {id: identity-036, role: synthetic_user}
+  - {id: identity-037, role: synthetic_user}
+  - {id: identity-038, role: synthetic_user}
+  - {id: identity-039, role: synthetic_user}
+  - {id: identity-040, role: synthetic_user}
+  - {id: identity-041, role: synthetic_user}
+  - {id: identity-042, role: synthetic_user}
+  - {id: identity-043, role: synthetic_user}
+  - {id: identity-044, role: synthetic_user}
+  - {id: identity-045, role: synthetic_user}
+  - {id: identity-046, role: synthetic_user}
+  - {id: identity-047, role: synthetic_user}
+  - {id: identity-048, role: synthetic_user}
+  - {id: identity-049, role: synthetic_user}
+  - {id: identity-050, role: synthetic_user}
+  - {id: identity-051, role: synthetic_user}
+  - {id: identity-052, role: synthetic_user}
+  - {id: identity-053, role: synthetic_user}
+  - {id: identity-054, role: synthetic_user}
+  - {id: identity-055, role: synthetic_user}
+  - {id: identity-056, role: synthetic_user}
+  - {id: identity-057, role: synthetic_user}
+  - {id: identity-058, role: synthetic_user}
+  - {id: identity-059, role: synthetic_user}
+  - {id: identity-060, role: synthetic_user}
+  - {id: identity-061, role: synthetic_user}
+  - {id: identity-062, role: synthetic_user}
+  - {id: identity-063, role: synthetic_user}
+  - {id: identity-064, role: synthetic_user}
+  - {id: identity-065, role: synthetic_user}
+  - {id: identity-066, role: synthetic_user}
+  - {id: identity-067, role: synthetic_user}
+  - {id: identity-068, role: synthetic_user}
+  - {id: identity-069, role: synthetic_user}
+  - {id: identity-070, role: synthetic_user}
+  - {id: identity-071, role: synthetic_user}
+  - {id: identity-072, role: synthetic_user}
+  - {id: identity-073, role: synthetic_user}
+  - {id: identity-074, role: synthetic_user}
+  - {id: identity-075, role: synthetic_user}
+  - {id: identity-076, role: synthetic_user}
+  - {id: identity-077, role: synthetic_user}
+  - {id: identity-078, role: synthetic_user}
+  - {id: identity-079, role: synthetic_user}
+  - {id: identity-080, role: synthetic_user}
+  - {id: identity-081, role: synthetic_user}
+  - {id: identity-082, role: synthetic_user}
+  - {id: identity-083, role: synthetic_user}
+  - {id: identity-084, role: synthetic_user}
+  - {id: identity-085, role: synthetic_user}
+  - {id: identity-086, role: synthetic_user}
+  - {id: identity-087, role: synthetic_user}
+  - {id: identity-088, role: synthetic_user}
+  - {id: identity-089, role: synthetic_user}
+  - {id: identity-090, role: synthetic_user}
+  - {id: identity-091, role: synthetic_user}
+  - {id: identity-092, role: synthetic_user}
+  - {id: identity-093, role: synthetic_user}
+  - {id: identity-094, role: synthetic_user}
+  - {id: identity-095, role: synthetic_user}
+  - {id: identity-096, role: synthetic_user}
+  - {id: identity-097, role: synthetic_user}
+  - {id: identity-098, role: synthetic_user}
+  - {id: identity-099, role: synthetic_user}
+  - {id: identity-100, role: synthetic_user}
+sessions:
+  - {id: session-001, identity_id: identity-001, service_id: service-001}
+  - {id: session-002, identity_id: identity-002, service_id: service-002}
+  - {id: session-003, identity_id: identity-003, service_id: service-003}
+  - {id: session-004, identity_id: identity-004, service_id: service-004}
+  - {id: session-005, identity_id: identity-005, service_id: service-005}
+  - {id: session-006, identity_id: identity-006, service_id: service-006}
+  - {id: session-007, identity_id: identity-007, service_id: service-007}
+  - {id: session-008, identity_id: identity-008, service_id: service-008}
+  - {id: session-009, identity_id: identity-009, service_id: service-009}
+  - {id: session-010, identity_id: identity-010, service_id: service-010}
+  - {id: session-011, identity_id: identity-011, service_id: service-011}
+  - {id: session-012, identity_id: identity-012, service_id: service-012}
+  - {id: session-013, identity_id: identity-013, service_id: service-013}
+  - {id: session-014, identity_id: identity-014, service_id: service-014}
+  - {id: session-015, identity_id: identity-015, service_id: service-015}
+  - {id: session-016, identity_id: identity-016, service_id: service-016}
+  - {id: session-017, identity_id: identity-017, service_id: service-017}
+  - {id: session-018, identity_id: identity-018, service_id: service-018}
+  - {id: session-019, identity_id: identity-019, service_id: service-019}
+  - {id: session-020, identity_id: identity-020, service_id: service-020}
+  - {id: session-021, identity_id: identity-021, service_id: service-021}
+  - {id: session-022, identity_id: identity-022, service_id: service-022}
+  - {id: session-023, identity_id: identity-023, service_id: service-023}
+  - {id: session-024, identity_id: identity-024, service_id: service-024}
+  - {id: session-025, identity_id: identity-025, service_id: service-025}
+  - {id: session-026, identity_id: identity-026, service_id: service-026}
+  - {id: session-027, identity_id: identity-027, service_id: service-027}
+  - {id: session-028, identity_id: identity-028, service_id: service-028}
+  - {id: session-029, identity_id: identity-029, service_id: service-029}
+  - {id: session-030, identity_id: identity-030, service_id: service-030}
+  - {id: session-031, identity_id: identity-031, service_id: service-031}
+  - {id: session-032, identity_id: identity-032, service_id: service-032}
+  - {id: session-033, identity_id: identity-033, service_id: service-033}
+  - {id: session-034, identity_id: identity-034, service_id: service-034}
+  - {id: session-035, identity_id: identity-035, service_id: service-035}
+  - {id: session-036, identity_id: identity-036, service_id: service-036}
+  - {id: session-037, identity_id: identity-037, service_id: service-037}
+  - {id: session-038, identity_id: identity-038, service_id: service-038}
+  - {id: session-039, identity_id: identity-039, service_id: service-039}
+  - {id: session-040, identity_id: identity-040, service_id: service-040}
+  - {id: session-041, identity_id: identity-041, service_id: service-041}
+  - {id: session-042, identity_id: identity-042, service_id: service-042}
+  - {id: session-043, identity_id: identity-043, service_id: service-043}
+  - {id: session-044, identity_id: identity-044, service_id: service-044}
+  - {id: session-045, identity_id: identity-045, service_id: service-045}
+  - {id: session-046, identity_id: identity-046, service_id: service-046}
+  - {id: session-047, identity_id: identity-047, service_id: service-047}
+  - {id: session-048, identity_id: identity-048, service_id: service-048}
+  - {id: session-049, identity_id: identity-049, service_id: service-049}
+  - {id: session-050, identity_id: identity-050, service_id: service-050}
+  - {id: session-051, identity_id: identity-051, service_id: service-051}
+  - {id: session-052, identity_id: identity-052, service_id: service-052}
+  - {id: session-053, identity_id: identity-053, service_id: service-053}
+  - {id: session-054, identity_id: identity-054, service_id: service-054}
+  - {id: session-055, identity_id: identity-055, service_id: service-055}
+  - {id: session-056, identity_id: identity-056, service_id: service-056}
+  - {id: session-057, identity_id: identity-057, service_id: service-057}
+  - {id: session-058, identity_id: identity-058, service_id: service-058}
+  - {id: session-059, identity_id: identity-059, service_id: service-059}
+  - {id: session-060, identity_id: identity-060, service_id: service-060}
+  - {id: session-061, identity_id: identity-061, service_id: service-061}
+  - {id: session-062, identity_id: identity-062, service_id: service-062}
+  - {id: session-063, identity_id: identity-063, service_id: service-063}
+  - {id: session-064, identity_id: identity-064, service_id: service-064}
+  - {id: session-065, identity_id: identity-065, service_id: service-065}
+  - {id: session-066, identity_id: identity-066, service_id: service-066}
+  - {id: session-067, identity_id: identity-067, service_id: service-067}
+  - {id: session-068, identity_id: identity-068, service_id: service-068}
+  - {id: session-069, identity_id: identity-069, service_id: service-069}
+  - {id: session-070, identity_id: identity-070, service_id: service-070}
+  - {id: session-071, identity_id: identity-071, service_id: service-071}
+  - {id: session-072, identity_id: identity-072, service_id: service-072}
+  - {id: session-073, identity_id: identity-073, service_id: service-073}
+  - {id: session-074, identity_id: identity-074, service_id: service-074}
+  - {id: session-075, identity_id: identity-075, service_id: service-075}
+  - {id: session-076, identity_id: identity-076, service_id: service-076}
+  - {id: session-077, identity_id: identity-077, service_id: service-077}
+  - {id: session-078, identity_id: identity-078, service_id: service-078}
+  - {id: session-079, identity_id: identity-079, service_id: service-079}
+  - {id: session-080, identity_id: identity-080, service_id: service-080}
+  - {id: session-081, identity_id: identity-081, service_id: service-081}
+  - {id: session-082, identity_id: identity-082, service_id: service-082}
+  - {id: session-083, identity_id: identity-083, service_id: service-083}
+  - {id: session-084, identity_id: identity-084, service_id: service-084}
+  - {id: session-085, identity_id: identity-085, service_id: service-085}
+  - {id: session-086, identity_id: identity-086, service_id: service-086}
+  - {id: session-087, identity_id: identity-087, service_id: service-087}
+  - {id: session-088, identity_id: identity-088, service_id: service-088}
+  - {id: session-089, identity_id: identity-089, service_id: service-089}
+  - {id: session-090, identity_id: identity-090, service_id: service-090}
+  - {id: session-091, identity_id: identity-091, service_id: service-091}
+  - {id: session-092, identity_id: identity-092, service_id: service-092}
+  - {id: session-093, identity_id: identity-093, service_id: service-093}
+  - {id: session-094, identity_id: identity-094, service_id: service-094}
+  - {id: session-095, identity_id: identity-095, service_id: service-095}
+  - {id: session-096, identity_id: identity-096, service_id: service-096}
+  - {id: session-097, identity_id: identity-097, service_id: service-097}
+  - {id: session-098, identity_id: identity-098, service_id: service-098}
+  - {id: session-099, identity_id: identity-099, service_id: service-099}
+  - {id: session-100, identity_id: identity-100, service_id: service-100}
+services:
+  - {id: service-001, mission_id: mission-reference}
+  - {id: service-002, mission_id: mission-reference}
+  - {id: service-003, mission_id: mission-reference}
+  - {id: service-004, mission_id: mission-reference}
+  - {id: service-005, mission_id: mission-reference}
+  - {id: service-006, mission_id: mission-reference}
+  - {id: service-007, mission_id: mission-reference}
+  - {id: service-008, mission_id: mission-reference}
+  - {id: service-009, mission_id: mission-reference}
+  - {id: service-010, mission_id: mission-reference}
+  - {id: service-011, mission_id: mission-reference}
+  - {id: service-012, mission_id: mission-reference}
+  - {id: service-013, mission_id: mission-reference}
+  - {id: service-014, mission_id: mission-reference}
+  - {id: service-015, mission_id: mission-reference}
+  - {id: service-016, mission_id: mission-reference}
+  - {id: service-017, mission_id: mission-reference}
+  - {id: service-018, mission_id: mission-reference}
+  - {id: service-019, mission_id: mission-reference}
+  - {id: service-020, mission_id: mission-reference}
+  - {id: service-021, mission_id: mission-reference}
+  - {id: service-022, mission_id: mission-reference}
+  - {id: service-023, mission_id: mission-reference}
+  - {id: service-024, mission_id: mission-reference}
+  - {id: service-025, mission_id: mission-reference}
+  - {id: service-026, mission_id: mission-reference}
+  - {id: service-027, mission_id: mission-reference}
+  - {id: service-028, mission_id: mission-reference}
+  - {id: service-029, mission_id: mission-reference}
+  - {id: service-030, mission_id: mission-reference}
+  - {id: service-031, mission_id: mission-reference}
+  - {id: service-032, mission_id: mission-reference}
+  - {id: service-033, mission_id: mission-reference}
+  - {id: service-034, mission_id: mission-reference}
+  - {id: service-035, mission_id: mission-reference}
+  - {id: service-036, mission_id: mission-reference}
+  - {id: service-037, mission_id: mission-reference}
+  - {id: service-038, mission_id: mission-reference}
+  - {id: service-039, mission_id: mission-reference}
+  - {id: service-040, mission_id: mission-reference}
+  - {id: service-041, mission_id: mission-reference}
+  - {id: service-042, mission_id: mission-reference}
+  - {id: service-043, mission_id: mission-reference}
+  - {id: service-044, mission_id: mission-reference}
+  - {id: service-045, mission_id: mission-reference}
+  - {id: service-046, mission_id: mission-reference}
+  - {id: service-047, mission_id: mission-reference}
+  - {id: service-048, mission_id: mission-reference}
+  - {id: service-049, mission_id: mission-reference}
+  - {id: service-050, mission_id: mission-reference}
+  - {id: service-051, mission_id: mission-reference}
+  - {id: service-052, mission_id: mission-reference}
+  - {id: service-053, mission_id: mission-reference}
+  - {id: service-054, mission_id: mission-reference}
+  - {id: service-055, mission_id: mission-reference}
+  - {id: service-056, mission_id: mission-reference}
+  - {id: service-057, mission_id: mission-reference}
+  - {id: service-058, mission_id: mission-reference}
+  - {id: service-059, mission_id: mission-reference}
+  - {id: service-060, mission_id: mission-reference}
+  - {id: service-061, mission_id: mission-reference}
+  - {id: service-062, mission_id: mission-reference}
+  - {id: service-063, mission_id: mission-reference}
+  - {id: service-064, mission_id: mission-reference}
+  - {id: service-065, mission_id: mission-reference}
+  - {id: service-066, mission_id: mission-reference}
+  - {id: service-067, mission_id: mission-reference}
+  - {id: service-068, mission_id: mission-reference}
+  - {id: service-069, mission_id: mission-reference}
+  - {id: service-070, mission_id: mission-reference}
+  - {id: service-071, mission_id: mission-reference}
+  - {id: service-072, mission_id: mission-reference}
+  - {id: service-073, mission_id: mission-reference}
+  - {id: service-074, mission_id: mission-reference}
+  - {id: service-075, mission_id: mission-reference}
+  - {id: service-076, mission_id: mission-reference}
+  - {id: service-077, mission_id: mission-reference}
+  - {id: service-078, mission_id: mission-reference}
+  - {id: service-079, mission_id: mission-reference}
+  - {id: service-080, mission_id: mission-reference}
+  - {id: service-081, mission_id: mission-reference}
+  - {id: service-082, mission_id: mission-reference}
+  - {id: service-083, mission_id: mission-reference}
+  - {id: service-084, mission_id: mission-reference}
+  - {id: service-085, mission_id: mission-reference}
+  - {id: service-086, mission_id: mission-reference}
+  - {id: service-087, mission_id: mission-reference}
+  - {id: service-088, mission_id: mission-reference}
+  - {id: service-089, mission_id: mission-reference}
+  - {id: service-090, mission_id: mission-reference}
+  - {id: service-091, mission_id: mission-reference}
+  - {id: service-092, mission_id: mission-reference}
+  - {id: service-093, mission_id: mission-reference}
+  - {id: service-094, mission_id: mission-reference}
+  - {id: service-095, mission_id: mission-reference}
+  - {id: service-096, mission_id: mission-reference}
+  - {id: service-097, mission_id: mission-reference}
+  - {id: service-098, mission_id: mission-reference}
+  - {id: service-099, mission_id: mission-reference}
+  - {id: service-100, mission_id: mission-target}
+missions:
+  - {id: mission-reference, criticality: 0.5}
+  - {id: mission-target, criticality: 0.5}
+dependencies:
+  - {id: dependency-001, upstream_id: session-001, downstream_id: service-001, weight: 1.0}
+  - {id: dependency-002, upstream_id: session-002, downstream_id: service-002, weight: 1.0}
+  - {id: dependency-003, upstream_id: session-003, downstream_id: service-003, weight: 1.0}
+  - {id: dependency-004, upstream_id: session-004, downstream_id: service-004, weight: 1.0}
+  - {id: dependency-005, upstream_id: session-005, downstream_id: service-005, weight: 1.0}
+  - {id: dependency-006, upstream_id: session-006, downstream_id: service-006, weight: 1.0}
+  - {id: dependency-007, upstream_id: session-007, downstream_id: service-007, weight: 1.0}
+  - {id: dependency-008, upstream_id: session-008, downstream_id: service-008, weight: 1.0}
+  - {id: dependency-009, upstream_id: session-009, downstream_id: service-009, weight: 1.0}
+  - {id: dependency-010, upstream_id: session-010, downstream_id: service-010, weight: 1.0}
+  - {id: dependency-011, upstream_id: session-011, downstream_id: service-011, weight: 1.0}
+  - {id: dependency-012, upstream_id: session-012, downstream_id: service-012, weight: 1.0}
+  - {id: dependency-013, upstream_id: session-013, downstream_id: service-013, weight: 1.0}
+  - {id: dependency-014, upstream_id: session-014, downstream_id: service-014, weight: 1.0}
+  - {id: dependency-015, upstream_id: session-015, downstream_id: service-015, weight: 1.0}
+  - {id: dependency-016, upstream_id: session-016, downstream_id: service-016, weight: 1.0}
+  - {id: dependency-017, upstream_id: session-017, downstream_id: service-017, weight: 1.0}
+  - {id: dependency-018, upstream_id: session-018, downstream_id: service-018, weight: 1.0}
+  - {id: dependency-019, upstream_id: session-019, downstream_id: service-019, weight: 1.0}
+  - {id: dependency-020, upstream_id: session-020, downstream_id: service-020, weight: 1.0}
+  - {id: dependency-021, upstream_id: session-021, downstream_id: service-021, weight: 1.0}
+  - {id: dependency-022, upstream_id: session-022, downstream_id: service-022, weight: 1.0}
+  - {id: dependency-023, upstream_id: session-023, downstream_id: service-023, weight: 1.0}
+  - {id: dependency-024, upstream_id: session-024, downstream_id: service-024, weight: 1.0}
+  - {id: dependency-025, upstream_id: session-025, downstream_id: service-025, weight: 1.0}
+  - {id: dependency-026, upstream_id: session-026, downstream_id: service-026, weight: 1.0}
+  - {id: dependency-027, upstream_id: session-027, downstream_id: service-027, weight: 1.0}
+  - {id: dependency-028, upstream_id: session-028, downstream_id: service-028, weight: 1.0}
+  - {id: dependency-029, upstream_id: session-029, downstream_id: service-029, weight: 1.0}
+  - {id: dependency-030, upstream_id: session-030, downstream_id: service-030, weight: 1.0}
+  - {id: dependency-031, upstream_id: session-031, downstream_id: service-031, weight: 1.0}
+  - {id: dependency-032, upstream_id: session-032, downstream_id: service-032, weight: 1.0}
+  - {id: dependency-033, upstream_id: session-033, downstream_id: service-033, weight: 1.0}
+  - {id: dependency-034, upstream_id: session-034, downstream_id: service-034, weight: 1.0}
+  - {id: dependency-035, upstream_id: session-035, downstream_id: service-035, weight: 1.0}
+  - {id: dependency-036, upstream_id: session-036, downstream_id: service-036, weight: 1.0}
+  - {id: dependency-037, upstream_id: session-037, downstream_id: service-037, weight: 1.0}
+  - {id: dependency-038, upstream_id: session-038, downstream_id: service-038, weight: 1.0}
+  - {id: dependency-039, upstream_id: session-039, downstream_id: service-039, weight: 1.0}
+  - {id: dependency-040, upstream_id: session-040, downstream_id: service-040, weight: 1.0}
+  - {id: dependency-041, upstream_id: session-041, downstream_id: service-041, weight: 1.0}
+  - {id: dependency-042, upstream_id: session-042, downstream_id: service-042, weight: 1.0}
+  - {id: dependency-043, upstream_id: session-043, downstream_id: service-043, weight: 1.0}
+  - {id: dependency-044, upstream_id: session-044, downstream_id: service-044, weight: 1.0}
+  - {id: dependency-045, upstream_id: session-045, downstream_id: service-045, weight: 1.0}
+  - {id: dependency-046, upstream_id: session-046, downstream_id: service-046, weight: 1.0}
+  - {id: dependency-047, upstream_id: session-047, downstream_id: service-047, weight: 1.0}
+  - {id: dependency-048, upstream_id: session-048, downstream_id: service-048, weight: 1.0}
+  - {id: dependency-049, upstream_id: session-049, downstream_id: service-049, weight: 1.0}
+  - {id: dependency-050, upstream_id: session-050, downstream_id: service-050, weight: 1.0}
+  - {id: dependency-051, upstream_id: session-051, downstream_id: service-051, weight: 1.0}
+  - {id: dependency-052, upstream_id: session-052, downstream_id: service-052, weight: 1.0}
+  - {id: dependency-053, upstream_id: session-053, downstream_id: service-053, weight: 1.0}
+  - {id: dependency-054, upstream_id: session-054, downstream_id: service-054, weight: 1.0}
+  - {id: dependency-055, upstream_id: session-055, downstream_id: service-055, weight: 1.0}
+  - {id: dependency-056, upstream_id: session-056, downstream_id: service-056, weight: 1.0}
+  - {id: dependency-057, upstream_id: session-057, downstream_id: service-057, weight: 1.0}
+  - {id: dependency-058, upstream_id: session-058, downstream_id: service-058, weight: 1.0}
+  - {id: dependency-059, upstream_id: session-059, downstream_id: service-059, weight: 1.0}
+  - {id: dependency-060, upstream_id: session-060, downstream_id: service-060, weight: 1.0}
+  - {id: dependency-061, upstream_id: session-061, downstream_id: service-061, weight: 1.0}
+  - {id: dependency-062, upstream_id: session-062, downstream_id: service-062, weight: 1.0}
+  - {id: dependency-063, upstream_id: session-063, downstream_id: service-063, weight: 1.0}
+  - {id: dependency-064, upstream_id: session-064, downstream_id: service-064, weight: 1.0}
+  - {id: dependency-065, upstream_id: session-065, downstream_id: service-065, weight: 1.0}
+  - {id: dependency-066, upstream_id: session-066, downstream_id: service-066, weight: 1.0}
+  - {id: dependency-067, upstream_id: session-067, downstream_id: service-067, weight: 1.0}
+  - {id: dependency-068, upstream_id: session-068, downstream_id: service-068, weight: 1.0}
+  - {id: dependency-069, upstream_id: session-069, downstream_id: service-069, weight: 1.0}
+  - {id: dependency-070, upstream_id: session-070, downstream_id: service-070, weight: 1.0}
+  - {id: dependency-071, upstream_id: session-071, downstream_id: service-071, weight: 1.0}
+  - {id: dependency-072, upstream_id: session-072, downstream_id: service-072, weight: 1.0}
+  - {id: dependency-073, upstream_id: session-073, downstream_id: service-073, weight: 1.0}
+  - {id: dependency-074, upstream_id: session-074, downstream_id: service-074, weight: 1.0}
+  - {id: dependency-075, upstream_id: session-075, downstream_id: service-075, weight: 1.0}
+  - {id: dependency-076, upstream_id: session-076, downstream_id: service-076, weight: 1.0}
+  - {id: dependency-077, upstream_id: session-077, downstream_id: service-077, weight: 1.0}
+  - {id: dependency-078, upstream_id: session-078, downstream_id: service-078, weight: 1.0}
+  - {id: dependency-079, upstream_id: session-079, downstream_id: service-079, weight: 1.0}
+  - {id: dependency-080, upstream_id: session-080, downstream_id: service-080, weight: 1.0}
+  - {id: dependency-081, upstream_id: session-081, downstream_id: service-081, weight: 1.0}
+  - {id: dependency-082, upstream_id: session-082, downstream_id: service-082, weight: 1.0}
+  - {id: dependency-083, upstream_id: session-083, downstream_id: service-083, weight: 1.0}
+  - {id: dependency-084, upstream_id: session-084, downstream_id: service-084, weight: 1.0}
+  - {id: dependency-085, upstream_id: session-085, downstream_id: service-085, weight: 1.0}
+  - {id: dependency-086, upstream_id: session-086, downstream_id: service-086, weight: 1.0}
+  - {id: dependency-087, upstream_id: session-087, downstream_id: service-087, weight: 1.0}
+  - {id: dependency-088, upstream_id: session-088, downstream_id: service-088, weight: 1.0}
+  - {id: dependency-089, upstream_id: session-089, downstream_id: service-089, weight: 1.0}
+  - {id: dependency-090, upstream_id: session-090, downstream_id: service-090, weight: 1.0}
+  - {id: dependency-091, upstream_id: session-091, downstream_id: service-091, weight: 1.0}
+  - {id: dependency-092, upstream_id: session-092, downstream_id: service-092, weight: 1.0}
+  - {id: dependency-093, upstream_id: session-093, downstream_id: service-093, weight: 1.0}
+  - {id: dependency-094, upstream_id: session-094, downstream_id: service-094, weight: 1.0}
+  - {id: dependency-095, upstream_id: session-095, downstream_id: service-095, weight: 1.0}
+  - {id: dependency-096, upstream_id: session-096, downstream_id: service-096, weight: 1.0}
+  - {id: dependency-097, upstream_id: session-097, downstream_id: service-097, weight: 1.0}
+  - {id: dependency-098, upstream_id: session-098, downstream_id: service-098, weight: 1.0}
+  - {id: dependency-099, upstream_id: session-099, downstream_id: service-099, weight: 1.0}
+  - {id: dependency-100, upstream_id: session-100, downstream_id: service-100, weight: 1.0}
+events:
+  - {id: event-a, tick: 1, kind: benign_administrative, identity_id: identity-100}
+  - {id: event-b, tick: 4, kind: benign_administrative, identity_id: identity-001}
+actions: []
