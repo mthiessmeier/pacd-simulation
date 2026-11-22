@@ -1,5 +1,15 @@
 # PACD Simulation
 
+## License
+
+Copyright 2026 Michael Thiessmeier. The simulator software and associated technical
+documentation identified in [LICENSING.md](LICENSING.md) are licensed under the
+[Apache License 2.0](LICENSE). [NOTICE](NOTICE) records attribution and
+[CITATION.cff](CITATION.cff) supplies software citation metadata. Separate research,
+book, commercial-architecture and internal workflow materials retain their
+separate status as described in the licensing scope.
+
+
 **Reproduce the final Phase 2 work sample at accepted main [`d5a2969`](https://github.com/mthiessmeier/pacd-simulation/commit/d5a29699e14409bfd54d30c51117c81077639ee6).**
 Run the [checkout](#reconstruct-inside-the-bounded-workspace) and [diagnostic](#run-the-diagnostic)
 blocks in order in the same PowerShell session. The walkthrough registers two attempts and
