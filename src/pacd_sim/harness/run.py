@@ -50,6 +50,8 @@ from pacd_sim.defenders.pacd.diagnostic import DiagnosticPACDDefender
 from pacd_sim.engine.scheduler import DeterministicScheduler, ScheduledEvent
 from pacd_sim.environment.availability import continuity_transition, evaluate_availability
 from pacd_sim.environment.model import (
+    Asset,
+    Credential,
     Dependency,
     EnvironmentState,
     Identity,
@@ -445,6 +447,10 @@ def _build_environment(
         config = ScenarioConfig.model_validate(scenario)
         return EnvironmentState(
             configuration_version=protocol_version,
+            assets=tuple(
+                Asset(configuration_version=protocol_version, **item.model_dump())
+                for item in config.assets or ()
+            ),
             identities=tuple(
                 Identity(configuration_version=protocol_version, **item.model_dump())
                 for item in config.identities
@@ -452,6 +458,10 @@ def _build_environment(
             sessions=tuple(
                 Session(configuration_version=protocol_version, **item.model_dump())
                 for item in config.sessions
+            ),
+            credentials=tuple(
+                Credential(configuration_version=protocol_version, **item.model_dump())
+                for item in config.credentials or ()
             ),
             services=tuple(
                 Service(configuration_version=protocol_version, **item.model_dump())
