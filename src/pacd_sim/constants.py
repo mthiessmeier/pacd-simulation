@@ -34,6 +34,7 @@ MISSION_WEIGHT_SCENARIO_FILES: Final = (
     "diagnostic_mission_core_high.yaml",
     "diagnostic_mission_core_low.yaml",
 )
+REVIEW_CONTENTION_FILE: Final = "diagnostic_review_contention.yaml"
 DIAGNOSTIC_SCENARIO_FILES: Final = (
     DEFAULT_SCENARIO_FILE,
     "diagnostic_maintenance_window.yaml",
@@ -41,6 +42,7 @@ DIAGNOSTIC_SCENARIO_FILES: Final = (
     *GUARDED_SCENARIO_FILES,
     *SENSING_SCENARIO_FILES,
     *MISSION_WEIGHT_SCENARIO_FILES,
+    REVIEW_CONTENTION_FILE,
 )
 
 
@@ -61,5 +63,9 @@ def diagnostic_pair_supported(scenario_file: str, defender_file: str) -> bool:
     if scenario_file == "diagnostic_sensing_delayed.yaml":
         return defender_file in SELECTION_BASELINE_FILES
     if defender_file == DEFAULT_BASELINE_FILE:
-        return scenario_file not in (*GUARDED_SCENARIO_FILES, *MISSION_WEIGHT_SCENARIO_FILES)
+        return scenario_file not in (
+            *GUARDED_SCENARIO_FILES,
+            *MISSION_WEIGHT_SCENARIO_FILES,
+            REVIEW_CONTENTION_FILE,
+        )
     return True
