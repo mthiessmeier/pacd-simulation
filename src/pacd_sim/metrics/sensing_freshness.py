@@ -72,7 +72,7 @@ def sensing_freshness_metrics(
     contextual = condition == CONTEXTUAL
     decisions: dict[str, _Support] = {}
     candidates: dict[str, _Support | None] = {}
-    requests: dict[tuple[str, str, str], _Support | None] = {}
+    request_support: dict[tuple[str, str, str], _Support | None] = {}
     candidate_actions: list[dict[str, object]] = []
     executions: list[dict[str, object]] = []
     for row in rows:
@@ -108,10 +108,10 @@ def sensing_freshness_metrics(
             digest = record["request_digest"]
             if row["outcome"] == "pending":
                 action = record["binding"]["action"]["id"]
-                requests[referral, digest, action] = candidates.get(referral)
+                request_support[referral, digest, action] = candidates.get(referral)
             else:
                 action = record["policy_decision"]["action_id"]
-                support = requests.get((referral, digest, action))
+                support = request_support.get((referral, digest, action))
                 executions.append(
                     {
                         "referral_id": referral,
