@@ -4,7 +4,7 @@ TM-019 calls for a rationale, uncertainty and impact preview at human review. TM
 
 ## Contract
 
-The evaluator may select `guarded_review.decision_brief: operator-preview-v1` in a governed scenario. On successful queue admission, retain the operator brief inside the concrete request binding. The request digest covers it and follows the same request through review. Keep the original contract for configurations that omit this setting. A refusal or a full queue creates no admitted package.
+The evaluator may select `guarded_review.decision_brief: operator-preview-v1` in a governed scenario. On successful queue admission, retain the operator brief inside the concrete request binding. The request digest covers it and follows the same request through review. Keep the original contract for configurations that omit this setting. A full queue, an ineligible request or a brief too large for the existing audit payload limit records an admission failure. No partial package enters the queue.
 
 Give the reviewer the governor's reason, the concrete proposed change and its synthetic target, the delivered signal and its age, and the limitations of the available evidence. The sensor model generates one reading per event from one source. Use opaque observation and source keys and the acquisition and delivery clock. The normalized evidence category, class-derived confidence, hidden event label, future measurements, configured review response and eventual dispatch outcome are outside the reviewer’s information set.
 
@@ -17,7 +17,7 @@ Project the immediate mission effect conditional on the proposed action receivin
 3. Challenge visible-input equivalence under changed hidden labels and future outcomes, delivery age, missing or mismatched observations and rejection paths. Check the fresh governor decision and unchanged execution path after review. Verify GOV-002 reconciles both binding versions and prior defaults, pinned plans and registers still reproduce.
 4. Run the frozen suite and separate exact-revision reviews. Record command, configuration, seed, invocation, revision and evidence identities. Keep results classified `NON_REPORTABLE_DIAGNOSTIC`.
 
-Inspect a retained diagnostic using `pacd-sim verify RUN_DIR`. In the verified `raw/events.jsonl`, the `guarded_review` row with outcome `pending` carries the operator view at `payload.binding.operator_brief`. The outer binding carries the evaluator's provenance. A simulated decision remains subject to the governor and the dispatch pre-state check.
+Inspect a retained diagnostic using `pacd-sim verify RUN_DIR`. In the verified `raw/events.jsonl`, the `guarded_review` row with outcome `pending` carries a JSON-encoded `payload_json` field. Decode this field and read `binding.operator_brief`. The outer binding carries the evaluator's provenance. A simulated decision remains subject to the governor and the dispatch pre-state check.
 
 ## Remaining work
 
