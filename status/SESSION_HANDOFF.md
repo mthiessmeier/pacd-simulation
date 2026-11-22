@@ -1,6 +1,6 @@
 # PACD session handoff - WP07 sensing-profile operator
 
-**Evidence class** `NON_REPORTABLE_DIAGNOSTIC`. Owner instruction authorized merging PR #14 at one exact head and then implementing the next authorized increment for independent review. The release of a single development operator follows the sequencing in the [remaining implementation plan](../docs/REMAINING_IMPLEMENTATION_PLAN.md). See the [WP07 work order](../docs/work_orders/SENSING_PROFILE_OPERATOR_v1.0.md) and the [source ledger](REMAINING_SCOPE_RECONCILIATION.csv).
+**Evidence class** `NON_REPORTABLE_DIAGNOSTIC`. Owner instruction authorized merging PR #14 at one exact head and then implementing the next authorized increment for independent review. The choice of a single development operator follows the sequencing in the [remaining implementation plan](../docs/REMAINING_IMPLEMENTATION_PLAN.md). See the [WP07 work order](../docs/work_orders/SENSING_PROFILE_OPERATOR_v1.0.md) and the [source ledger](REMAINING_SCOPE_RECONCILIATION.csv).
 
 ## Verified starting state
 
@@ -14,8 +14,12 @@
 | Governing controls | Current root AGENTS.md, decision log, DEC-037/038 continuation and owner instruction. The simulator license adopted on main is Apache-2.0 within LICENSING.md. |
 | Inputs and environment | Frozen uv 0.12.5, CPython 3.13.15. The prior acceptance and all broader residuals remain available in the [WP05/WP06 handoff](https://github.com/mthiessmeier/pacd-simulation/blob/18f3364775ad379b73b4b1ea958b125e4ace31cf/status/SESSION_HANDOFF.md). |
 
+Clean post-merge checkout `repo/wp14-merged-main-check` passed the full frozen suite with 442 passed and one Windows directory-symlink privilege skip. The lock SHA-256 was `2ed6b7134df13ce28adaed91bbed4198251fb98e46618f98608cfb8db6047b69`. The retained command output is `review/wp07-sensing/main-pytest.log`.
+
+[Draft PR #15](https://github.com/mthiessmeier/pacd-simulation/pull/15) opened with implementation commit `ad16f1f27dfaad5aad967ad759575dfea5dfc6d4` following work order `bb211268ee7d069917f51e5a3b1df828199b547b`. This additive checkpoint identifies the code under review. The PR records the final candidate SHA, checks and disposition. Initial checks passed 71 domain tests, 62 governed configuration and sensing selector tests, 81 replay/metrics/comparison tests, and seven matched-integration and schema checks. Some tests overlap across these groups.
+
 ## Checkpoint
 
 The first deliverable is a synthetic, reversible sensing-profile switch with fixed, adaptive and disabled choices, one evaluator-owned decision opportunity, cost budget, clock, and a declared passive-observer knowledge model. Public execution and verification use the normal guarded, receipt-backed diagnostic infrastructure. Broader scope and separate reportable and human-study gates are retained.
 
-Local commands, raw evidence and review outcomes belong under the dedicated workspace's `review/wp07-sensing` and candidate-specific review directories. The PR records the exact candidate SHA, gate results and independent disposition without requiring a self-referential commit. Next action is to finish the bounded implementation, run exact-head checks, and deliver an unmerged PR for independent review.
+Local commands, raw evidence and review outcomes belong under the dedicated workspace's `review/wp07-sensing` and candidate-specific review directories. The PR records the exact candidate SHA, gate results and independent disposition without requiring a self-referential commit. The candidate requires the scoped independent review and gate evidence recorded on its PR. Merge requires an exact-head owner decision. WP08 and WP09 retain portfolio and coordination work with the start and closure dependencies in the remaining plan.
