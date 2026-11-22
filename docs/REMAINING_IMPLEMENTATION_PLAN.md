@@ -170,6 +170,8 @@ An accepted threshold rule or one operator would not establish full candidate po
 - Component isolation, extreme values, hostile costs and policy transitions have defined behavior.
 - Observed coordinated benefits remain development observations until separate reportable evaluation.
 
+The [prospective sensing selection work order](work_orders/PROSPECTIVE_SENSING_SELECTION_v1.0.md) binds the WP03 evidence prefix to one governed sensing choice and a default fallback. The six-class portfolio, broader utility components and coordination remain open.
+
 ## WP09 · Integrate specialist proposals and multi-agent arbitration
 
 Start dependencies: WP00, WP05, WP08. Workstreams: SC-09, SC-08, SC-10, SC-17. Sources: WO 6.4, TM layer 7 and 6, FM 5, MD OPS-002,POL-007.

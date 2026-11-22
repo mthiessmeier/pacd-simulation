@@ -35,16 +35,26 @@ class EvidenceReading(StrictFrozenModel):
 
 def evidence_trace(readings: tuple[EvidenceReading, ...]) -> dict[str, object]:
     """Account for fresh source presence per subject in delivery order, without scoring belief."""
+    _, trace = evidence_trace_with_readings(readings)
+    return trace
+
+
+def evidence_trace_with_readings(
+    readings: tuple[EvidenceReading, ...],
+) -> tuple[tuple[EvidenceReading, ...], dict[str, object]]:
+    """Return the validated deliveries used to construct the trace and its digest."""
     if len(readings) > MAX_READINGS:
         raise ValueError(f"evidence trace is limited to {MAX_READINGS} readings")
+    validated: list[EvidenceReading] = []
     seen: dict[int, EvidenceReading] = {}
     # Measurements delivered out of acquisition order must not shorten a source's lifetime.
     latest_measurement: dict[tuple[str, int], int] = {}
     decisions: list[dict[str, object]] = []
     clock = 0
     for item in readings:
-        # Pydantic model_copy updates can bypass field validation on a frozen instance.
+        # model_copy can bypass validation. Consumers must use the values hashed in the trace.
         reading = EvidenceReading.model_validate(item)
+        validated.append(reading)
         prior = seen.get(reading.observation_key)
         if prior is not None and prior != reading:
             raise ValueError("conflicting reuse of an observation key")
@@ -94,4 +104,4 @@ def evidence_trace(readings: tuple[EvidenceReading, ...]) -> dict[str, object]:
         "decisions": decisions,
     }
     trace["trace_sha256"] = canonical_sha256(trace)
-    return trace
+    return tuple(validated), trace

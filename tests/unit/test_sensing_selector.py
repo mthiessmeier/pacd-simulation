@@ -9,8 +9,10 @@ from conftest import IsolatedWorkspace, controlled_config_files
 from pacd_sim.comparison import ComparisonInputs, ComparisonPlan, PlannedAttempt
 from pacd_sim.defenders.observations import BaselineObservation
 from pacd_sim.environment.model import EnvironmentState, Identity, MissionFunction, Service, Session
+from pacd_sim.evidence.context import EvidenceReading
 from pacd_sim.harness import run as harness
 from pacd_sim.harness.run import ConfigurationError, _run_diagnostic_in_process
+from pacd_sim.polymorphism.selection import select_profile
 from pacd_sim.polymorphism.sensing import project_sensing_observation, sensing_decision
 from pacd_sim.reproducibility.canonical import canonical_sha256
 from pacd_sim.reproducibility.receipts import receipt_path_for
@@ -92,6 +94,7 @@ def test_precision_uses_the_same_eligible_subject_as_admission(
         ("diagnostic_guarded_benign", "sensing_fixed", "diagnostic_safety"),
         ("diagnostic_sensing_nominal", "sensing_fixed", "diagnostic_safety"),
         ("diagnostic_identity_smoke", "diagnostic_baseline", "diagnostic_sensing"),
+        ("diagnostic_sensing_delayed", "sensing_fixed", "diagnostic_sensing"),
     ],
 )
 def test_sensing_controls_must_match_before_invocation(
@@ -203,6 +206,9 @@ def test_copied_or_relabelled_sensing_controls_cannot_allocate(
         ("disabled", "disabled", "operator disabled by ablation"),
         ("budget", "fixed", "switch cost exceeds the episode budget"),
         ("late", "adaptive", "decision opportunity consumed"),
+        ("early", "contextual", "decision opportunity consumed"),
+        ("stale", "scheduled", "evidence is outside the selection freshness window"),
+        ("mismatch", "contextual", "selection does not identify the proposed profile"),
     ],
 )
 def test_faulty_proposal_cannot_spend_outside_evaluator_envelope(
@@ -213,7 +219,8 @@ def test_faulty_proposal_cannot_spend_outside_evaluator_envelope(
     reason: str,
 ) -> None:
     ws = isolated_workspace
-    scenario = ws.config_root / "scenarios/diagnostic_sensing_nominal.yaml"
+    fixture = "delayed" if violation == "stale" else "nominal"
+    scenario = ws.config_root / f"scenarios/diagnostic_sensing_{fixture}.yaml"
     if violation == "budget":
         scenario.write_text(
             scenario.read_text().replace("budget: 1.0", "budget: 0.0"), encoding="utf-8"
@@ -241,6 +248,18 @@ def test_faulty_proposal_cannot_spend_outside_evaluator_envelope(
         return "no_positive_gain" if violation == "late" and ordinal == 1 else "proposed"
 
     monkeypatch.setattr(harness, "sensing_decision", faulty)
+
+    def faulty_selection(
+        policy: str, prefix: tuple[EvidenceReading, ...], cost: float, budget: float
+    ) -> tuple[str, dict[str, object]]:
+        outcome, detail = select_profile(policy, prefix, cost, budget)
+        if violation == "early" or len(prefix) == 3:
+            detail["selection_reason"] = "proposed"
+            detail["selected_profile"] = "default" if violation == "mismatch" else "alternate"
+            return "proposed", detail
+        return outcome, detail
+
+    monkeypatch.setattr(harness, "select_profile", faulty_selection)
     _, _, seeds, _, metrics = controlled_config_files(ws.config_root)
     invocation = "a" * 32
     with pytest.raises(RuntimeError, match="exceeded evaluator authority"):
