@@ -146,7 +146,7 @@ def test_explicit_dependency_list_boundaries(
 
 def test_optional_fields_preserve_scenario_wire_hash_and_schema() -> None:
     original = load_yaml_config(controlled_config_files(CONFIG_ROOT)[0])
-    optional_fields = {"dependencies", "availability_model", "guarded_review"}
+    optional_fields = {"dependencies", "availability_model", "guarded_review", "sensing_operator"}
     for schema in (
         ScenarioConfig.model_json_schema(),
         ScenarioConfig.model_json_schema(mode="serialization"),
@@ -172,6 +172,11 @@ def test_optional_fields_preserve_scenario_wire_hash_and_schema() -> None:
     guarded = load_yaml_config(CONFIG_ROOT / "scenarios/diagnostic_guarded_benign.yaml")
     parsed = ScenarioConfig.model_validate(guarded)
     assert parsed.guarded_review is not None
+    sensing = load_yaml_config(CONFIG_ROOT / "scenarios/diagnostic_sensing_nominal.yaml")
+    sensing_model = ScenarioConfig.model_validate(sensing)
+    assert canonical_sha256(
+        ScenarioConfig.model_validate_json(sensing_model.model_dump_json())
+    ) == canonical_sha256(sensing)
     assert canonical_sha256(
         ScenarioConfig.model_validate_json(parsed.model_dump_json())
     ) == canonical_sha256(guarded)

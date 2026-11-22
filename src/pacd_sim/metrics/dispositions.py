@@ -5,6 +5,7 @@ from collections import Counter
 from collections.abc import Iterable, Mapping
 from typing import NotRequired, TypedDict, cast
 
+from pacd_sim.configuration import SensingOperatorConfig
 from pacd_sim.metrics.summarize import EpisodeRecord
 
 
@@ -34,7 +35,9 @@ def fraction(numerator: int, denominator: int, unit: str) -> Fraction:
     )
 
 
-def guarded_review_metrics(rows: Iterable[Mapping[str, object]]) -> dict[str, object]:
+def guarded_review_metrics(
+    rows: Iterable[Mapping[str, object]], sensing: SensingOperatorConfig | None = None
+) -> dict[str, object]:
     """Account for adjudicated review events from a single fully verified episode."""
     counts: Counter[str] = Counter()
     open_requests: dict[str, int] = {}
@@ -42,11 +45,16 @@ def guarded_review_metrics(rows: Iterable[Mapping[str, object]]) -> dict[str, ob
     horizon = 0
     mission_count: int | None = None
     initial_unavailable = unavailable = mission_ticks = previous_tick = 0
+    switch_tick = restoration_tick = None
+    selection: str | None = None
     for row in rows:
         event_type = row["event_type"]
         tick = int(cast(float, row["tick"]))
         if event_type == "manifest":
             horizon = tick
+        if sensing is not None and event_type == "baseline_decision":
+            if json.loads(str(row["payload_json"]))["opportunity"]:
+                selection = str(row["outcome"])
         if event_type == "run_started":
             initial = json.loads(str(row["payload_json"])).get("initial_availability")
             if initial is not None:
@@ -59,6 +67,11 @@ def guarded_review_metrics(rows: Iterable[Mapping[str, object]]) -> dict[str, ob
         outcome = str(row["outcome"])
         referral = str(row["action_id"])
         counts[outcome] += 1
+        if sensing is not None:
+            if outcome == "verified":
+                switch_tick = tick
+            elif outcome == "rolled_back":
+                restoration_tick = tick
         if outcome == "mission_effect" and mission_count is not None:
             after = json.loads(str(row["payload_json"]))["availability_after"]
             mission_ticks += unavailable * (tick - previous_tick)
@@ -83,7 +96,7 @@ def guarded_review_metrics(rows: Iterable[Mapping[str, object]]) -> dict[str, ob
             "unavailable_fraction": fraction(mission_ticks, possible, "fraction_of_mission_ticks"),
             "unit": "mission_ticks",
         }
-    return {
+    result: dict[str, object] = {
         "clock_unit": "simulation_ticks",
         "horizon_tick": horizon,
         "outcome_event_counts": dict(sorted(counts.items())),
@@ -101,6 +114,29 @@ def guarded_review_metrics(rows: Iterable[Mapping[str, object]]) -> dict[str, ob
             "fraction_of_attempted_rollbacks",
         ),
     }
+    if sensing is not None:
+        # A single admission is possible. Half-open duration ends at exact restoration
+        # or at the retained horizon when the alternate profile is still active.
+        stop = horizon if restoration_tick is None else restoration_tick
+        alternate_ticks = 0 if switch_tick is None else stop - switch_tick
+        expected_known_ticks = (horizon - alternate_ticks) + alternate_ticks * sensing.detectability
+        result["sensing_operator"] = {
+            "format": "pacd-sensing-operator-measures-v1",
+            "opportunity_count": int(selection is not None),
+            "selection_outcome": selection,
+            "verified_switch_count": counts["verified"],
+            "switch_cost_spent": sensing.switch_cost * counts["verified"],
+            "budget": sensing.budget,
+            "cost_unit": "normalized_switch_cost",
+            "switch_tick": switch_tick,
+            "restoration_tick": restoration_tick,
+            "alternate_profile_ticks": alternate_ticks,
+            "horizon_ticks": horizon,
+            "detectability": sensing.detectability,
+            "expected_known_profile_ticks": expected_known_ticks,
+            "expected_known_profile_fraction": expected_known_ticks / horizon if horizon else None,
+        }
+    return result
 
 
 def episode_dispositions(

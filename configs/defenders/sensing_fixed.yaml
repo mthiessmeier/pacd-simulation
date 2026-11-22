@@ -1,0 +1,5 @@
+evidence_label: NON_REPORTABLE_DIAGNOSTIC
+schema_version: "1.0"
+name: sensing_fixed_v1
+observations: synthetic_only
+actions: require_human_review

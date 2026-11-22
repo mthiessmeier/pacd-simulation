@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import TextIO
 
 from pacd_sim.comparison import ComparisonPlan
-from pacd_sim.constants import DEFAULT_SCENARIO_FILE, EVIDENCE_LABEL
+from pacd_sim.constants import DEFAULT_SCENARIO_FILE, EVIDENCE_LABEL, policy_file_for_scenario
 from pacd_sim.defenders.baselines.static import (
     MINIMUM_REVIEW_SIGNAL,
     STATIC_REVIEW_VERSION,
@@ -172,7 +172,9 @@ def _diagnostic_command(arguments: argparse.Namespace) -> int:
     repository = arguments.repo_root.resolve(strict=True)
     workspace = _resolve_diagnostic_workspace(repository, arguments.workspace_root)
     scenario = arguments.scenario or repository / "configs" / "scenarios" / DEFAULT_SCENARIO_FILE
-    policy = arguments.policy or repository / "configs" / "policies" / "diagnostic_safety.yaml"
+    policy = arguments.policy or repository / "configs" / "policies" / policy_file_for_scenario(
+        scenario.name
+    )
     seeds = arguments.seeds or repository / "configs" / "seeds" / "diagnostic_seeds.json"
     output_root = arguments.output_root or workspace / "var" / "runs"
     plan = None
