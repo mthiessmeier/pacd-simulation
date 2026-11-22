@@ -1,14 +1,14 @@
 # Remaining Phase 2 implementation plan
 
-The accepted engineering milestone covers six bounded increments. This plan schedules the remaining original requirements through WP15. The row-level source and acceptance criteria in [the reconciliation](../status/REMAINING_SCOPE_RECONCILIATION.csv) control coverage. Filter its work_package_ids column to obtain each package's scope, then read original_text and acceptance_criteria together. The table reports the accepted baseline. WP01 is a candidate until its separate review concludes.
+This plan retains the full original requirements through WP15 and records the merged implementation checkpoint at **PR #22**, commit [`31c1645ee28a7bbd2488dfb2d354be1fdea3fd25`](https://github.com/mthiessmeier/pacd-simulation/tree/31c1645ee28a7bbd2488dfb2d354be1fdea3fd25). WP01 development-plan binding, the first guarded decision-to-outcome loop, one sensing operator, evidence-aware selection, four optional metric extensions and the operator review brief have merged. They are bounded slices, not closure of the broader original scope. [Current progress and evidence](../status/CURRENT_PROGRESS.md) distinguish these slices from residual work. The row-level source and original acceptance criteria in [the reconciliation](../status/REMAINING_SCOPE_RECONCILIATION.csv) control coverage. Filter work_package_ids, then read original_text, current evidence and remaining_behavior alongside the unchanged acceptance_criteria.
 
 ## Sources and disposition
 
 The original five exports and the SC-01–SC-18 crosswalk are pinned at [scope preservation c4e2005](https://github.com/mthiessmeier/pacd-simulation/tree/c4e200595377cf64c6129dec61712d04412d1ec2/docs). Resolve the CSV source_file and export line against that tree. Resolve package_source_file against the [handoff directory at 2191b41](https://github.com/mthiessmeier/pacd-simulation/tree/2191b41304aa3c079641d76caf92d7d209d72476/docs/handoff/PACD_Codex_Handoff_v1.0). Implementation/test paths refer to the accepted code unless identified as proposed. The immutable input inventory and completed assessment have distinct roles. Source aliases are WO (work order), TM (traceability), EC (charter), FM (fairness) and MD (metric dictionary).
 
-- **Decision precedence.** Use live AGENTS.md, Michael's latest continuation and DEC-038 for local non-reportable Phase 2 work. PR #9 proposes an additional handoff convention. The current task independently requests the handoff. PR #11 preserves sources and proposes sequencing. Neither draft must merge to start this work.
+- **Decision precedence.** Use live AGENTS.md, Michael's latest continuation and DEC-038 for local non-reportable Phase 2 work. Earlier handoff and sequencing proposals remain historical context. Current owner instructions authorize the documentation refresh; they do not freeze a reportable protocol or silently remove an original requirement.
 - **Scope conflict.** WO §§5–6 retain broader original criteria. The [owner decision for Increment 1](../status/PHASE2_INCREMENT1.md) accepts five governed inputs and specified equivalents for that increment. Later config families remain within scope. The historical bootstrap tag, six-branch sequence and historical status columns cannot establish current implementation status.
-- **Evidence.** The [PR #8 acceptance](https://github.com/mthiessmeier/pacd-simulation/pull/8#issuecomment-7068565861) identifies an 86-test independent challenge and two frozen 389-pass suites, each with one skip. PR #10 updates the walkthrough only. Row evidence cites accepted behavior where applicable. Open or not yet evidenced rows specify the behavioral demonstration required. A helper can be partial even when all of its unit tests pass.
+- **Evidence.** The [PR #8 acceptance](https://github.com/mthiessmeier/pacd-simulation/pull/8#issuecomment-7068565861) remains the six-increment historical baseline. PR #12 and PR #14–#22 add the bounded slices recorded in [current progress](../status/CURRENT_PROGRESS.md), including exact merge/candidate identities and reported verification. Private raw review packets are not republished by this documentation update. Refreshed ledger rows cite current code/test evidence; PR8_BASELINE_RETAINED rows retain explicitly historical assessments. A helper or accepted slice can remain partial against broader original criteria.
 - **Closure.** A change removing, deferring or narrowing scope needs an explicit author disposition listing affected source and requirement IDs, rationale and residual consequences. H6 requires a separate human-participant study. Development work may preserve interface data and simulated latency. H1–H5, RQ4, publication decisions, reportable seed selection and protocol approval keep their source gates.
 - **Safety and custody.** The evaluator controls scenario allocation, seeds and metric measurement. The harness schedules and records episodes. The independent governor decides action authorization, and the in-memory broker enforces it. Keep all future scenario and adversary behavior abstract and local to synthetic state. Keep every failure visible and segregate unknown outcome measurements from true zeros. Never average away prohibited executions or catastrophic outcomes.
 
@@ -31,20 +31,22 @@ Run `python docs/work_orders/check_reconciliation.py <handoff-directory>` in thi
 
 ## Review sequence
 
-First verify WP01 against the accepted register and its failure accounting. Next split WP05/WP06 into an action contract, a simulated review lifecycle and one integrated transition. A pending request carries the exact reversible action, target, policy, evidence, pre-state and validity interval. Record the decision, re-evaluate authority and current state before dispatch, then let the in-memory broker apply the allowed transition. Verify the complete post-state and collateral effects. Cover pending, denied, expired, unauthorized, execution-failed, verification-failed and rollback outcomes on matched benign/adverse fixtures. Record mission effects against explicit clock semantics and isolate duplicate suppression from corroboration. Review each slice before advancing.
+WP01 merged in PR #12. PR #14 implemented the first guarded isolation/review/verification/recovery loop; PR #15 integrated sensing. PR #16–#22 added verified evidence context, prospective selection, CAL-006, MIS-002, GOV-002, the bound operator brief and OPS-003 request-time accounting. Do not restart these as wholly future increments. Their action-specific acceptance does not close the full mapped packages.
 
-WP07 then integrates one operator. WP08 and WP09 carry the six classes, portfolio selection and coordinated use through their own closure tests. Start environment, evidence, abstract scenario, condition and metric slices when their listed input capabilities exist. A start dependency can be satisfied by a bounded accepted equivalent. Full-package closure also requires every mapped residual and any stronger completion gate below. Every runtime increment needs an unmerged candidate, exact source/config/seed identity, failure ledger, meaningful tests and a fresh review-only session.
+At this checkpoint, modification/override and its downstream accounting remain a concrete WP06 increment; any open PR #23 proposal requires separate review and acceptance. Preserve the exact reversible action, target, policy, evidence, pre-state and validity interval through every extension. Reevaluate authority and current state before dispatch, independently verify the complete post-state and collateral effects, and retain pending, denied, expired, unauthorized, execution-failed, verification-failed and rollback outcomes. Review each slice before advancing. Broader authority, evidence, class, adversary and metric increments may proceed when their bounded start dependencies are available.
+
+WP07 already has one substantive sensing operator; WP08 has a bounded prospective sensing choice. WP08 and WP09 still carry the full six classes, multi-objective portfolios and coordinated use through their original closure tests. A start dependency can be satisfied by a bounded accepted equivalent. Full-package closure also requires every mapped residual and any stronger completion gate below. Every runtime increment needs an unmerged candidate, exact source/config/seed identity, failure ledger, meaningful tests and a fresh review-only session.
 
 
 ## WP00 · Reconcile the source and select the next increment
 
-Verify all 558 units against the five pinned exports, assign each actual requirement to its workstreams and packages, check every cited path and resolve duplicate references. Deliver the ledger, this plan, the [WP01 work order](work_orders/DEVELOPMENT_COMPARISON_PLAN_v1.0.md) and [session handoff](../status/SESSION_HANDOFF.md). Independent review should sample evidence semantics as well as assess ID coverage.
+The PR #12 baseline reconciliation covered all 558 units, workstream/package allocations and preserved source references. The current refresh retains that exact assessment in [history](../status/history/REMAINING_SCOPE_RECONCILIATION_PR8.csv) and updates current evidence/residuals through PR #22. Continue checking every cited path and source identity; independent review should sample evidence semantics as well as assess ID coverage. Keep this plan, the ledger, [WP01 work order](work_orders/DEVELOPMENT_COMPARISON_PLAN_v1.0.md) and [session handoff](../status/SESSION_HANDOFF.md) aligned without rewriting original source or acceptance criteria.
 
 ## WP01 · Bind development comparison plans to attempted runs
 
 Start dependencies: WP00. Workstreams: SC-01, SC-14, SC-15, SC-17, SC-18. Sources: TM 4, FM 3, MD 8–11, WO 6.5,7.
 
-The current attempt register binds attempt ID, invocation ID and seed. Verified completions expose configuration identity retrospectively.
+[PR #12](https://github.com/mthiessmeier/pacd-simulation/pull/12) merged the bounded development-plan contract: cells bind intended mode, expected scenario/condition, code/configuration, seed registry, exogenous script and invocation before launch. Expected/observed checks gate measurement release and retain all planned attempts and retries. V1 registers remain available. This content binding is not trusted preregistration or evidence that either fairness mode is complete. The original contract and acceptance requirements below remain controls for subsequent extensions.
 
 - Define a versioned development comparison plan identifying cells, scenario, defender condition, code revision, governed configuration, development seed/stream identity, comparison mode and canonical digest.
 - Reuse existing bounded loaders, launch ownership, verification and accounting; preserve current v1 behavior and explicit expected-versus-observed identities.
@@ -60,7 +62,7 @@ The current attempt register binds attempt ID, invocation ID and seed. Verified 
 
 Start dependencies: WP00. Workstreams: SC-01, SC-02, SC-15, SC-16, SC-17. Sources: WO 6.1, TM layer 3 and 4–5, EC 4, MD 3.
 
-Immutable graphs, directed dependencies and binary availability/continuity are accepted for bounded fixtures; broader temporal and entity semantics require reconciliation. The [MIS-002 work order](work_orders/MISSION_LOSS_INTEGRAL_v1.0.md) integrates weighted binary mission loss and varies the configured criticalities in a matched diagnostic. Graded mission degradation and frozen harm weights remain open.
+Immutable graphs, directed dependencies and binary availability/continuity support bounded fixtures. PR #19 merged the [MIS-002 work order](work_orders/MISSION_LOSS_INTEGRAL_v1.0.md): weighted binary mission loss over verified simulated time with matched criticality variations. Broader entity/scale and temporal semantics, graded degradation, causal attribution and calibrated/frozen harm weights remain open.
 
 - Extend configured identities, accounts, credentials, sessions, privileges, trust paths, endpoints and synthetic SaaS/cloud services to the original 30–100-identity target while keeping tests small.
 - Define mission criticality, dependencies, time-weighted availability, degradation, recovery and defensive collateral effects using explicit synthetic assumptions.
@@ -76,7 +78,7 @@ Immutable graphs, directed dependencies and binary availability/continuity are a
 
 Start dependencies: WP00. Workstreams: SC-01, SC-03, SC-04, SC-15, SC-17. Sources: TM layers 1,2,4 and 5–6, EC 4,8, MD 6.
 
-The accepted planner consumes observation-only tick, subject and signal inputs. Repeated-reading corroboration is a narrow rule within the broader evidence architecture.
+PR #16 added verified evidence age and source context; PR #17 consumes the delivered prefix prospectively for one sensing decision. Built-in episodes still use one sensor. Repeated-reading temporal persistence is a narrow rule within the broader evidence architecture; it does not establish independent corroboration or calibrated beliefs.
 
 - Add configured identity, endpoint, SaaS, cloud-service, deception and mission observations with coverage, delay, noise, loss, integrity, detector reliability and provenance.
 - Implement bounded normalization, freshness, source reliability, contradiction and chain of custody; preserve evaluator-only ground truth and distinguish repeated or correlated evidence from independent corroboration.
@@ -88,7 +90,7 @@ The accepted planner consumes observation-only tick, subject and signal inputs. 
 - Sensor/event streams reproduce while documenting permitted causal divergence between defender conditions.
 - Calibration measures have defined outcomes/timing and adversarial or misleading evidence can worsen decisions visibly.
 
-The [verified evidence context work order](work_orders/VERIFIED_EVIDENCE_CONTEXT_v1.0.md) covers measurement age and distinct sensor presence for a retrospective WP08 input. Reliability, contradiction, competing beliefs, prospective decisions and calibration remain open.
+The merged [verified evidence context work order](work_orders/VERIFIED_EVIDENCE_CONTEXT_v1.0.md) supplies the same measurement-age/source-prefix contract used by the [prospective sensing selector](work_orders/PROSPECTIVE_SENSING_SELECTION_v1.0.md). PR #18 adds original-support attribution at referral and execution. Broader prospective policies, source reliability, contradiction, competing beliefs and calibration remain open.
 
 ## WP04 · Implement bounded adaptive adversary and scenario state machines
 
@@ -110,7 +112,7 @@ The accepted scenarios use scripted synthetic events. Substantive adaptive state
 
 Start dependencies: WP00. Workstreams: SC-01, SC-06, SC-10, SC-12, SC-17. Sources: WO 5.2,6.1,6.4, TM layers 5,8,10 and 5–6, MD 5.
 
-The independent governor, in-memory broker and exact-state verification support narrow isolation and review pathways; broader handler semantics remain open.
+The independent governor, in-memory broker and independently reconstructed exact-state verification support two reviewed handlers: isolate_session and switch_sensing_profile. Bound review, fresh dispatch authorization and recovery are integrated. Broader handler, evidence-level, contextual authority and autonomy-tier semantics remain open.
 
 - Define versioned action contracts with target, preconditions, expected effects, cost, authority, reversibility, verification and rollback, retaining all six action classes in the wider catalog.
 - Implement contextual authority envelopes, evidence levels and autonomy tiers 0–5, independent reevaluation and policy/state/action bindings; separate evidence level from confidence.
@@ -126,7 +128,7 @@ The independent governor, in-memory broker and exact-state verification support 
 
 Start dependencies: WP00, WP01, WP05. Workstreams: SC-02, SC-06, SC-10, SC-11, SC-12, SC-17. Sources: TM layers 3,8–11 and 5–6, EC 4, MD MIS,SAF,GOV,OPS.
 
-The accepted guarded queue binds review to a concrete simulated action and rechecks dispatch authority. The [GOV-002 work order](work_orders/ESCALATION_ROUTING_v1.0.md) measures which escalations reach a terminal review with a complete bound package. The [operator review brief](work_orders/OPERATOR_REVIEW_BRIEF_v1.0.md) adds a rationale and conditional mission preview at admission. The [approval burden work order](work_orders/APPROVAL_BURDEN_v1.0.md) accounts for resolved and censored queue time by admitted request. Modifications, overrides and richer uncertainty models remain open.
+The merged guarded queue binds review to a concrete simulated action and rechecks dispatch authority. PR #20 added [GOV-002 routing](work_orders/ESCALATION_ROUTING_v1.0.md), PR #21 the [operator review brief](work_orders/OPERATOR_REVIEW_BRIEF_v1.0.md), and PR #22 [OPS-003 approval burden](work_orders/APPROVAL_BURDEN_v1.0.md). The brief carries a rationale and conditional immediate binary mission preview; compromise probability is null. OPS-003 measures resolved and horizon-censored queue time, with override count null/unsupported. Modifications, overrides, broader mission-command envelopes and richer uncertainty remain open; queue time is not staff effort or H6 evidence.
 
 - Model review arrivals, capacity, delay, approval/denial/modification/override, timeout and expiry, with rationale, uncertainty/impact package and mission-command envelope.
 - Reevaluate authority after relevant state or policy changes; connect one reversible simulated action to actual execution, verification and mission consequences.
@@ -142,7 +144,7 @@ The accepted guarded queue binds review to a concrete simulated action and reche
 
 Start dependencies: WP00, WP05, WP06. Workstreams: SC-06, SC-07, SC-10, SC-12, SC-17. Sources: WO 6.4, TM layers 5–6, EC 10, MD 4.
 
-Polymorphism helpers exist, but integrated polymorphic state-changing behavior is identified as future work in the reviewed architecture.
+[PR #15](https://github.com/mthiessmeier/pacd-simulation/pull/15) merged the first substantive operator: a reversible sensing-profile change affects subsequent delivered precision, passes through the guarded execution path and retains verified cost/duration plus an assumption-bound observer-knowledge proxy. Fixed/adaptive/disabled comparisons include adverse-cost and no-op cases. PR #17 adds a bounded evidence-aware contextual choice. The original requirements below remain the contract for this slice and later operators; broader classes, multi-objective selection, adaptive attacker knowledge and coordination remain open.
 
 - Select one operator within the canonical six-class taxonomy and specify its state transition, observation needs, cost, duration, detectability and reversibility.
 - Route selection, authorization, execution and verification through canonical interfaces; expose a modeled adversary-knowledge effect with explicit assumptions.
@@ -158,7 +160,7 @@ Polymorphism helpers exist, but integrated polymorphic state-changing behavior i
 
 Start dependencies: WP00, WP03, WP05, WP07. Workstreams: SC-06, SC-07, SC-08, SC-10, SC-17. Sources: WO 6.4, TM 3 (layers 5–6),5–6, FM 5, MD 4.
 
-An accepted threshold rule or one operator would not establish full candidate portfolios, six-class capability or contextual policy selection.
+PR #17 merged one prospective contextual-versus-scheduled sensing choice with exact benefit/cost arithmetic and fallback. One sensing operator and that bounded context rule do not establish full candidate portfolios, six-class capability or the original multi-objective policy model.
 
 - Retain substantive sensing, deception, infrastructure/network, identity/access, response and coordination variation; define portfolio metadata and admissibility.
 - Implement contextual policy modes and fallback with explicit security benefit, information gain, attacker cost, mission effect, burden, reversibility, uncertainty and safety components.
@@ -192,7 +194,7 @@ A proposal coordinator seam exists; its presence does not establish tested integ
 
 Start dependencies: WP00, WP01. Workstreams: SC-13, SC-14, SC-17. Sources: WO 6.3, EC 6, FM 2,6.
 
-The static review comparator and corroborated review planner support a narrow contrast; the full planned suite remains to be reconciled.
+Static and corroborated review now have guarded consequences; fixed/adaptive/disabled and contextual/scheduled sensing supply additional bounded comparisons. These implementations do not complete or replace the eight original defender/reference conditions and their authentic/controlled forms.
 
 - Retain static defense, deterministic SOAR-style automation, delayed human response, random polymorphism, single-layer adaptive defense, full PACD, oracle reference and internal unbounded simulated diagnostic.
 - Give each condition a substantive versioned definition, authentic information/action access, resource accounting and compatible controlled form.
@@ -210,7 +212,7 @@ The static review comparator and corroborated review planner support a narrow co
 
 Start dependencies: WP00, WP01, WP10. Workstreams: SC-14, SC-15, SC-17, SC-18. Sources: WO 11, EC 7, FM 1–4,6, MD 1,10–11.
 
-Shared observation/governor paths and attempt accounting are useful foundations, but do not establish the complete fairness design.
+PR #12 binds intended comparison mode and expected inputs to planned attempts; later review/sensing conditions share defined observation, action and budget interfaces. These mechanics do not establish the complete fairness design or replace independent assessment of all sixteen dimensions.
 
 - Implement both system-level comparisons of authentic complete systems and controlled comparisons that isolate policy or coordination.
 - Account for all sixteen dimensions: scenario allocation, telemetry, state knowledge, mission knowledge, action catalog, safety rules, oversight, compute, retry/timeout, rollback, randomness, failure handling, metrics, tuning, negative controls and missing data.
@@ -226,7 +228,7 @@ Shared observation/governor paths and attempt accounting are useful foundations,
 
 Start dependencies: WP00. Workstreams: SC-17, SC-18, SC-01. Sources: WO 6.5, TM layer 11 and 7, EC 10–11, MD 1–12.
 
-Verified disposition metrics, registered completion accounting and raw-to-derived regeneration are accepted. Forty-seven broader metric definitions remain individually tracked. The [CAL-006 sensing attribution work order](work_orders/SENSING_FRESHNESS_ATTRIBUTION_v1.0.md) measures the age of the original supporting evidence at candidate and execution time for the two WP08 conditions. The broader CAL-006 definition and failed-episode safety accounting remain open.
+Verified disposition metrics, planned/registered completion accounting and raw-to-derived regeneration are implemented. PR #18–#22 add four optional extensions: [CAL-006 freshness](work_orders/SENSING_FRESHNESS_ATTRIBUTION_v1.0.md), [MIS-002 mission loss](work_orders/MISSION_LOSS_INTEGRAL_v1.0.md), [GOV-002 routing](work_orders/ESCALATION_ROUTING_v1.0.md) and [OPS-003 approval burden](work_orders/APPROVAL_BURDEN_v1.0.md). Their individual-run, pinned-plan and pinned-register paths share verified evidence and retain null for unavailable values. All 47 metric IDs remain draft methodology. Broader definitions, common raw/summary schema requirements, calibrated thresholds and independently attributable failed-episode safety remain open.
 
 - Preserve SEC-001–007, MIS-001–006, POL-001–007, SAF-001–006, GOV-001–005, CAL-001–006, GEN-001–005 and OPS-001–005, implementing each as its required mechanics become available.
 - Complete raw-event, episode and manifest contracts; define numerator, denominator, unit, eligibility, timing/censoring, aggregation, missingness, exclusions, provenance and applicable distribution/tail reporting.
@@ -242,7 +244,7 @@ Verified disposition metrics, registered completion accounting and raw-to-derive
 
 Start dependencies: WP00. Workstreams: SC-16, SC-04, SC-05, SC-10, SC-12, SC-17. Sources: WO 6.2,6.5,11, TM 7, EC 8,11, MD 5–7.
 
-Identity, maintenance and repeated-reading fixtures are accepted; they do not cover all planned scenario and failure families.
+Identity, maintenance and repeated-reading fixtures are joined by bounded guarded isolation/recovery, sensing cost/delay, mission-criticality, review-contention, bound-brief and pending-burden diagnostics. They do not cover all sixteen planned scenario families or the ten control/failure cases.
 
 - Retain all sixteen EC section 8 families: credential/session abuse, lateral movement, privilege misuse, SaaS/token persistence, deception sensing, mission disruption, degraded telemetry, inaccurate mission models, unreliable rollback, policy failure, evidence manipulation, strong static controls, low attacker adaptability, rapid humans, costly polymorphism and poor calibration.
 - Individually test benign administration, prohibited candidates, non-reversible automatic actions, corrupted mission data, policy failure, failed rollback, telemetry outage, stale/duplicate authorization, unseen topology and denied external-action attempts.
@@ -258,7 +260,7 @@ Identity, maintenance and repeated-reading fixtures are accepted; they do not co
 
 Start dependencies: WP00, WP11, WP12. Workstreams: SC-18, SC-04, SC-07, SC-08, SC-09, SC-14, SC-17. Sources: WO 6.5,7,11, EC 9,12–13, FM 5–6, MD 6–7.
 
-Development seeds and deterministic replay exist. Broader calibration, ablation and sensitivity tooling requires requirement-level reconciliation.
+Development seeds, deterministic replay, bounded sensing no-op/adverse-cost comparisons and mission-criticality variations exist. These diagnostics do not complete the original ten ablations, calibrated exposure program, sensitivity/generalization tooling or a frozen statistical analysis.
 
 - Retain ablations without mission model, uncertainty, reversibility, orchestration, policy portfolio or oversight delay; one polymorphism class; degraded governor; inaccurate dependencies; unreliable rollback.
 - Record every tuned parameter, rationale and exposure; separate unit/property/development/calibration/holdout-development roles and treat inspected holdouts as exposed.
@@ -274,7 +276,7 @@ Development seeds and deterministic replay exist. Broader calibration, ablation 
 
 Start dependencies: WP00, WP11, WP12, WP13, WP14. Workstreams: SC-18, SC-14, SC-17, SC-10. Sources: WO 4,8–13, TM 7–10, EC 14–16, FM 6, MD 10–12.
 
-The bounded diagnostic milestone has recorded independent review. Acceptance of the expanded original program remains a separate evidence requirement.
+Public PR records report scoped independent review for the merged diagnostic slices through PR #22; current progress distinguishes reported verification from newly reproduced evidence. Acceptance and independent reconstruction of the entire expanded original program remain separate requirements.
 
 - Reconstruct accepted increments from exact commits with complete source/config/seed/runtime/lock identities, retained failures, limitations and one-command table/figure regeneration.
 - Audit closure of all actual original requirements and the WO section 11 criteria, including substantive components, fair modes, adverse cases, sensitivity/ablations and draft-protocol readiness.
