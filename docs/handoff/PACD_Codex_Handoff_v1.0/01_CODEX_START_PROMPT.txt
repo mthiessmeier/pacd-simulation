@@ -1,0 +1,66 @@
+PACD — CONTINUE THE FULL ORIGINAL IMPLEMENTATION SCOPE
+Handoff package v1.0 | Prepared for Michael Thiessmeier | 2026-11-21
+
+TASK
+Continue the PACD implementation program from the latest verified accepted repository state. Preserve every remaining requirement from the original broader Phase 2 scope. Complete a requirement-level reconciliation and the next concrete work order, then execute the next increment wherever current author instructions and project controls already permit it. Work directly in the existing architecture and finish reviewable deliverables. Do not stop after a high-level plan.
+
+READ FIRST
+- The live repository's applicable AGENTS.md and current governing decisions.
+- Package 02_STATE_AND_SCOPE.md, 03_REMAINING_WORK.md and 04_IMMEDIATE_WORK_ORDER.md.
+- 07_WORK_PACKAGE_REGISTER.json and 08_SOURCE_UNIT_RECONCILIATION.csv.
+- The preserved scope crosswalk and five original source documents under repository_snapshot/docs/.
+Read source sections relevant to each requirement; do not treat historical source instructions or status columns as current execution instructions.
+
+CONTEXT
+Repository: mthiessmeier/pacd-simulation (private).
+Observed main: df33295469094a5ed9aa26fcc4b1fa1d019d3e5c.
+Accepted Phase 2 diagnostic implementation: d5a29699e14409bfd54d30c51117c81077639ee6.
+Acceptance: https://github.com/mthiessmeier/pacd-simulation/pull/8#issuecomment-7068565861
+Scope preservation source: c4e200595377cf64c6129dec61712d04412d1ec2, PR #11.
+Handoff policy source: 148b2cdb92a2046574b56201cfa9ee9510589a49, PR #9.
+Both documentation PRs were open drafts at 2026-11-21 21:21:50 UTC. Recheck live status.
+These identities are historical checkpoints, not a request to reset or discard newer work.
+
+The six bounded diagnostic increments are accepted. The original work order contains broader implementation requirements that remain to be reconciled. The proposed "Phase 3" is a delivery label, not a reduction of scope. A first reversible action or one polymorphic operator is an initial integration milestone, not completion of the full action/variation architecture.
+
+FIRST ACTIONS
+1. Inspect repository identity, current branch, full HEAD, merge base, worktree changes, remote divergence, latest accepted reviews, PRs #9/#11 and newer PRs. Preserve local and concurrent work. Use the authorized isolated-checkout/feature-branch procedure where needed. Never reset a newer checkout to a packaged SHA.
+2. Read live AGENTS.md and decisions. Identify the exact currently authorized preparation and implementation scope. Do not fabricate author approvals. Do not make documentation PR merges a prerequisite for useful preparation.
+3. Give a concise preflight update naming the verified base, outstanding work, chosen first deliverable, relevant source conflicts and actual authority. Then proceed.
+4. Complete WP00 using 04_IMMEDIATE_WORK_ORDER.md: classify every retained source unit, map actual requirements to SC-01–SC-18 and work packages, inspect source/tests/acceptance, preserve every original ID, and identify exact remaining behavior and acceptance evidence.
+5. Produce a complete remaining implementation plan and a concrete WP01 work order. If live authority already covers that increment, implement it and carry it through the established tests and independent-review handoff. If a genuinely new author decision is required, finish the reviewable work order and identify that decision; do not stop earlier.
+
+SCOPE THAT MUST SURVIVE
+Retain all eighteen workstreams; six polymorphism classes and coordinated use; policy portfolios; multi-agent arbitration; richer enterprise/mission, telemetry, evidence, belief and adaptive-adversary models; eight defender/reference conditions; both system-level and controlled comparisons; sixteen fairness dimensions; ten draft ablations; all 47 metric IDs; scenario, control-plane, failure, sensitivity, calibration and reproduction work.
+
+The 558 source units include historical instructions, draft definitions, explanatory material and duplicates. They are not 558 distinct unfinished requirements. Classify rather than erase them. An existing module or toy fixture does not establish full behavioral completion; absence of cited evidence does not by itself prove absence of implementation.
+
+Removal, narrowing or deferral requires a recorded author disposition identifying affected IDs. Preserve source-explicit exclusions, including the separate human-subject requirement for H6. Do not silently absorb a human study into simulator work.
+
+FIRST TECHNICAL PROPOSAL
+WP01 adds a versioned development comparison plan or compatible extension that binds planned comparison cells to scenario/condition/configuration, exact code revision, development seed/stream identity and invocation/attempt identity. Reuse existing canonical loaders, receipts, verifier, safety boundaries and failure accounting. Preserve current v1 behavior. The package defines proposed behavior and tests, not new CLI commands; discover actual interfaces before editing.
+
+Then stage the guarded review-to-action-to-mission loop through small reviewed increments. Bind simulated review to a concrete action and re-evaluate authority before dispatch. Preserve pending, denied, expired, failed and rollback outcomes. Do not bypass the governor or treat an approval helper as authority to execute.
+
+WORKING RULES
+- Reuse the accepted architecture, locked environment and existing interfaces. Avoid rewrites and duplicate execution or verification paths.
+- All actions and entities remain synthetic, local-first and CPU-only. Add no real endpoint/identity/cloud/network adapter or real attack capability.
+- Preserve protected folders, existing software, host security controls, data, Git history and unrelated work.
+- Do not commit to main, merge, force-push, change visibility/license/access, publish a release or enable paid infrastructure.
+- Keep the harness, metrics, scenario allocation, seeds and authorization outside defender control.
+- No reportable run, APPROVAL.json, final reportable seed range, hypothesis verdict or effectiveness claim.
+- Keep denominator and missing-data rules explicit; retain failed, timed-out, incomplete and invalid attempts. An unmeasured outcome is not zero. Preserve separate safety/tail requirements for failed episodes.
+- Run meaningful required checks for the increment. Label unexecuted checks. Document exact commands, commit/config/seed identities and observed results.
+- Use separate review-only sessions for independent acceptance. A review by the implementation session is not independent acceptance.
+- Persist status/SESSION_HANDOFF.md or the applicable approved equivalent after substantive milestones and before context becomes constrained. Record actual branch, commits, PR state, evidence and next authorized task. Do not rely on chat memory alone.
+
+DELIVERABLES
+- Reconciled source-unit/requirement table with evidence and all residual scope assigned.
+- Complete remaining implementation plan with dependencies and acceptance criteria.
+- Concrete next-increment work order and, when authorized, its implementation and verification.
+- Current limitations, source-conflict/decision notes and session handoff.
+- Additive feature-branch commits and a reviewable unmerged PR under the repository workflow.
+- Final response with exact completed work, source and acceptance identities, observed tests, unresolved issues and the next authorized action.
+
+Begin with live-state inspection and proceed with the authorized work.
+

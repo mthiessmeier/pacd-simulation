@@ -1,0 +1,64 @@
+{
+  "package_version": "1.0",
+  "verified_at_utc": "2026-11-21 21:21:50 UTC",
+  "repository": "mthiessmeier/pacd-simulation",
+  "repository_url": "https://github.com/mthiessmeier/pacd-simulation",
+  "repository_visibility": "private",
+  "observed_main_sha": "df33295469094a5ed9aa26fcc4b1fa1d019d3e5c",
+  "accepted_phase2_implementation_sha": "d5a29699e14409bfd54d30c51117c81077639ee6",
+  "phase2_acceptance_url": "https://github.com/mthiessmeier/pacd-simulation/pull/8#issuecomment-7068565861",
+  "scope_preservation_source_sha": "c4e200595377cf64c6129dec61712d04412d1ec2",
+  "evidence_classification": "NON_REPORTABLE_DIAGNOSTIC",
+  "source_unit_count": 558,
+  "workstream_count": 18,
+  "metric_count": 47,
+  "defender_condition_count": 8,
+  "draft_ablation_count": 10,
+  "fairness_dimension_count": 16,
+  "main_agents_blob": "92678b83f5cf21342811b1cbaaa84846b7a4b66e",
+  "prs": [
+    {
+      "number": 11,
+      "url": "https://github.com/mthiessmeier/pacd-simulation/pull/11",
+      "state": "open",
+      "merged": false,
+      "draft": true,
+      "head_sha": "c4e200595377cf64c6129dec61712d04412d1ec2",
+      "base_sha": "df33295469094a5ed9aa26fcc4b1fa1d019d3e5c",
+      "title": "docs: preserve full original Phase 2 scope across future increments"
+    },
+    {
+      "number": 10,
+      "url": "https://github.com/mthiessmeier/pacd-simulation/pull/10",
+      "state": "closed",
+      "merged": true,
+      "draft": false,
+      "head_sha": "0a9ac71dff834ef3c781aceb267a73a58835db0a",
+      "base_sha": "d5a29699e14409bfd54d30c51117c81077639ee6",
+      "title": "Pin the evaluator README to the accepted Phase 2 merge"
+    },
+    {
+      "number": 9,
+      "url": "https://github.com/mthiessmeier/pacd-simulation/pull/9",
+      "state": "open",
+      "merged": false,
+      "draft": true,
+      "head_sha": "148b2cdb92a2046574b56201cfa9ee9510589a49",
+      "base_sha": "9c9dfcec659870c41aa7cc95846d6760d9c31df7",
+      "title": "docs: add persistent Codex session handoff policy to AGENTS.md"
+    },
+    {
+      "number": 8,
+      "url": "https://github.com/mthiessmeier/pacd-simulation/pull/8",
+      "state": "closed",
+      "merged": true,
+      "draft": false,
+      "head_sha": "9f58a43021eb1efe159a55b4540e0e872b963349",
+      "base_sha": "9c9dfcec659870c41aa7cc95846d6760d9c31df7",
+      "title": "Account for registered diagnostic attempts in Increment 6 metrics"
+    }
+  ],
+  "refresh_rule": "Recheck live source, worktree, approvals and PR states; checkpoint SHAs do not authorize resetting a newer checkout.",
+  "implementation_authority": "This package records scope and prepares the next work order. Execute implementation only within the latest applicable author authorization; do not manufacture a Phase 3 approval.",
+  "test_evidence": "Acceptance-record results only. Simulator tests were not rerun while building this package."
+}

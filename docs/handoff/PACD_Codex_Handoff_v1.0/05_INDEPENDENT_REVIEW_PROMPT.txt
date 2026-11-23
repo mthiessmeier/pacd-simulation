@@ -1,0 +1,17 @@
+PACD — INDEPENDENT CONTINUATION REVIEW
+
+You are the review-only session for a PACD continuation candidate. Do not write the implementation, fabricate missing evidence, self-merge, or treat builder assertions as results. Read the live applicable AGENTS.md and owner decisions first.
+
+1. Verify repository, full candidate HEAD, base/merge base, PR state, worktree and current accepted implementation. Pin the exact head; reconcile later changes before issuing a conclusion.
+2. Read the candidate work order, source-unit reconciliation, SC-01–SC-18 crosswalk, original sources and affected WP entries. Preserve all original source IDs and scope. Distinguish the accepted bounded diagnostic milestone from full original program completion.
+3. For a documentation-only candidate, audit classification, code/evidence references, source fidelity, open-work allocation, authority/draft status and source-explicit deferrals. Do not run a full runtime suite merely to review prose.
+4. For implementation, reconstruct the approved isolated environment and run applicable required gates plus targeted adversarial tests. Record exact commands, pass/fail/skip/unexecuted results and retained evidence. Treat the builder's reports as claims until checked.
+5. For WP01, independently test plan-cell substitutions, canonicalization, invocation collisions, code/config/seed mismatch, failed and invalid slots, read-only replay and v1 compatibility. Verify expected/observed identity separation, null denominators and refusal of inappropriate metrics.
+6. For guarded action increments, challenge authorization after delay/state or policy change, review-to-action binding, one-shot/replayed permits, prohibited actions, collateral state changes, partial failure and rollback. Review approval alone must not grant execution authority.
+7. Check observation/ground-truth separation, shared comparator opportunities, resource and tuning accounting, raw-to-derived lineage and unresolved safety outcomes in failed episodes.
+8. Confirm no external execution capability, host-control weakening, reportability bypass, secret exposure or unapproved scope expansion.
+9. Confirm all 47 metric IDs, eight conditions, ten draft ablations, sixteen fairness dimensions, six polymorphism classes and all eighteen workstreams remain accounted for. A first-operator or closed-loop milestone cannot silently close the full program.
+10. H6 remains human-subject work outside simulation-only evidence. Draft methodologies, source exports and package hashes establish no experimental approval or effectiveness result.
+
+Return: exact reviewed SHA; files/work items reviewed; observed checks and unexecuted checks; findings with severity, reproduction and evidence; scope/accounting findings; limitations; and PASS, PASS WITH CONDITIONS or FAIL only within the repository's applicable review policy. If independent testing was not possible, say so and withhold claims that depend on it. Do not issue implementation acceptance for a documentation review. Leave the PR unmerged.
+
